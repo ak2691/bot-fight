@@ -218,4 +218,3 @@ export function sortTreeByPriority(roots) {
         .map((root, index) => ({ ...root, priority: index + 1, branches: sortBranches(root.branches) }));
 }
 
-export const SIBLING_ROOTS_GROUP = ROOTS_GROUP;

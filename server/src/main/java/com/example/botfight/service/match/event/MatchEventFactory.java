@@ -1,19 +1,26 @@
 package com.example.botfight.service.match.event;
 
+import com.example.botfight.service.match.state.MatchPhase;
+
+import com.example.botfight.service.match.MatchHistoryService;
+
+import org.springframework.stereotype.Component;
+
+import com.example.botfight.DTO.match.MatchEventType;
+
 import com.example.botfight.DTO.match.MatchPlaybackDTO;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.DTO.match.MatchmakingEventDTO;
-import com.example.botfight.DTO.match.MatchmakingEventDTO.RoundBrainDTO;
 import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
-import com.example.botfight.service.match.chat.MatchChatService;
+import com.example.botfight.service.match.MatchChatService;
 import com.example.botfight.service.match.connection.MatchConnectionService;
-import com.example.botfight.service.match.loadout.MatchLoadoutService;
+import com.example.botfight.service.match.MatchLoadoutService;
 import com.example.botfight.service.match.model.HpDecision;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
-import com.example.botfight.service.match.simulation.MatchSimulationService;
-import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.match.MatchPersistenceService;
+import com.example.botfight.service.match.MatchSimulationService;
+import com.example.botfight.service.match.MatchTimingPolicy;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
 import java.time.Clock;
 import java.time.Duration;
@@ -24,62 +31,56 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.BiFunction;
 
 /** Builds authoritative socket snapshots from a match session. */
+@Component
 public final class MatchEventFactory {
     private static final long PLAYBACK_PREP_DELAY_MILLIS = 3_000L;
-    private static final int ROUND_LOGIC_BLOCK_LIMIT = 100;
 
     private final Clock clock;
     private final MatchConnectionService connectionService;
     private final MatchPersistenceService persistenceService;
     private final MatchChatService chatService;
-    private final Set<UUID> initialLoadoutSelectionStartedMatchIds;
-    private final BiFunction<MatchSession, UUID, List<Integer>> abilityOffers;
-    private final BiFunction<UUID, UUID, List<RoundBrainDTO>> roundBrainsForPlayer;
-    private final BiFunction<UUID, UUID, Boolean> previousRoundWon;
+    private final MatchLoadoutService loadoutService;
+    private final MatchHistoryService historyService;
 
     public MatchEventFactory(
             Clock clock,
             MatchConnectionService connectionService,
             MatchPersistenceService persistenceService,
             MatchChatService chatService,
-            Set<UUID> initialLoadoutSelectionStartedMatchIds,
-            BiFunction<MatchSession, UUID, List<Integer>> abilityOffers,
-            BiFunction<UUID, UUID, List<RoundBrainDTO>> roundBrainsForPlayer,
-            BiFunction<UUID, UUID, Boolean> previousRoundWon) {
+            MatchLoadoutService loadoutService,
+            MatchHistoryService historyService) {
         this.clock = clock;
         this.connectionService = connectionService;
         this.persistenceService = persistenceService;
         this.chatService = chatService;
-        this.initialLoadoutSelectionStartedMatchIds = initialLoadoutSelectionStartedMatchIds;
-        this.abilityOffers = abilityOffers;
-        this.roundBrainsForPlayer = roundBrainsForPlayer;
-        this.previousRoundWon = previousRoundWon;
+        this.loadoutService = loadoutService;
+        this.historyService = historyService;
     }
 
     public OutboundMatchmakingEvent forPlayer(
             MatchSession session,
             MatchPlayer player,
-            String type) {
-        String status = session.countdownEndsAt() != null
-                        ? "PREP"
-                        : session.entityPlacementEndsAt() != null
-                                ? "OBJECT_PLACEMENT"
-                                : "MATCH_FOUND".equals(type)
-                                        && session.roundNumber() == 1
-                                        && session.loadoutSelectionEndsAt() == null
-                                        && !initialLoadoutSelectionStartedMatchIds.contains(session.matchId())
-                                        ? "MATCH_FOUND"
-                                        : "LOADOUT_SELECT";
-        return forPlayer(session, player, type, status, null, null);
+            MatchEventType type) {
+        String status = session.phase().wireStatus();
+        return forPlayer(session,
+                player,
+                type,
+                status,
+                null,
+                null,
+                0,
+                null,
+                null,
+                null,
+                null);
     }
 
     public OutboundMatchmakingEvent forCompactReplay(
             MatchSession session,
             MatchPlayer player,
-            String type,
+            MatchEventType type,
             String status,
             MatchReplayDTO playback,
             String message,
@@ -87,15 +88,12 @@ public final class MatchEventFactory {
             Instant playbackStartsAt,
             Instant resultRevealsAt,
             Instant roundReadyAt) {
-        return forPlayer(
-                session,
+        return forPlayer(session,
                 player,
                 type,
                 status,
                 null,
                 message,
-                null,
-                List.of(),
                 delayMillis,
                 playbackStartsAt,
                 resultRevealsAt,
@@ -106,125 +104,7 @@ public final class MatchEventFactory {
     public OutboundMatchmakingEvent forPlayer(
             MatchSession session,
             MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message) {
-        return forPlayer(session, player, type, status, playback, message, null, List.of());
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message,
-            UUID entityPlacementUserId,
-            List<MatchPlaybackDTO.ArenaEntityDTO> entityPlacements) {
-        return forPlayer(
-                session,
-                player,
-                type,
-                status,
-                playback,
-                message,
-                entityPlacementUserId,
-                entityPlacements,
-                0);
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message,
-            long delayMillis) {
-        return forPlayer(session, player, type, status, playback, message, null, List.of(), delayMillis);
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message,
-            UUID entityPlacementUserId,
-            List<MatchPlaybackDTO.ArenaEntityDTO> entityPlacements,
-            long delayMillis) {
-        return forPlayer(
-                session,
-                player,
-                type,
-                status,
-                playback,
-                message,
-                entityPlacementUserId,
-                entityPlacements,
-                delayMillis,
-                null,
-                null,
-                null);
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message,
-            long delayMillis,
-            Instant playbackStartsAt,
-            Instant resultRevealsAt) {
-        return forPlayer(
-                session,
-                player,
-                type,
-                status,
-                playback,
-                message,
-                null,
-                List.of(),
-                delayMillis,
-                playbackStartsAt,
-                resultRevealsAt,
-                null);
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message,
-            long delayMillis,
-            Instant playbackStartsAt,
-            Instant resultRevealsAt,
-            Instant roundReadyAt) {
-        return forPlayer(
-                session,
-                player,
-                type,
-                status,
-                playback,
-                message,
-                null,
-                List.of(),
-                delayMillis,
-                playbackStartsAt,
-                resultRevealsAt,
-                roundReadyAt);
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
+            MatchEventType type,
             String status,
             MatchPlaybackDTO playback,
             String message,
@@ -233,125 +113,40 @@ public final class MatchEventFactory {
             Instant resultRevealsAt,
             Instant roundReadyAt,
             MatchReplayDTO compactPlayback) {
-        return forPlayer(
-                session,
-                player,
-                type,
-                status,
-                playback,
-                message,
-                null,
-                List.of(),
-                delayMillis,
-                playbackStartsAt,
-                resultRevealsAt,
-                roundReadyAt,
-                compactPlayback);
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message,
-            UUID entityPlacementUserId,
-            List<MatchPlaybackDTO.ArenaEntityDTO> entityPlacements,
-            long delayMillis,
-            Instant playbackStartsAt,
-            Instant resultRevealsAt) {
-        return forPlayer(
-                session,
-                player,
-                type,
-                status,
-                playback,
-                message,
-                entityPlacementUserId,
-                entityPlacements,
-                delayMillis,
-                playbackStartsAt,
-                resultRevealsAt,
-                null);
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message,
-            UUID entityPlacementUserId,
-            List<MatchPlaybackDTO.ArenaEntityDTO> entityPlacements,
-            long delayMillis,
-            Instant playbackStartsAt,
-            Instant resultRevealsAt,
-            Instant roundReadyAt) {
-        return forPlayer(
-                session,
-                player,
-                type,
-                status,
-                playback,
-                message,
-                entityPlacementUserId,
-                entityPlacements,
-                delayMillis,
-                playbackStartsAt,
-                resultRevealsAt,
-                roundReadyAt,
-                null);
-    }
-
-    public OutboundMatchmakingEvent forPlayer(
-            MatchSession session,
-            MatchPlayer player,
-            String type,
-            String status,
-            MatchPlaybackDTO playback,
-            String message,
-            UUID entityPlacementUserId,
-            List<MatchPlaybackDTO.ArenaEntityDTO> entityPlacements,
-            long delayMillis,
-            Instant playbackStartsAt,
-            Instant resultRevealsAt,
-            Instant roundReadyAt,
-            MatchReplayDTO compactPlayback) {
-        if ("MATCH_REPLAY_BATCH".equals(type)) {
+        if (MatchEventType.MATCH_REPLAY_BATCH.equals(type)) {
             MatchReplayDTO replayPayload = compactPlayback != null
                     ? compactPlayback
                     : MatchReplayDTO.from(playback);
-            MatchmakingEventDTO replayBatchEvent = MatchmakingEventDTO.replayBatchPayload(
-                    session.matchId(),
-                    MatchSimulationService.DUEL_RULESET_VERSION,
-                    replayPayload,
-                    playbackStartsAt,
-                    resultRevealsAt,
-                    roundReadyAt,
-                    session.roundNumber())
-                    .withStatus(status)
-                    .withMode(session.mode().name());
-            if ((playback != null && playback.terminalBatch())
-                    || (compactPlayback != null && compactPlayback.terminalBatch())) {
+            MatchmakingEventDTO replayBatchEvent = MatchmakingEventDTO.builder()
+                        .type(MatchEventType.MATCH_REPLAY_BATCH)
+                        .matchId(session.matchId())
+                        .rulesetVersion(MatchSimulationService.DUEL_RULESET_VERSION)
+                        .playback(replayPayload)
+                        .playbackStartsAt(playbackStartsAt)
+                        .resultRevealsAt(resultRevealsAt)
+                        .roundReadyAt(roundReadyAt)
+                        .roundNumber(session.roundNumber())
+                        .status(status)
+                        .mode(session.mode().name()).build();
+            if (compactPlayback != null && Boolean.TRUE.equals(compactPlayback.terminalBatch())) {
                 MatchPlayer opponent = opposingPlayer(session, player);
-                replayBatchEvent = replayBatchEvent.withReplayParticipants(
-                        playerDto(session, player),
-                        opponent == null ? null : playerDto(session, opponent),
-                        session.players().stream()
+                replayBatchEvent = replayBatchEvent.toBuilder()
+                        .player(playerDto(session, player))
+                        .opponent(opponent == null ? null : playerDto(session, opponent))
+                        .players(session.players().stream()
                                 .map(matchPlayer -> playerDto(session, matchPlayer))
-                                .toList());
+                                .toList()).build();
             }
-            return new OutboundMatchmakingEvent(
-                    player.principalName(),
-                    replayBatchEvent,
-                    delayMillis,
-                    playbackStartsAt.plusMillis(delayMillis - PLAYBACK_PREP_DELAY_MILLIS));
+            return new OutboundMatchmakingEvent(player.principalName(),
+                replayBatchEvent,
+                delayMillis,
+                playbackStartsAt.plusMillis(delayMillis - PLAYBACK_PREP_DELAY_MILLIS),
+                session.phase(),
+                type == MatchEventType.MATCH_ROUND_READY && delayMillis > 0);
         }
 
-        boolean replayPhaseEvent = Set.of("SIMULATION_PREPARING", "MATCH_RESULT_READY").contains(type);
-        boolean simulationPreparingEvent = "SIMULATION_PREPARING".equals(type);
+        boolean replayPhaseEvent = Set.of(MatchEventType.SIMULATION_PREPARING, MatchEventType.MATCH_RESULT_READY).contains(type);
+        boolean simulationPreparingEvent = MatchEventType.SIMULATION_PREPARING.equals(type);
         Instant eventNow = Instant.now(clock);
         Long simulationPreparingDurationMs = simulationPreparingEvent && playbackStartsAt != null
                 ? Math.max(0, Duration.between(eventNow, playbackStartsAt).toMillis())
@@ -359,7 +154,7 @@ public final class MatchEventFactory {
         MatchReplayDTO replayPayload = compactPlayback != null
                 ? compactPlayback
                 : MatchReplayDTO.from(playback);
-        if ("MATCH_RESULT_READY".equals(type) && replayPayload != null && persistenceService != null) {
+        if (MatchEventType.MATCH_RESULT_READY.equals(type) && replayPayload != null) {
             Map<UUID, MatchPersistenceService.RatingChange> loadedRatingChanges =
                     persistenceService.ratingChangesForMatch(session.matchId());
             Map<UUID, MatchPersistenceService.RatingChange> ratingChanges =
@@ -397,55 +192,46 @@ public final class MatchEventFactory {
                 ? null
                 : connectionService.disconnectDeadline(disconnectedUserId);
         Instant activeSelectionDeadline = session.loadoutSelectionEndsAt();
-        return new OutboundMatchmakingEvent(
-                player.principalName(),
-                new MatchmakingEventDTO(
-                        type,
-                        session.matchId(),
-                        session.simulationSeed(),
-                        status,
-                        playerDto(session, player),
-                        opponent == null ? null : playerDto(session, opponent),
-                        session.players().stream()
+        return new OutboundMatchmakingEvent(player.principalName(),
+                MatchmakingEventDTO.builder()
+                        .type(type)
+                        .matchId(session.matchId())
+                        .simulationSeed(session.simulationSeed())
+                        .status(status)
+                        .player(playerDto(session, player))
+                        .opponent(opponent == null ? null : playerDto(session, opponent))
+                        .players(session.players().stream()
                                 .map(matchPlayer -> playerDto(session, matchPlayer))
-                                .toList(),
-                        eventNow,
-                        simulationPreparingEvent ? null : activeSelectionDeadline,
-                        simulationPreparingEvent ? null : session.entityPlacementEndsAt(),
-                        simulationPreparingEvent ? null : session.countdownEndsAt(),
-                        simulationPreparingEvent ? null : session.buildingEndsAt(),
-                        playbackStartsAt,
-                        resultRevealsAt,
-                        MatchSimulationService.DUEL_RULESET_VERSION,
-                        replayPayload,
-                        session.roundNumber(),
-                        null,
-                        message,
-                        entityPlacementUserId,
-                        entityPlacements != null ? List.copyOf(entityPlacements) : List.of(),
-                        session.arenaEntities(),
-                        replayPhaseEvent
+                                .toList())
+                        .serverNow(eventNow)
+                        .loadoutSelectionEndsAt(simulationPreparingEvent ? null : activeSelectionDeadline)
+                        .countdownEndsAt(simulationPreparingEvent ? null : session.countdownEndsAt())
+                        .buildingEndsAt(simulationPreparingEvent ? null : session.buildingEndsAt())
+                        .playbackStartsAt(playbackStartsAt)
+                        .resultRevealsAt(resultRevealsAt)
+                        .rulesetVersion(MatchSimulationService.DUEL_RULESET_VERSION)
+                        .playback(replayPayload)
+                        .roundNumber(session.roundNumber())
+                        .message(message)
+                        .roundBrains(replayPhaseEvent
                                 ? List.of()
-                                : roundBrainsForPlayer.apply(session.matchId(), player.userId()),
-                        replayPhaseEvent
-                                ? null
-                                : previousRoundWon.apply(session.matchId(), player.userId()),
-                        replayPhaseEvent ? List.of() : abilityOffers.apply(session, player.userId()),
-                        replayPhaseEvent ? null : ROUND_LOGIC_BLOCK_LIMIT,
-                        disconnectedUserId,
-                        disconnectEndsAt,
-                        simulationPreparingEvent ? simulationPreparingDurationMs : null,
-                        roundReadyAt,
-                        chatService.closeAt(session.matchId()))
-                        .withMode(session.mode().name())
-                        .withSurrenderState(
-                                session.surrenderVotes().contains(player.userId()),
-                                surrenderVoteCount(session, player),
-                                surrenderVoteRequired(session, player))
-                        .withTimedRounds(timedRounds(session)),
-
+                                : historyService.roundBrainsForPlayer(session.matchId(), player.userId()))
+                        .abilityOffers(replayPhaseEvent ? List.of() : loadoutService.abilityOffersForPlayer(session, player.userId()))
+                        .disconnectedUserId(disconnectedUserId)
+                        .disconnectEndsAt(disconnectEndsAt)
+                        .simulationPreparingDurationMs(simulationPreparingEvent ? simulationPreparingDurationMs : null)
+                        .roundReadyAt(roundReadyAt)
+                        .matchChatEndsAt(chatService.closeAt(session.matchId()))
+                        .viewerUserId(playerDto(session, player) == null ? null : playerDto(session, player).userId())
+                        .mode(session.mode().name())
+                        .surrenderRequestedByMe(session.surrenderVotes().contains(player.userId()))
+                        .surrenderVoteCount(surrenderVoteCount(session, player))
+                        .surrenderVoteRequired(surrenderVoteRequired(session, player))
+                        .timedRounds(timedRounds(session)).build(),
                 delayMillis,
-                "MATCH_ROUND_READY".equals(type) ? roundReadyAt : null);
+                MatchEventType.MATCH_ROUND_READY.equals(type) ? roundReadyAt : null,
+                session.phase(),
+                type == MatchEventType.MATCH_ROUND_READY && delayMillis > 0);
     }
 
     /**
@@ -457,7 +243,7 @@ public final class MatchEventFactory {
         ClosingZoneConfig zone = ClosingZoneConfig.timedRoundsV2();
         int segmentMs = MatchTimingPolicy.SEGMENT_SECONDS * 1_000;
         double warning = zone.warningDiameterAt((Math.max(1, session.roundNumber()) - 1) * segmentMs);
-        HpDecision hpDecision = session.seriesComplete()
+        HpDecision hpDecision = session.ended()
                 && session.roundNumber() >= MatchTimingPolicy.MAX_ROUNDS
                 ? HpDecision.fromEndState(session.segmentEndState())
                 : null;
@@ -482,24 +268,14 @@ public final class MatchEventFactory {
     }
 
     private MatchmakingPlayerDTO playerDto(MatchSession session, MatchPlayer player) {
-        return player.toDto(session.entityPlacementsByUserId().containsKey(player.userId()));
+        return player.toDto();
     }
 
     public OutboundMatchmakingEvent disconnectEventForPlayer(
             MatchSession session,
             MatchPlayer recipient,
             MatchPlayer disconnectedPlayer,
-            String type,
-            Instant deadline,
-            String message) {
-        return disconnectEventForPlayer(session, recipient, disconnectedPlayer, type, deadline, message, null);
-    }
-
-    public OutboundMatchmakingEvent disconnectEventForPlayer(
-            MatchSession session,
-            MatchPlayer recipient,
-            MatchPlayer disconnectedPlayer,
-            String type,
+            MatchEventType type,
             Instant deadline,
             String message,
             MatchReplayDTO compactPlayback) {
@@ -516,60 +292,42 @@ public final class MatchEventFactory {
                 : activeDisconnectedUserId == null
                         ? null
                         : connectionService.disconnectDeadline(activeDisconnectedUserId);
-        String status = session.isReplay()
-                ? "SIMULATION_PREPARING"
-                : session.players().stream().allMatch(MatchPlayer::finished)
-                        ? "SIMULATION_LOADING"
-                        : session.countdownEndsAt() != null
-                                ? "PREP"
-                                : session.entityPlacementEndsAt() != null
-                                        ? "OBJECT_PLACEMENT"
-                                        : session.buildingEndsAt() != null
-                                                ? "BUILDING"
-                                                : "LOADOUT_SELECT";
+        String status = session.phase().wireStatus();
         Instant activeSelectionDeadline = session.loadoutSelectionEndsAt();
-        return new OutboundMatchmakingEvent(
-                recipient.principalName(),
-                new MatchmakingEventDTO(
-                        type,
-                        session.matchId(),
-                        session.simulationSeed(),
-                        status,
-                        playerDto(session, recipient),
-                        opponent == null ? null : playerDto(session, opponent),
-                        session.players().stream()
+        return new OutboundMatchmakingEvent(recipient.principalName(),
+                MatchmakingEventDTO.builder()
+                        .type(type)
+                        .matchId(session.matchId())
+                        .simulationSeed(session.simulationSeed())
+                        .status(status)
+                        .player(playerDto(session, recipient))
+                        .opponent(opponent == null ? null : playerDto(session, opponent))
+                        .players(session.players().stream()
                                 .map(player -> playerDto(session, player))
-                                .toList(),
-                        Instant.now(clock),
-                        activeSelectionDeadline,
-                        session.entityPlacementEndsAt(),
-                        session.countdownEndsAt(),
-                        session.buildingEndsAt(),
-                        session.playbackStartsAt(),
-                        null,
-                        MatchSimulationService.DUEL_RULESET_VERSION,
-                        compactPlayback,
-                        session.roundNumber(),
-                        null,
-                        message,
-                        null,
-                        List.of(),
-                        session.arenaEntities(),
-                        roundBrainsForPlayer.apply(session.matchId(), recipient.userId()),
-                        previousRoundWon.apply(session.matchId(), recipient.userId()),
-                        abilityOffers.apply(session, recipient.userId()),
-                        ROUND_LOGIC_BLOCK_LIMIT,
-                        activeDisconnectedUserId,
-                        activeDisconnectEndsAt,
-                        null,
-                        null,
-                        chatService.closeAt(session.matchId()))
-                        .withMode(session.mode().name())
-                        .withSurrenderState(
-                                session.surrenderVotes().contains(recipient.userId()),
-                                surrenderVoteCount(session, recipient),
-                                surrenderVoteRequired(session, recipient))
-                        .withTimedRounds(timedRounds(session)));
+                                .toList())
+                        .serverNow(Instant.now(clock))
+                        .loadoutSelectionEndsAt(activeSelectionDeadline)
+                        .countdownEndsAt(session.countdownEndsAt())
+                        .buildingEndsAt(session.buildingEndsAt())
+                        .playbackStartsAt(session.playbackStartsAt())
+                        .rulesetVersion(MatchSimulationService.DUEL_RULESET_VERSION)
+                        .playback(compactPlayback)
+                        .roundNumber(session.roundNumber())
+                        .message(message)
+                        .roundBrains(historyService.roundBrainsForPlayer(session.matchId(), recipient.userId()))
+                        .abilityOffers(loadoutService.abilityOffersForPlayer(session, recipient.userId()))
+                        .disconnectedUserId(activeDisconnectedUserId)
+                        .disconnectEndsAt(activeDisconnectEndsAt)
+                        .matchChatEndsAt(chatService.closeAt(session.matchId()))
+                        .viewerUserId(playerDto(session, recipient) == null ? null : playerDto(session, recipient).userId())
+                        .mode(session.mode().name())
+                        .surrenderRequestedByMe(session.surrenderVotes().contains(recipient.userId()))
+                        .surrenderVoteCount(surrenderVoteCount(session, recipient))
+                        .surrenderVoteRequired(surrenderVoteRequired(session, recipient))
+                        .timedRounds(timedRounds(session)).build(),
+                0,
+                null,
+                session.phase());
     }
 
     private int surrenderVoteCount(MatchSession session, MatchPlayer player) {
@@ -598,30 +356,36 @@ public final class MatchEventFactory {
             MatchPlayer reconnectingPlayer,
             MatchReplayDTO preparationPlayback) {
         return session.players().stream()
-                .map(player -> disconnectEventForPlayer(
-                        session,
-                        player,
-                        reconnectingPlayer,
-                        "PLAYER_RECONNECTED",
-                        null,
-                        reconnectingPlayer.username() + " reconnected.",
-                        preparationPlayback))
+                .map(player -> disconnectEventForPlayer(session,
+                player,
+                reconnectingPlayer,
+                MatchEventType.PLAYER_RECONNECTED,
+                null,
+                reconnectingPlayer.username() + " reconnected.",
+                preparationPlayback))
                 .toList();
     }
 
     public OutboundMatchmakingEvent resumePhaseEvent(
             MatchSession session,
             MatchPlayer player) {
-        if (session.players().stream().allMatch(MatchPlayer::finished)) {
-            return forPlayer(
-                    session,
-                    player,
-                    "SIMULATION_LOADING",
-                    "SIMULATION_LOADING",
-                    null,
-                    "Loading the authoritative round replay.");
+        if (session.phase() == MatchPhase.SIMULATION_LOADING
+                || session.phase() == MatchPhase.SIMULATING) {
+            return forPlayer(session,
+                player,
+                MatchEventType.SIMULATION_LOADING,
+                session.phase().wireStatus(),
+                null,
+                "Loading the authoritative round replay.",
+                0,
+                null,
+                null,
+                null,
+                null);
         }
-        return forPlayer(session, player, "MATCH_FOUND");
+        return forPlayer(session,
+                player,
+                MatchEventType.MATCH_FOUND);
     }
 
     public OutboundMatchmakingEvent noActiveMatchEvent(
@@ -632,38 +396,28 @@ public final class MatchEventFactory {
                 userId,
                 username,
                 1,
+                1 <= 2 ? 1 : 1,
                 false,
                 0,
                 "melee",
-                false);
-        return new OutboundMatchmakingEvent(
-                principalName,
-                new MatchmakingEventDTO(
-                        "NO_ACTIVE_MATCH",
-                        null,
-                        null,
-                        "NO_ACTIVE_MATCH",
-                        viewer,
-                        null,
-                        List.of(viewer),
-                        Instant.now(clock),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        MatchSimulationService.DUEL_RULESET_VERSION,
-                        null,
-                        null,
-                        null,
-                        "No active match was found.",
-                        null,
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        null,
-                        List.of(),
-                        ROUND_LOGIC_BLOCK_LIMIT));
+                false,
+                null,
+                null,
+                null);
+        return new OutboundMatchmakingEvent(principalName,
+                MatchmakingEventDTO.builder()
+                        .type(MatchEventType.NO_ACTIVE_MATCH)
+                        .status("NO_ACTIVE_MATCH")
+                        .player(viewer)
+                        .players(List.of(viewer))
+                        .serverNow(Instant.now(clock))
+                        .rulesetVersion(MatchSimulationService.DUEL_RULESET_VERSION)
+                        .message("No active match was found.")
+                        .roundBrains(List.of())
+                        .abilityOffers(List.of())
+                        .viewerUserId(viewer == null ? null : viewer.userId()).build(),
+                0,
+                null,
+                null);
     }
 }

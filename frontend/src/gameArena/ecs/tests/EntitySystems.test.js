@@ -1,26 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAbilityEntity } from "../entities/EntityFactory.js";
-import { ENTITY_CONTRACTS, EVENT_SCHEDULE_MODES, entityContractForAbility, phaseTypeForEntity } from "../contracts/AbilityContracts.js";
-import { isAbilityEntity } from "../abilities/AbilityEntitySystem.js";
-import { abilityActiveOpacity, basicHealParticleSpec, BASIC_HEAL_PARTICLE_COUNT, BASIC_HEAL_PARTICLE_LIFETIME_MS, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, REPULSOR_BURST_FRAME_COUNT, REPULSOR_BURST_FRAME_MS, REPULSOR_BURST_MAX_DIAMETER, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle } from "../../gameconfig/visualState.js";
-import { amountAtDistance, durationAtDistance } from "../abilities/effects.js";
-import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
-import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../botlogic/planner/ArenaActionPlanner.js";
-import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
-import { abilityDefinition, ABILITY_STATS, shouldInterpolateAbilityVisual } from "../../loadout/BotLoadout.js";
-import { ABILITY_CONTRACTS, EFFECT_TYPES, MOVEMENT_MODES, TARGET_KINDS, effectTargetsTarget, eventTargetsEntity, eventVerbs, phaseEffects, targetKindsForEntity, triggerVerbs, triggerView } from "../contracts/AbilityContracts.js";
+import { createAbilityEntity } from "../../../../../shared/engine/ecs/entities/EntityFactory.js";
+import { ENTITY_CONTRACTS, EVENT_SCHEDULE_MODES, entityContractForAbility, phaseTypeForEntity } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { isAbilityEntity } from "../../../../../shared/engine/ecs/abilities/AbilityEntitySystem.js";
+import { abilityActiveOpacity, basicHealParticleSpec, BASIC_HEAL_PARTICLE_COUNT, BASIC_HEAL_PARTICLE_LIFETIME_MS, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, REPULSOR_BURST_FRAME_COUNT, REPULSOR_BURST_FRAME_MS, REPULSOR_BURST_MAX_DIAMETER, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle } from "../../../../../shared/engine/gameconfig/visualState.js";
+import { amountAtDistance, durationAtDistance } from "../../../../../shared/engine/ecs/abilities/effects.js";
+import { abilityHitsTarget } from "../../../../../shared/engine/ecs/abilities/AbilityHitDetectionSystem.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
+import { buildStatePayload } from "../../../../../shared/engine/modelPayloads/strategyStatePayload.js";
+import { abilityDefinition, ABILITY_STATS, shouldInterpolateAbilityVisual } from "../../../../../shared/engine/loadout/BotLoadout.js";
+import { ABILITY_CONTRACTS, EFFECT_TYPES, MOVEMENT_MODES, TARGET_KINDS, effectTargetsTarget, eventTargetsEntity, eventVerbs, phaseEffects, targetKindsForEntity, triggerVerbs, triggerView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { botStatusLabels, visualForShape } from "../../pixi/pixiVisualState.js";
 import { resetBotShape } from "../../modelPayloads/arenaShapes.js";
-import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
-import { CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER, HIT_STAGGER_DURATION_MS, HIT_STAGGER_MOVEMENT_MULTIPLIER, HIT_STAGGER_ROTATION_MULTIPLIER } from "../../gameconfig/HitStagger.js";
-import { statusEffectFor, statusIsActive, statusRemainingMs } from "../contracts/StatusContracts.js";
-import { anotherAbilityActive } from "../../gameconfig/AbilityResourceSystem.js";
-import { movingCircleCollision, movingRectangleCollision } from "../../gameconfig/geometry.js";
-import { entityAbilitySpawnTransform, movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
+import { compassDirection } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
+import { CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER, HIT_STAGGER_DURATION_MS, HIT_STAGGER_MOVEMENT_MULTIPLIER, HIT_STAGGER_ROTATION_MULTIPLIER } from "../../../../../shared/engine/gameconfig/HitStagger.js";
+import { statusEffectFor, statusIsActive, statusRemainingMs } from "../../../../../shared/engine/ecs/contracts/StatusContracts.js";
+import { anotherAbilityActive } from "../../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
+import { movingCircleCollision, movingRectangleCollision } from "../../../../../shared/engine/gameconfig/geometry.js";
+import { entityAbilitySpawnTransform, movingEntityCollision } from "../../../../../shared/engine/gameconfig/hitboxGeometry.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import { applyBotAction, dealDamage, resolveTriggerVerbsForRoster, settleHealing, tickAbilityEntityWorld, tickBotLifecycle, tickBotResources, tickBotState, tickBotStatus, tickDeferredStates, resolveTriggeredAbilityCombat as resolveAbilityCombat } from "../../testing/pureTicks.js";
-import { preparingAbilityId, preparingRemainingMs, activeRemainingMs, cooldownRemainingMs, pendingCooldownMs, abilityRecord, abilityIdsInStage } from "../../gameconfig/AbilityState.js";
+import { preparingAbilityId, preparingRemainingMs, activeRemainingMs, cooldownRemainingMs, pendingCooldownMs, abilityRecord, abilityIdsInStage } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 
 // The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
@@ -114,17 +114,14 @@ test("trigger hit verbs fire from the owner's center and hit once", () => {
     assert.deepEqual(hit.origin.offset, { x: 0, y: 0 });
     assert.equal(hit.origin.rotation, 0);
     assert.equal(hit.origin.rotationSpace, "owner");
-    assert.equal(hit.nearestOnly, false);
-    assert.equal(hit.oncePerTarget, false);
+    assert.ok(!hit.nearestOnly && !hit.oncePerTarget);
     assert.equal(ENTITY_CONTRACTS[1], undefined, "Slash spawns nothing");
 });
 
-test("Dash and Lock On declare their utility as explicit verbs", () => {
+test("Dash declares its utility as an explicit verb", () => {
     assert.deepEqual(triggerVerbs(19).map(({ do: verb }) => verb), ["move"]);
     const [move] = triggerVerbs(19);
     assert.deepEqual([move.distance, move.unitsPerTick, move.trailMs], [150, 75, 300]);
-    assert.deepEqual(ABILITY_CONTRACTS[20].activation, { targetMode: "target" });
-    assert.deepEqual(triggerVerbs(20).map(({ do: verb, target }) => [verb, target]), [["face", "activationTarget"]]);
 });
 
 test("ability spawn offsets are relative to the bot", () => {
@@ -864,11 +861,11 @@ test("entity-hit records do not trigger a proximity mine without bot contact", (
     assert.equal(phaseVisualFor(result.entities[0]).type, "proximityMine");
 });
 
-test("lock-on does not count as an attack that triggers a proximity mine", () => {
+test("a self buff does not count as an attack that triggers a proximity mine", () => {
     const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true, phaseId: "armed", phaseLocked: true };
-    const lockOnBot = { id: "attacker", slot: 2, x: 500, y: 500, size: 50, hp: 100, triggeredAbility: 20 };
+    const buffingBot = { id: "attacker", slot: 2, x: 500, y: 500, size: 50, hp: 100, triggeredAbility: 33 };
     const result = tickAbilityEntityWorld({
-        entities: [mine], bots: [lockOnBot],
+        entities: [mine], bots: [buffingBot],
         stepMs: 50, width: 1000, height: 800,
     });
 
@@ -1367,43 +1364,6 @@ test("Pistol reload waits until its active window ends after the final charge", 
     assert.equal(abilityRecord(reloading, 12)?.reloadMs, 2_900);
 });
 
-test("Lock On prepares for two ticks before facing its target and respects its 10 second cooldown", () => {
-    const lockBase = {
-        ...base,
-        x: 200,
-        y: 200,
-        rotation: 90,
-        abilities: [20],
-        abilityState: { 20: { stage: "ready", remainingMs: 0 } },
-    };
-    const action = { dx: 0, dy: 0, dRot: 0, abilityAction: { action: 20, targetX: 400, targetY: 200 } };
-    const first = applyBotAction(lockBase, action, 100);
-    assert.equal(first.x, lockBase.x);
-    assert.equal(first.y, lockBase.y);
-    assert.equal(first.rotation, 90);
-    assert.equal(first.hp, lockBase.hp);
-    assert.equal(preparingAbilityId(first), 20);
-    assert.equal(preparingRemainingMs(first), 100);
-    assert.equal(cooldownRemainingMs(first, 20), 0);
-
-    const activated = applyBotAction(first, action, 100);
-    assert.equal(activated.x, lockBase.x);
-    assert.equal(activated.y, lockBase.y);
-    assert.equal(activated.rotation, 90);
-    assert.equal(activated.hp, lockBase.hp);
-    assert.equal(preparingAbilityId(activated), null);
-    assert.equal(cooldownRemainingMs(activated, 20), 0);
-    assert.equal(pendingCooldownMs(activated, 20), 9_800);
-    assert.equal(activeRemainingMs(activated, 20), 200);
-
-    const ready = tickBotState(activated, 10_000);
-    assert.equal(cooldownRemainingMs(ready, 20), 0);
-    const second = applyBotAction(ready, action, 100);
-    assert.equal(second.rotation, 90);
-    assert.equal(preparingAbilityId(second), 20);
-    assert.equal(cooldownRemainingMs(second, 20), 0);
-});
-
 test("Disruptive Beam uses its full 0.2 second preparation before activating", () => {
     const beamBot = {
         ...base,
@@ -1861,14 +1821,14 @@ test("stun uses a two-tick wind-up followed by a one-tick active window", () => 
 
 test("the global ability lock includes preparation, not only active time", () => {
     const preparing = { abilityState: { 16: { stage: "windup", remainingMs: 100 } } };
-    assert.equal(anotherAbilityActive(preparing, 34), true);
+    assert.equal(anotherAbilityActive(preparing, 1), true);
     assert.equal(anotherAbilityActive(preparing, 16), false);
 
     // Dash ignores the lock both ways: a running dash blocks nothing, and nothing blocks a dash.
-    assert.equal(anotherAbilityActive({ abilityState: { 19: { stage: "active", remainingMs: 200 } } }, 34), false);
-    assert.equal(anotherAbilityActive({ abilityState: { 34: { stage: "active", remainingMs: 200 } } }, 19), false);
+    assert.equal(anotherAbilityActive({ abilityState: { 19: { stage: "active", remainingMs: 200 } } }, 1), false);
+    assert.equal(anotherAbilityActive({ abilityState: { 1: { stage: "active", remainingMs: 200 } } }, 19), false);
     assert.equal(anotherAbilityActive({ abilityState: { 16: { stage: "windup", remainingMs: 100 } } }, 19), false);
-    assert.equal(anotherAbilityActive({ abilityState: { 5: { stage: "active", remainingMs: 200 } } }, 34), true);
+    assert.equal(anotherAbilityActive({ abilityState: { 5: { stage: "active", remainingMs: 200 } } }, 1), true);
 });
 
 test("Overclock applies a non-stacking timed buff for cooldown recovery", () => {
@@ -1889,13 +1849,13 @@ test("Overclock applies a non-stacking timed buff for cooldown recovery", () => 
 
     const accelerated = applyBotAction({
         ...active,
-        abilities: [33, 34],
+        abilities: [33, 1],
         attackSpeedMultiplier: 1,
-        abilityState: { 33: { stage: "ready", remainingMs: 0 }, 34: { stage: "ready", remainingMs: 0 } },
-    }, { abilityAction: { action: 34 } }, 100);
-    assert.equal(accelerated.triggeredAbility, 34);
-    assert.equal(cooldownRemainingMs(accelerated, 34), 0);
-    assert.equal(pendingCooldownMs(accelerated, 34), 250);
+        abilityState: { 33: { stage: "ready", remainingMs: 0 }, 1: { stage: "ready", remainingMs: 0 } },
+    }, { abilityAction: { action: 1 } }, 100);
+    assert.equal(accelerated.triggeredAbility, 1);
+    assert.equal(cooldownRemainingMs(accelerated, 1), 0);
+    assert.equal(pendingCooldownMs(accelerated, 1), 250);
 
     const [refreshed] = resolveAbilityCombat({
         ...active,
@@ -1945,41 +1905,6 @@ test("slash hitbox uses the inclusive 120-degree, 92-unit sector", () => {
     for (const offset of [-68, 68]) assert.equal(abilityHitsTarget(attacker, targetAtBearing(attacker, 80, attacker.rotation + offset)), false, `outside ${offset} degrees`);
 });
 
-test("Basic Strike reaches the executor with its 8-damage, 80-range, 30-degree hitbox", () => {
-    const attacker = {
-        id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90,
-        hp: 150, maxHp: 150, moveSpeed: 8, attackSpeedMultiplier: 1,
-        attackDamageMultiplier: 1, abilities: [34],
-        abilityState: { 34: { stage: "ready", remainingMs: 0 } },
-    };
-    const fired = applyBotAction(attacker, { abilityAction: { action: 34 } }, 100);
-    assert.equal(fired.triggeredAbility, 34);
-    assert.equal(activeRemainingMs(fired, 34), 200);
-    assert.equal(cooldownRemainingMs(fired, 34), 0);
-    assert.equal(pendingCooldownMs(fired, 34), 500);
-
-    const centeredTarget = { id: "center", ...targetAtBearing(attacker, 60, attacker.rotation, 60), hp: 150, maxHp: 150 };
-    assert.equal(resolveAbilityCombat(fired, centeredTarget)[1].hp, 142);
-    for (const offset of [-15, 15]) {
-        assert.equal(abilityHitsTarget(fired, targetAtBearing(attacker, 60, attacker.rotation + offset, 60)), true, `at ${offset} degrees`);
-    }
-    for (const offset of [-46, 46]) {
-        assert.equal(abilityHitsTarget(fired, targetAtBearing(attacker, 60, attacker.rotation + offset, 60)), false, `outside ${offset} degrees`);
-    }
-    // A target's circle can overlap the sector even when its center is just
-    // outside the authored arc angle.
-    assert.equal(abilityHitsTarget(fired, targetAtBearing(attacker, 60, attacker.rotation + 20, 60)), true);
-
-    const overlappingBehindTarget = {
-        id: "behind-but-overlapping",
-        ...targetAtBearing(attacker, 10, attacker.rotation + 180, 60),
-        hp: 150,
-        maxHp: 150,
-    };
-    assert.equal(abilityHitsTarget(fired, overlappingBehindTarget), true);
-    assert.equal(resolveAbilityCombat(fired, overlappingBehindTarget)[1].hp, 142);
-});
-
 test("heavy slash hitbox matches the inclusive 150-degree, 115-unit sweep", () => {
     assert.equal(ABILITY_STATS[1].range, 92);
     assert.equal(ABILITY_STATS[7].range, 115);
@@ -2001,7 +1926,7 @@ test("every browser melee hitbox reaches the defender's edge at max range", () =
     assert.equal(abilityHitsTarget(swingAttacker, { x: 100 + 92 + defenderRadius, y: 100, size: defenderSize }), true);
     assert.equal(abilityHitsTarget(swingAttacker, { x: 100 + 92 + defenderRadius + 1, y: 100, size: defenderSize }), false);
 
-    for (const ability of [7, 34]) {
+    for (const ability of [7]) {
         const range = Number(ABILITY_STATS[ability].range);
         const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1, triggeredAbility: ability };
         const atEdge = { id: "target", x: 100 + range + defenderRadius, y: 100, size: defenderSize, rotation: 270, hp: 100, maxHp: 100 };
@@ -2027,7 +1952,7 @@ test("every browser melee hitbox reaches the defender's edge at max range", () =
 });
 
 test("direct melee hitboxes sweep across a moving defender", () => {
-    const attacker = { x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: 34, abilities: [34] };
+    const attacker = { x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: 1, abilities: [1] };
     const defender = {
         x: 300, y: 100, size: 60,
         movementStartX: 160, movementStartY: 100,
@@ -2390,7 +2315,7 @@ test("Dash starts during another ability's active phase and keeps its own cooldo
         version: "bot-logic-tree-v1",
         roots: [{ priority: 1, branches: [
             { id: "active-attack", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [{ action: 5 }] },
-            { id: "dash", branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: 19, movementMode: "absolute", movementDirection: "east" }] },
+            { id: "dash", branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: 19, movementMode: "absolute", movementDirection: 90 }] },
         ] }],
     };
     const opponent = { id: "opponent-model", slot: 2, x: 700, y: 100, size: 60, hp: 100, abilities: [] };
@@ -2415,8 +2340,8 @@ test("a higher-priority fireball yields to grenade during its one-tick recovery"
     const configuration = {
         version: "bot-logic-tree-v1",
         roots: [
-            { priority: 1, branches: [{ conditions: [{ type: "always" }], actions: [{ action: "shoot_fireball" }] }] },
-            { priority: 2, branches: [{ conditions: [{ type: "always" }], actions: [{ action: "throw_grenade" }] }] },
+            { priority: 1, branches: [{ conditions: [{ type: "always" }], actions: [{ action: "fireball" }] }] },
+            { priority: 2, branches: [{ conditions: [{ type: "always" }], actions: [{ action: "grenade" }] }] },
         ],
     };
     const opponent = { id: "opponent-model", slot: 2, x: 700, y: 400, size: 60, hp: 100, maxHp: 100, abilities: [] };

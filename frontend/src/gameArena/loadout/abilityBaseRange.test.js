@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateCondition, normalizeAbilityStrategyConfiguration } from "../botlogic/code/BotCode.js";
-import { stateFromPayload } from "../botlogic/code/runtime/runtimeState.js";
+import { evaluateCondition, normalizeAbilityStrategyConfiguration } from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { stateFromPayload } from "../../../../shared/engine/botlogic/code/runtime/runtimeState.js";
 import {
     STATE_VARIABLE_BY_ID,
     VISIBLE_STATE_VARIABLES,
     abilityDefinitionsForVariable,
-} from "../botlogic/code/contracts/BotLogicContracts.js";
-import { ALL_ABILITY_DEFINITIONS, abilityBaseRange } from "./BotLoadout.js";
+} from "../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { ALL_ABILITY_DEFINITIONS, abilityBaseRange } from "../../../../shared/engine/loadout/BotLoadout.js";
 
 // Mirrors server AbilityBaseRangeParityTest; keep the table in step.
 export const EXPECTED_BASE_RANGES = Object.freeze({
     1: 92, 3: 1200, 4: 320, 5: 700, 6: 184, 7: 115, 8: null, 9: 500, 10: null, 11: 176,
-    12: 500, 13: 900, 14: 220, 15: 1800, 16: null, 17: null, 18: 220, 19: null, 20: null,
+    12: 500, 13: 900, 14: 220, 15: 1800, 16: null, 17: null, 18: 220, 19: null,
     21: null, 22: null, 23: null, 24: null, 25: 100, 26: null, 27: null, 28: 400, 29: null,
-    30: 600, 31: null, 32: 500, 33: null, 34: 80, 35: 190, 36: 112, 37: 125,
+    30: 600, 31: null, 32: 500, 33: null, 35: 190, 36: 112, 37: 125,
 });
 
 test("base range comes from the real hitbox, one value per hitbox type", () => {

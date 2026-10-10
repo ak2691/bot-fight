@@ -1,8 +1,13 @@
 # Game Arena context
 
+The simulation core (`ecs/`, `gameconfig/`, `loadout/BotLoadout.js`, `botlogic/code` and `planner`, the
+bot format and state payload in `modelPayloads/`, and the fight itself) now lives in
+[`../../../shared/engine/`](../../../shared/engine/context.md); paths below that name those areas are
+relative to it. What stays here is the editor, Pixi, hooks, and the tests.
+
 This area is the browser testing/runtime preview and presentation surface. It
-mirrors rated behavior for player feedback, but the Spring simulator decides
-rated results.
+previews the shared engine for player feedback; Spring decides rated results through
+the authenticated Node worker.
 
 ## Ownership map
 
@@ -12,7 +17,7 @@ rated results.
   `hooks/`.
 - `hooks/`: browser preview simulation-loop and mode hooks. `useArenaAutoPlay.js`
   owns fixed-step preview ticks: it keeps the running fight (`createFight`, in
-  `modelPayloads/arenaPreviewSimulation.js`) in a ref and sets `fight.frame()` as
+  `shared/engine/fight.js`) in a ref and sets `fight.frame()` as
   the React shapes; shapes that did not come from its frames restart the fight.
 - `coding/CodingPanel.jsx`: coding workspace composition root, toolbar,
   history, modal coordination, outer workspace layout, and read-only live
@@ -57,8 +62,6 @@ rated results.
   `ecs/context.md` for ownership and boundaries.
 - `pixi/`: renderer-only texture caching, snapshot interpolation, and mapping
   gameplay shapes/state to Pixi layers/captions/visual state.
-- `ArenaObjects.js`: transient ability-entity identifiers and presentation
-  geometry used by testing/replay.
 
 ## Route by symptom
 
@@ -67,12 +70,12 @@ rated results.
 | Pixi object missing, wrong layer/caption/texture | `pixi/` | shape producer and visual regression checklist |
 | Jitter, teleport smear, rotation/interpolation bug | `pixi/` | combat visual-state area and snapshot timestamps |
 | Wrong cooldown/charge/status visual | `status/`, then `ecs/` | numeric definitions and effect contracts in `gameconfig/` |
-| Damage, effect, or collision bug | `gameconfig/`, then `ecs/` | arena tick orchestration and server mirror |
-| Projectile/trap/summon/entity behavior | `ecs/` | combat contracts and server `simulation/ecs/` |
+| Damage, effect, or collision bug | `gameconfig/`, then `ecs/` | shared engine tick orchestration |
+| Projectile/trap/summon/entity behavior | `ecs/` | combat contracts and shared engine execution |
 | Action does not execute | `botlogic/code/`, `botlogic/planner/`, and `ecs/` | loadout action mapping and code selection |
 | Condition/target sees wrong data | `modelPayloads/` | `botlogic/code/` and shape construction |
 | Ability draft/loadout issue | `loadout/` | frontend and server matchmaking areas |
-| Coding workspace or graph interaction | `coding/` | `botlogic/graph/`, code schema, and nearby toolbar tests |
+| Coding workspace or graph interaction | `coding/` | code schema, and nearby toolbar tests |
 | Testing loop/state coordination | `Arena.jsx` | focused system/helper and submission area |
 | Replay-only mismatch | `../replay/` | `pixi/` mapping and server replay DTO area |
 
@@ -81,13 +84,10 @@ rated results.
 - Gameplay systems produce state; Pixi reads and presents it. Rendering must not
   determine hits, damage, cooldown readiness, target selection, or match result.
 - `modelPayloads/strategyStatePayload.js` is a logic contract, not a convenient
-  view model. Coordinate/field changes require code and server parity review.
-- Ability IDs and numeric tuning are mirrored by server `simulation/gameconfig/`.
-  Ability lifecycle/effects are mirrored by server
-  `simulation/ecs/contracts/AbilityContracts.java` and
-  `DuelSimulationService`.
-- Keep fixed-step timing, arena units, collision geometry, rounding, effect
-  order, loadout encoding, and seeded choices aligned across runtimes.
+  view model. Coordinate/field changes require shared schema and consumer review.
+- Ability lifecycle, effects, fixed-step timing, collision geometry, rounding
+  and brain execution belong to `shared/engine/`, used by previews and worker.
+  Spring keeps submission allowlists and metadata from shared gameplay data.
 - Keep ability-specific drawing in `pixi/renderers/<type>.js`, keyed by visual
   type; settings may choose colours, assets, and timing but cannot affect
   gameplay outcomes. Renderers use state and contract numbers only (no
@@ -113,13 +113,12 @@ or simultaneous-effect work, run through the regression checklist indexed there.
 - `testing/fightTick.js` (`advanceShapes`: one tick of a fresh fight, state in and
   out) and `testing/pureTicks.js` (copy-wrapped systems) are the test helpers for the
   in-place engine.
-- `testing/goldenScenarios.test.js`: browser half of the shared golden scenarios
+- `testing/goldenScenarios.test.js`: shared engine golden scenarios
   (`goldenScenarioRunner.js` runs them; `npm run golden:update` rewrites the
-  golden). `testing/parityReport.test.js` lists browser-vs-server combat log
-  mismatches from the two committed goldens and does not fail on them yet.
+  golden). Worker tests execute the same scenarios against that golden.
 - `ecs/tests/MovementStamina.test.js`, `DashChannel.test.js`, `StaminaRefund.test.js`:
   movement, Dash and stamina. `ecs/tests/AbilityChannels.test.js`: channel
-  independence (the server mirror is `AbilityChannelsTest`). Fixtures build
+  independence. Fixtures build
   `abilityState` records directly (`{ 3: { stage: "active", remainingMs: 200 } }`).
 - `coding/strategyToolbar.test.js`: coding workspace and graph source contracts.
 - `status/abilityStatusPresentation.test.js`: status-panel source and timing contracts.

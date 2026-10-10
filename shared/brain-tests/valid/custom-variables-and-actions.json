@@ -1,0 +1,105 @@
+{
+  "description": "Number and boolean custom variables, set by variable actions and read by conditions.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "custom.count",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 3
+                }
+              },
+              {
+                "type": "expression",
+                "left": "custom.flag",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                }
+              }
+            ],
+            "priority": 1,
+            "action": "variable",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "variable",
+                "selectable": "opponent_1",
+                "variableId": "custom.count",
+                "terms": [
+                  {
+                    "operator": "set",
+                    "operand": {
+                      "type": "number",
+                      "value": 1
+                    }
+                  },
+                  {
+                    "operator": "add",
+                    "operand": {
+                      "type": "variable",
+                      "value": "selectable.hp",
+                      "selectable": "my_bot"
+                    }
+                  }
+                ]
+              },
+              {
+                "action": "variable",
+                "selectable": "opponent_1",
+                "variableId": "custom.flag",
+                "value": true
+              }
+            ],
+            "variableId": "custom.count",
+            "terms": [
+              {
+                "operator": "set",
+                "operand": {
+                  "type": "number",
+                  "value": 1
+                }
+              },
+              {
+                "operator": "add",
+                "operand": {
+                  "type": "variable",
+                  "value": "selectable.hp",
+                  "selectable": "my_bot"
+                }
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          }
+        ]
+      }
+    ],
+    "customVariables": [
+      {
+        "id": "custom.count",
+        "name": "COUNT",
+        "valueType": "number",
+        "initialValue": 0
+      },
+      {
+        "id": "custom.flag",
+        "name": "FLAG",
+        "valueType": "boolean",
+        "initialValue": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "rule": "bot.selectedAbilityCharges needs an ability that has charges.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": []
+    },
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityCharges",
+                "comparator": "gt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                },
+                "leftSelectable": "my_bot",
+                "ability": 1
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -2,13 +2,7 @@ package com.example.botfight.simulation.gameconfig;
 
 import java.util.List;
 
-/**
- * Versioned arena-wide hazard tuning mirrored by the browser preview.
- *
- * <p>A config either uses the original phase model (the safe circle shrinks by equal fractions of
- * the full-arena circle) or, when {@code steps} is non-empty, a stepped model: the zone starts at
- * {@code startDiameterUnits} and contracts to each step's diameter in order.
- */
+/** Timed-rounds boundary metadata for request duration and socket zone-warning presentation. */
 public record ClosingZoneConfig(
         int startDelayMs,
         int approachDurationMs,
@@ -28,30 +22,6 @@ public record ClosingZoneConfig(
 
     public ClosingZoneConfig {
         steps = steps == null ? List.of() : List.copyOf(steps);
-    }
-
-    /** The original phase model. */
-    public ClosingZoneConfig(
-            int startDelayMs,
-            int approachDurationMs,
-            int phaseDurationMs,
-            int phaseCount,
-            int initialSafeRadiusPaddingUnits,
-            int geometryUpdateMs,
-            int damageIntervalMs,
-            double damagePercentMaxHp,
-            int simulationDurationMs) {
-        this(startDelayMs, approachDurationMs, phaseDurationMs, phaseCount, initialSafeRadiusPaddingUnits,
-                geometryUpdateMs, damageIntervalMs, damagePercentMaxHp, simulationDurationMs, 0, List.of(), 0);
-    }
-
-    public boolean stepped() {
-        return !steps.isEmpty();
-    }
-
-    /** Each 20s phase contracts for 5s, holds for 15s, then targets 2/3, 1/3, and 0. */
-    public static ClosingZoneConfig duelV1() {
-        return new ClosingZoneConfig(15_000, 5_000, 20_000, 3, 32, 1_000, 500, 0.02, 90_000);
     }
 
     /**

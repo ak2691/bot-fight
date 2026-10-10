@@ -6,10 +6,6 @@
       "blockedByStatuses": ["stun", "silence"],
       "notReadyWhileStatuses": []
     },
-    "dash": {
-      "label": "Dash",
-      "blockedByStatuses": ["stun", "slow"],
-      "notReadyWhileStatuses": ["slow"]
-    }
+    "dash": { "label": "Dash", "blockedByStatuses": ["stun", "slow"], "notReadyWhileStatuses": ["slow"] }
   }
 }

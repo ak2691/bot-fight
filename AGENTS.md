@@ -34,8 +34,9 @@ Confirm current symbols and contracts in code before changing behavior.
   hostile input. Validate and bound them at server boundaries and enforce row
   ownership with the authenticated user.
 - Preserve deterministic seeds and replay/audit data when changing simulation.
-- Keep browser and server gameplay contracts in parity when abilities, logic,
-  timing, units, or payloads change.
+- Keep one gameplay engine in `shared/engine/`, used by browser previews and the
+  authenticated Node simulation worker. Java validates and orchestrates; it must
+  not implement gameplay execution. Preserve shared schemas and worker-boundary tests.
 
 ## Working rules
 

@@ -3,18 +3,18 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildTutorialArenaShapes, getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_ACTIONS, TUTORIAL_STEP_COUNT } from "./TutorialPresets.js";
-import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized } from "../gameArena/botlogic/code/BotCode.js";
-import { buildStatePayload } from "../gameArena/modelPayloads/strategyStatePayload.js";
-import { stateFromPayload } from "../gameArena/botlogic/code/runtime/runtimeState.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
-import { BOT_CODE_ACTIONS } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
+import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized } from "../../../shared/engine/botlogic/code/BotCode.js";
+import { buildStatePayload } from "../../../shared/engine/modelPayloads/strategyStatePayload.js";
+import { stateFromPayload } from "../../../shared/engine/botlogic/code/runtime/runtimeState.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../shared/engine/modelPayloads/arenaConstants.js";
+import { BOT_CODE_ACTIONS } from "../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 import { TUTORIAL_CATEGORIES, TUTORIAL_ENDING, TUTORIAL_INTRODUCTION, TUTORIAL_INTRODUCTION_VISUALS, TUTORIAL_LESSONS, getTutorialLesson, getTutorialLessonForScenario } from "./TutorialContent.js";
 import {
     captureTutorialNavigationScrollPosition,
     restoreTutorialNavigationScrollPosition,
     tutorialLessonNavigationForArena,
 } from "./tutorialLessonNavigation.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../gameArena/botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../shared/engine/botlogic/code/BotCode.js";
 
 // The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);

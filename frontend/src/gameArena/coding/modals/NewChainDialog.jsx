@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { MAX_CHAIN_NAME_LENGTH } from "../../botlogic/code/configuration/constants.js";
+import { MAX_CHAIN_NAME_LENGTH } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import "./NewChainDialog.css";
 

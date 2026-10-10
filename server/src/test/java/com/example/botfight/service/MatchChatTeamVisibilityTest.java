@@ -1,9 +1,14 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.match.MatchTimingPolicy;
+
+import com.example.botfight.domain.match.MatchMode;
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
-import com.example.botfight.service.match.chat.MatchChatService;
+import com.example.botfight.service.match.MatchChatService;
 import com.example.botfight.service.match.model.MatchChatSubmission;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
@@ -12,7 +17,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -39,19 +43,25 @@ class MatchChatTeamVisibilityTest {
                 null,
                 null,
                 null,
-                null,
                 1,
-                List.of(),
-                Map.of());
-        ConcurrentMap<UUID, MatchSession> activeSessions = new ConcurrentHashMap<>();
-        activeSessions.put(blueLeader, session);
-        activeSessions.put(blueTeammate, session);
-        activeSessions.put(redLeader, session);
-        activeSessions.put(redTeammate, session);
-        MatchChatService chat = new MatchChatService(
-                clock,
-                activeSessions,
-                new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(1)));
+                null,
+                null,
+                null,
+                null,
+                false,
+                MatchMode.ONES,
+                MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS,
+                MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS,
+                Set.of(),
+                List.of(), com.example.botfight.service.match.state.MatchPhase.LOADOUT_SELECT);
+        var state = new com.example.botfight.service.match.state.MatchRuntimeState(new com.example.botfight.service.match.MatchPhaseService());
+        state.putSession(session);
+        MatchChatService chat = new MatchChatService(clock,
+                state,
+                new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(1)),
+                com.example.botfight.service.block.BlockLookup.none(),
+                com.example.botfight.service.chatmoderation.ChatEvidenceRecorder.noOp(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
 
         MatchChatSubmission teamMessage = chat.submit(
                 blueLeader,
@@ -92,6 +102,9 @@ class MatchChatTeamVisibilityTest {
                 null,
                 0,
                 "custom:",
-                false);
+                false,
+                MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L,
+                MatchPlayer.TIMEOUT_FALLBACK_CURRENT,
+                null);
     }
 }

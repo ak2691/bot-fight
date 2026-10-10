@@ -1,5 +1,5 @@
 import { botAbilityActiveMs } from "../botAbilityPresentationDefinitions.js";
-import { BOT_SIZE } from "../../modelPayloads/arenaConstants.js";
+import { BOT_SIZE } from "../../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { thrustLengthFraction, weaponActiveProgress } from "../pixiVisualState.js";
 import { abilityStats, activeVisualFrame, rotatePoint, windupProgress } from "./rendererHelpers.js";
 

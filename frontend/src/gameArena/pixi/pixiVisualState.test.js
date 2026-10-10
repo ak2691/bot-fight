@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
-import { ABILITY_CONTRACTS, eventVerbs } from "../ecs/contracts/AbilityContracts.js";
+import { sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
+import { ABILITY_CONTRACTS, eventVerbs } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
-import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
-import { createBotState, isBotState } from "../modelPayloads/botState.js";
+import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../../../../shared/engine/gameconfig/hitboxGeometry.js";
+import { createBotState, isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
 
 test("Pixi renderer classifies every combat snapshot family without changing game state", () => {
     assert.equal(isBotState(createBotState({ id: "main" })), true);
@@ -686,12 +686,9 @@ test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.equal(activeBotVisual({ abilityVisual: { ability: 7, ms: 200 } }), 7);
     assert.equal(activeBotVisual({ abilityVisual: { ability: 19, ms: 200 } }), null);
     assert.equal(activeBotVisual({ abilityState: { 19: { stage: "active", remainingMs: 200 } } }), null);
-    assert.equal(activeBotVisual({ abilityState: { 20: { stage: "active", remainingMs: 200 } } }), 20);
-    assert.equal(LOCK_ON_PRESENTATION.markerSize, 48);
     assert.equal(activeBotVisual({ abilityState: { 16: { stage: "active", remainingMs: 3000 } } }), 16);
     assert.equal(activeBotVisual({ abilityState: { 23: { stage: "active", remainingMs: 1500 } } }), 23);
     assert.equal(activeBotVisual({ abilityState: { 33: { stage: "active", remainingMs: 3000 } } }), 33);
-    assert.equal(activeBotVisual({ abilityState: { 34: { stage: "active", remainingMs: 200 } } }), 34);
     assert.equal(entityCaption({ type: "proximityMine", armed: true }), "");
     assert.equal(entityCaption({ type: "repellerDrone", hp: 31 }), "31.0 HP");
     assert.equal(entityCaption({ type: "snareBomb", hp: 20 }), "20.0 HP");

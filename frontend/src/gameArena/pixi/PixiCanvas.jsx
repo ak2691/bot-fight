@@ -2,14 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Circle, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
 import ArenaLoadingScreen from "../../components/ArenaLoadingScreen.jsx";
 import AbilityStatusPanel from "../status/AbilityStatusPanel.jsx";
-import { ABILITY_STATS } from "../gameconfig/Abilities.js";
-import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
-import { isWindingUp } from "../gameconfig/AbilityState.js";
-import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
-import { basicHealParticleSpec, healthBarPercent, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS } from "../gameconfig/visualState.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../modelPayloads/arenaConstants.js";
-import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
-import { createBotState, isBotState } from "../modelPayloads/botState.js";
+import { ABILITY_STATS } from "../../../../shared/engine/gameconfig/Abilities.js";
+import { ABILITIES } from "../../../../shared/engine/gameconfig/AbilityRegistry.js";
+import { isWindingUp } from "../../../../shared/engine/gameconfig/AbilityState.js";
+import { CLOSING_ZONE_TYPE } from "../../../../shared/engine/gameconfig/ArenaHazardConfig.js";
+import { basicHealParticleSpec, healthBarPercent, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS } from "../../../../shared/engine/gameconfig/visualState.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "../../../../shared/engine/modelPayloads/arenaCoordinates.js";
+import { createBotState, isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
 import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, LOCK_ON_PRESENTATION, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, visualSizeForShape } from "./pixiVisualState.js";
 import { spriteFrame, spriteFrameAtProgress } from "./arenaSpriteAssets.js";
@@ -22,11 +22,11 @@ import { clearPresentationArtifacts, initialPresentationViewState } from "./pres
 import { destroyBotAbilityRenderers, syncBotAbilityRenderers, updateBotAbilityRenderers } from "./renderers/index.js";
 import { hideCachedEffects, rendererKit, showCachedEffect } from "./renderers/pixiToolkit.js";
 import { showRay } from "./renderers/rendererHelpers.js";
-import { compassDegreesToRadians, vectorToCompassDegrees } from "../botlogic/planner/arenaAngles.js";
-import { entityAbilitySpawnTransform, hitboxGeometriesForEntity, hitboxGeometryForBot } from "../gameconfig/hitboxGeometry.js";
+import { compassDegreesToRadians, vectorToCompassDegrees } from "../../../../shared/engine/botlogic/planner/arenaAngles.js";
+import { entityAbilitySpawnTransform, hitboxGeometriesForEntity, hitboxGeometryForBot } from "../../../../shared/engine/gameconfig/hitboxGeometry.js";
 import { acquirePixiApplication, attachPixiApplication, releasePixiApplication } from "./pixiApplication.js";
-import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { entityContract, entityShot } from "../ecs/contracts/AbilityContracts.js";
+import { statusIsActive } from "../../../../shared/engine/ecs/contracts/StatusContracts.js";
+import { entityContract, entityShot } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import "./PixiCanvas.css";
 
 const MIN_ZOOM = 1;
@@ -312,7 +312,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         projectiles: new Container(),
         entities: new Container(),
         bots: new Container(),
-        lockOn: new Container(),
     };
     const particleLayer = new Container();
     const measurementLayer = new Container();
@@ -322,12 +321,11 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     layers.zones.eventMode = "none";
     layers.projectiles.eventMode = "none";
     layers.entities.eventMode = "none";
-    layers.lockOn.eventMode = "none";
     particleLayer.eventMode = "none";
     measurementLayer.eventMode = "none";
     hitboxLayer.eventMode = "none";
     overlay.eventMode = "none";
-    camera.addChild(background, layers.zones, layers.projectiles, layers.entities, layers.bots, hitboxLayer, layers.lockOn, particleLayer, measurementLayer, overlay);
+    camera.addChild(background, layers.zones, layers.projectiles, layers.entities, layers.bots, hitboxLayer, particleLayer, measurementLayer, overlay);
     app.stage.addChild(camera);
     app.stage.eventMode = "static";
     drawArena(background);

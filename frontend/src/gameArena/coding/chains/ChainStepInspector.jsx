@@ -1,8 +1,8 @@
 import { TrashIcon } from "../controls/WorkspaceToolbarBits.jsx";
 import { useRef } from "react";
-import { actionSupportsAim, BOT_CODE_ACTIONS, MAX_CONDITIONS_PER_BRANCH, MAX_REPEAT_COUNT } from "../../botlogic/code/BotCode.js";
-import { ACTION_HEADS } from "../../botlogic/code/contracts/BotLogicContracts.js";
-import { CHAIN_STEP_TYPES } from "../../botlogic/code/configuration/constants.js";
+import { actionSupportsAim, BOT_CODE_ACTIONS, MAX_CONDITIONS_PER_BRANCH, MAX_REPEAT_COUNT } from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { ACTION_HEADS } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { CHAIN_STEP_TYPES } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import {
     ActionTargetControls,
@@ -64,7 +64,6 @@ export function ChainStepInspector({
     defaultVariable,
     untilCondition,
     customVariables,
-    coordinateVersion,
     disabled,
     canAddAction,
     canMoveUp,
@@ -122,7 +121,7 @@ export function ChainStepInspector({
             </label>}
             {definition.variableAction && <VariableActionControls entry={step} variables={customVariables} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={false} onChange={onUpdate} onPickOperand={onPickActionOperand} onInspectOperand={onInspectActionOperand} onRemoveAction={() => {}} />}
             {definition.orientationConfig && <PhaseOrientationControls entry={step} disabled={disabled} onChange={onUpdate} />}
-            {needsTarget && <ActionTargetControls entry={step} definition={definition} showSprint={definition.id === BOT_CODE_ACTIONS.MOVE_WALK} showFastTurn={definition.id === BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET} selectableTypes={selectableTypes} disabled={disabled} onChange={onUpdate} coordinateVersion={coordinateVersion} leadAbilityOptions={actionSupportsAim(definition) ? abilities.filter((action) => action.abilityId != null) : []} />}
+            {needsTarget && <ActionTargetControls entry={step} definition={definition} showSprint={definition.id === BOT_CODE_ACTIONS.MOVE_WALK} showFastTurn={definition.id === BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET} selectableTypes={selectableTypes} disabled={disabled} onChange={onUpdate} leadAbilityOptions={actionSupportsAim(definition) ? abilities.filter((action) => action.abilityId != null) : []} />}
             {(head === ACTION_HEADS.MOVEMENT || head === ACTION_HEADS.ROTATION) && <SecondsField label="For" ms={step.forMs} disabled={disabled} onCommit={(forMs) => set({ forMs })} />}
             {head === ACTION_HEADS.CANCEL && <p className="cx-note">Cancels your own wind-up. Nothing happens if you are not winding up.</p>}
         </>;
@@ -143,11 +142,11 @@ export function ChainStepInspector({
 
     let body = null;
     if (isAction) body = actionBody();
-    else if ([CHAIN_STEP_TYPES.IF, CHAIN_STEP_TYPES.ELSE_IF].includes(step.type)) body = step.conditions?.[conditionIndex ?? 0] && <ConditionalInspectorRow {...{ stateVariables, defaultVariable, selectableTypes, selectableAbilityIds, disabled, coordinateVersion }} condition={step.conditions[conditionIndex ?? 0]} index={conditionIndex ?? 0} onPickOperand={(row, operand) => onPickConditionOperand("conditions", row, operand)} onRowChange={(updater) => set({ conditions: step.conditions.map((condition, index) => index === (conditionIndex ?? 0) ? updater(condition) : condition) })} />;
+    else if ([CHAIN_STEP_TYPES.IF, CHAIN_STEP_TYPES.ELSE_IF].includes(step.type)) body = step.conditions?.[conditionIndex ?? 0] && <ConditionalInspectorRow {...{ stateVariables, defaultVariable, selectableTypes, selectableAbilityIds, disabled }} condition={step.conditions[conditionIndex ?? 0]} index={conditionIndex ?? 0} onPickOperand={(row, operand) => onPickConditionOperand("conditions", row, operand)} onRowChange={(updater) => set({ conditions: step.conditions.map((condition, index) => index === (conditionIndex ?? 0) ? updater(condition) : condition) })} />;
     else if ((step.type === CHAIN_STEP_TYPES.WAIT || step.type === CHAIN_STEP_TYPES.REPEAT) && conditionIndex != null && step[conditionFieldOf(step)]?.[conditionIndex]) {
         const field = conditionFieldOf(step);
         body = <>
-            <ConditionalInspectorRow {...{ stateVariables, defaultVariable, selectableTypes, selectableAbilityIds, disabled, coordinateVersion }} condition={step[field][conditionIndex]} index={conditionIndex} onPickOperand={(row, operand) => onPickConditionOperand(field, row, operand)} onRowChange={(updater) => set({ [field]: step[field].map((condition, index) => (index === conditionIndex ? updater(condition) : condition)) })} />
+            <ConditionalInspectorRow {...{ stateVariables, defaultVariable, selectableTypes, selectableAbilityIds, disabled }} condition={step[field][conditionIndex]} index={conditionIndex} onPickOperand={(row, operand) => onPickConditionOperand(field, row, operand)} onRowChange={(updater) => set({ [field]: step[field].map((condition, index) => (index === conditionIndex ? updater(condition) : condition)) })} />
             <button type="button" className="cx-delete-step cx-trash" aria-label="Remove condition" disabled={disabled || step[field].length <= 1} title={step[field].length <= 1 ? "A step needs at least one condition" : undefined} onClick={() => set({ [field]: step[field].filter((_, index) => index !== conditionIndex) })}><TrashIcon /></button>
         </>;
     }

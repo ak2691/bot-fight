@@ -1,7 +1,4 @@
-import { decodeBotLoadout, STANDARD_ABILITY_IDS } from "../gameArena/loadout/BotLoadout.js";
-import { BASE_BOT_HP } from "../gameArena/modelPayloads/arenaConstants.js";
-import { triggerView } from "../gameArena/ecs/contracts/AbilityContracts.js";
-import { createBotState } from "../gameArena/modelPayloads/botState.js";
+import { STANDARD_ABILITY_IDS } from "../../../shared/engine/loadout/BotLoadout.js";
 
 export const REPLAY_PREPARATION_MS = 3_000;
 
@@ -155,105 +152,6 @@ export function replayRemainingMs(durationMs, activationElapsedMs, currentElapse
     return Math.max(0, duration - (current - activation));
 }
 
-/**
- * Replay frames carry the ability timers as the replay DTO fields (abilityActiveMs, abilityCooldowns, ...).
- * The presentation shape holds them as ability records, built here with canonical ability ids.
- */
-export function replayBotAbilityState(bot) {
-    return { abilityState: abilityStateFromBoundary(abilityStateFromLegacy(bot)) };
-}
-
-/** Recreates the Bot Room's transient direct-ability visual from its trigger. */
-export function replayAbilityVisual(bot, frames = [], frameIndex = 0) {
-    if (!frames.length) return null;
-    const currentIndex = Math.min(Math.max(0, Number(frameIndex) || 0), frames.length - 1);
-    const currentElapsedMs = Number(frames[currentIndex]?.elapsedMs);
-    if (!Number.isFinite(currentElapsedMs)) return null;
-
-    for (let index = currentIndex; index >= 0; index -= 1) {
-        const candidate = replayBotAtFrame(frames[index], bot);
-        const ability = Number(candidate?.triggeredAbility);
-        const visual = triggerView(ability)?.visual;
-        const durationMs = Number(visual?.visibleMs ?? visual?.durationMs ?? 0);
-        if (!visual?.type || !Number.isFinite(durationMs) || durationMs <= 0) continue;
-
-        const activationElapsedMs = Number(frames[index]?.elapsedMs);
-        if (!Number.isFinite(activationElapsedMs)) return null;
-        const remainingMs = replayRemainingMs(
-            durationMs,
-            activationElapsedMs,
-            currentElapsedMs,
-        );
-        if (remainingMs <= 0) return null;
-
-        return {
-            ability,
-            visualType: visual.type,
-            visualSize: visual.visualSize,
-            ms: remainingMs,
-            x: finiteValue(candidate?.visualOriginX, candidate?.x, bot?.x),
-            y: finiteValue(candidate?.visualOriginY, candidate?.y, bot?.y),
-            rotation: finiteValue(candidate?.visualOriginRotation, candidate?.rotation, bot?.rotation, 0),
-        };
-    }
-    return null;
-}
-
-/** Carries a lock-on target through the active frames after its one-tick trigger. */
-export function replayAbilityTarget(bot, frames = [], frameIndex = 0) {
-    if (Number(bot?.abilityActiveMs?.[20] ?? 0) <= 0) return {};
-    const currentIndex = Math.min(Math.max(0, Number(frameIndex) || 0), Math.max(0, frames.length - 1));
-    for (let index = currentIndex; index >= 0; index -= 1) {
-        const candidate = replayBotAtFrame(frames[index], bot);
-        if (Number(candidate?.triggeredAbility) !== 20) continue;
-        const x = Number(candidate?.abilityTargetX);
-        const y = Number(candidate?.abilityTargetY);
-        if (Number.isFinite(x) && Number.isFinite(y)) return { abilityTargetX: x, abilityTargetY: y };
-    }
-    const x = Number(bot?.abilityTargetX);
-    const y = Number(bot?.abilityTargetY);
-    return Number.isFinite(x) && Number.isFinite(y)
-        ? { abilityTargetX: x, abilityTargetY: y }
-        : {};
-}
-
-/** Rehydrates compact slot-based replay state with one-time match metadata. */
-export function hydrateReplayBot(bot, staticBot = null, participant = null) {
-    const source = bot ?? {};
-    const initial = staticBot ?? {};
-    const loadout = participant?.selectedLoadout
-        ?? source.combatLoadout
-        ?? initial.combatLoadout
-        ?? "custom:";
-    const abilityCooldowns = source.abilityCooldowns ?? {};
-    const configuredAbilities = source.abilities
-        ?? initial.abilities
-        ?? decodeBotLoadout(loadout).abilities;
-    const abilities = replayAbilitiesFor(configuredAbilities);
-
-    return createBotState({
-        ...initial,
-        ...source,
-        userId: source.userId ?? initial.userId ?? participant?.userId,
-        username: source.username ?? initial.username ?? participant?.username,
-        slot: source.slot ?? initial.slot ?? participant?.slot,
-        teamNumber: source.teamNumber ?? initial.teamNumber ?? participant?.teamNumber,
-        maxHp: source.maxHp ?? initial.maxHp ?? BASE_BOT_HP,
-        combatLoadout: loadout,
-        abilities,
-        abilityCooldowns,
-        abilityActiveMs: source.abilityActiveMs ?? {},
-        abilityCharges: source.abilityCharges ?? {},
-        abilityRechargeMs: source.abilityRechargeMs ?? {},
-        // Server replay frames carry integer stamina, plus sprinting and fastTurning only while true.
-        stamina: Number.isFinite(Number(source.stamina)) ? Math.trunc(Number(source.stamina)) : 100,
-        sprinting: source.sprinting === true,
-        fastTurning: source.fastTurning === true,
-        // An absent field clears the previous frame, including after a seek or handoff.
-        runningChain: source.runningChain ? { ...source.runningChain, path: [...source.runningChain.path] } : null,
-    });
-}
-
 export function replayAbilitiesFor(abilities) {
     const standardAbilities = new Set(STANDARD_ABILITY_IDS);
     const selected = [...new Set(Array.isArray(abilities) ? abilities : [])]
@@ -309,7 +207,7 @@ export function replayDamageEvents(bots, entities, recentFrames = []) {
 
     const damageEvents = new Map();
     for (const frame of recentFrames) {
-        for (const previous of [...(frame.bots ?? []), ...(frame.entities ?? [])]) {
+        for (const previous of replayFrameShapes(frame)) {
             const previousKey = replayShapeKey(previous);
             const current = previousKey == null ? null : currentShapesByKey.get(previousKey);
             if (current && Number(current.hp ?? 0) < Number(previous.hp ?? 0)) {
@@ -318,70 +216,6 @@ export function replayDamageEvents(bots, entities, recentFrames = []) {
         }
     }
     return damageEvents;
-}
-
-/** Keeps a replayed gun ray at the position and facing where that shot began. */
-export function replayRayOrigin(bot, frames = [], frameIndex = 0) {
-    if (Number(bot?.abilityActiveMs?.[3] ?? 0) > 0) {
-        const activationBot = replayGunActivationBot(bot, frames, frameIndex);
-        return {
-            gunRayOriginX: finiteValue(activationBot?.visualOriginX, activationBot?.gunRayOriginX, activationBot?.x, bot.x),
-            gunRayOriginY: finiteValue(activationBot?.visualOriginY, activationBot?.gunRayOriginY, activationBot?.y, bot.y),
-            gunRayRotation: finiteValue(activationBot?.visualOriginRotation, activationBot?.gunRayRotation, activationBot?.rotation, bot.rotation, 0),
-            replayGunActiveMs: Number(bot.abilityActiveMs[3]),
-        };
-    }
-    const ability = Number(bot?.abilityActiveMs?.[12] ?? 0) > 0 ? 12
-        : Number(bot?.abilityActiveMs?.[9] ?? 0) > 0 ? 9
-            : Number(bot?.abilityActiveMs?.[13] ?? 0) > 0 ? 13
-                : Number(bot?.abilityActiveMs?.[8] ?? 0) > 0 ? 8 : null;
-    if (!ability) return {};
-    return {
-        visualOriginX: Number(bot.x),
-        visualOriginY: Number(bot.y),
-        visualOriginRotation: Number(bot.rotation ?? 0),
-    };
-}
-
-function replayGunActivationBot(bot, frames, frameIndex) {
-    const currentIndex = Math.min(Math.max(0, Number(frameIndex) || 0), Math.max(0, frames.length - 1));
-    for (let index = currentIndex; index >= 0; index -= 1) {
-        const candidate = replayBotAtFrame(frames[index], bot);
-        if (Number(candidate?.triggeredAbility) === 3) return candidate;
-    }
-    let activationBot = replayBotAtFrame(frames[currentIndex], bot) ?? bot;
-    for (let index = currentIndex; index > 0; index -= 1) {
-        const current = replayBotAtFrame(frames[index], bot) ?? activationBot;
-        const previous = replayBotAtFrame(frames[index - 1], bot);
-        if (!previous || Number(previous.abilityActiveMs?.[3] ?? 0) <= 0) break;
-        // The active timer stays positive across the whole shot, and the next
-        // shot can begin as soon as its cooldown expires. A timer reset marks
-        // a new shot even when there is no inactive frame between them.
-        if (replayTimerReset(current, previous, 3)) break;
-        activationBot = previous;
-    }
-    return activationBot;
-}
-
-function replayTimerReset(current, previous, abilityId) {
-    const activeNow = Number(current?.abilityActiveMs?.[abilityId] ?? 0);
-    const activeBefore = Number(previous?.abilityActiveMs?.[abilityId] ?? 0);
-    const cooldownNow = Number(current?.abilityCooldowns?.[abilityId] ?? 0);
-    const cooldownBefore = Number(previous?.abilityCooldowns?.[abilityId] ?? 0);
-    return activeNow > activeBefore || cooldownNow > cooldownBefore;
-}
-
-function replayBotAtFrame(frame, bot) {
-    const key = replayShapeKey(bot);
-    return (frame?.bots ?? []).find((candidate) => replayShapeKey(candidate) === key) ?? null;
-}
-
-function finiteValue(...values) {
-    for (const value of values) {
-        const number = Number(value);
-        if (Number.isFinite(number)) return number;
-    }
-    return 0;
 }
 
 /**
@@ -399,6 +233,7 @@ export function interpolateReplayFrame(frame, nextFrame, elapsedMs) {
     if (alpha <= 0) return frame;
     return {
         ...frame,
+        ...(frame.shapes ? { shapes: interpolateFrameShapes(frame.shapes, nextFrame.shapes, replayShapeKey, alpha) } : {}),
         bots: interpolateFrameShapes(frame.bots, nextFrame.bots, replayParticipantKey, alpha),
         entities: interpolateFrameShapes(frame.entities, nextFrame.entities, (entity) => `id:${entity?.id}`, alpha),
     };
@@ -418,6 +253,7 @@ function interpolateFrameShapes(shapes, nextShapes, keyFor, alpha) {
 }
 
 export function initialReplayHandoffFrame(initialState, firstFrame, elapsedMs) {
+    if (initialState?.shapes) return interpolateReplayFrame({ elapsedMs: 0, shapes: initialState.shapes }, firstFrame, elapsedMs);
     const firstElapsedMs = Number(firstFrame?.elapsedMs);
     if (!Number.isFinite(firstElapsedMs) || firstElapsedMs <= 0) return firstFrame ?? null;
     const alpha = Math.max(0, Math.min(1, Number(elapsedMs) / firstElapsedMs));
@@ -452,5 +288,14 @@ function interpolateNumber(from, to, alpha) {
 function clampedRoundWins(value) {
     return Math.max(0, Math.min(3, Number(value) || 0));
 }
-import { abilityStateFromBoundary } from "../gameArena/gameconfig/AbilityCompatibility.js";
-import { abilityStateFromLegacy } from "../gameArena/gameconfig/AbilityState.js";
+
+/** Engine frames already contain the complete practice-room render state. */
+export function replayFrameShapes(frame) {
+    return frame?.shapes ?? [...(frame?.bots ?? []), ...(frame?.entities ?? [])];
+}
+export function replayFrameBots(frame) {
+    return replayFrameShapes(frame).filter((shape) => shape.kind === "bot" || shape.slot != null);
+}
+export function replayFrameEntities(frame) {
+    return replayFrameShapes(frame).filter((shape) => shape.kind !== "bot" && shape.slot == null);
+}

@@ -1,14 +1,15 @@
 package com.example.botfight.service.match.model;
 
-import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import java.time.Duration;
+import com.example.botfight.service.match.state.MatchPhase;
+
+import com.example.botfight.service.simulation.WorkerReplay.EndBotState;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.domain.match.MatchMode;
-import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.match.MatchTimingPolicy;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -23,23 +24,22 @@ public record MatchSession(
         long simulationSeed,
         List<MatchPlayer> players,
         Instant loadoutSelectionEndsAt,
-        Instant entityPlacementEndsAt,
         Instant countdownEndsAt,
         Instant buildingEndsAt,
         int roundNumber,
-        List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
-        Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> entityPlacementsByUserId,
         Instant playbackStartsAt,
         MatchReplayDTO replayPlayback,
         Instant resultRevealsAt,
         Instant roundReadyAt,
-        boolean seriesComplete,
+        boolean ended,
         MatchMode mode,
         int baseClockSeconds,
         int incrementSeconds,
         Set<UUID> surrenderVotes,
-        List<MatchReplayDTO.ReplayBotDTO> segmentEndState) {
+        List<EndBotState> segmentEndState,
+        MatchPhase phase) {
     public MatchSession {
+        java.util.Objects.requireNonNull(phase, "phase");
         mode = mode == null ? MatchMode.ONES : mode;
         baseClockSeconds = MatchTimingPolicy.resolveBaseClockSeconds(mode, baseClockSeconds);
         incrementSeconds = Math.max(
@@ -49,68 +49,8 @@ public record MatchSession(
         segmentEndState = segmentEndState == null ? List.of() : List.copyOf(segmentEndState);
     }
 
-    /** Full constructor for a match with explicit clock settings and no surrender votes. */
-    public MatchSession(
-            UUID matchId,
-            long simulationSeed,
-            List<MatchPlayer> players,
-            Instant loadoutSelectionEndsAt,
-            Instant entityPlacementEndsAt,
-            Instant countdownEndsAt,
-            Instant buildingEndsAt,
-            int roundNumber,
-            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
-            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> entityPlacementsByUserId,
-            Instant playbackStartsAt,
-            MatchReplayDTO replayPlayback,
-            Instant resultRevealsAt,
-            Instant roundReadyAt,
-            boolean seriesComplete,
-            MatchMode mode,
-            int baseClockSeconds,
-            int incrementSeconds) {
-        this(matchId, simulationSeed, players, loadoutSelectionEndsAt, entityPlacementEndsAt, countdownEndsAt,
-                buildingEndsAt, roundNumber, arenaEntities, entityPlacementsByUserId, playbackStartsAt,
-                replayPlayback, resultRevealsAt, roundReadyAt, seriesComplete, mode, baseClockSeconds,
-                incrementSeconds, Set.of(), List.of());
-    }
-
-    /** Fixture constructor: a 1v1 on the default clock. */
-    public MatchSession(
-            UUID matchId,
-            long simulationSeed,
-            List<MatchPlayer> players,
-            Instant loadoutSelectionEndsAt,
-            Instant entityPlacementEndsAt,
-            Instant countdownEndsAt,
-            Instant buildingEndsAt,
-            int roundNumber,
-            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
-            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> entityPlacementsByUserId) {
-        this(matchId, simulationSeed, players, loadoutSelectionEndsAt, entityPlacementEndsAt, countdownEndsAt,
-                buildingEndsAt, roundNumber, arenaEntities, entityPlacementsByUserId, null, null, null, null,
-                false, MatchMode.ONES, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS,
-                MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS);
-    }
-
     public MatchMode mode() {
         return mode == null ? MatchMode.ONES : mode;
-    }
-
-    public MatchSession withArenaEntities(List<MatchPlaybackDTO.ArenaEntityDTO> nextArenaEntities) {
-        return copy(
-                players,
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                nextArenaEntities != null ? List.copyOf(nextArenaEntities) : List.of(),
-                entityPlacementsByUserId,
-                playbackStartsAt,
-                replayPlayback,
-                resultRevealsAt,
-                roundReadyAt,
-                seriesComplete);
     }
 
     /**
@@ -119,23 +59,12 @@ public record MatchSession(
      * deadline) is left at zero. Without a recorded build start nothing is deducted.
      */
     public MatchSession withFinishedPlayer(UUID userId, UUID botSubmissionId, Instant submittedAt) {
-        return copy(
-                players.stream()
-                        .map(player -> player.userId().equals(userId)
-                                ? finish(player, botSubmissionId, submittedAt)
-                                : player)
-                        .toList(),
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                arenaEntities,
-                entityPlacementsByUserId,
-                playbackStartsAt,
-                replayPlayback,
-                resultRevealsAt,
-                roundReadyAt,
-                seriesComplete);
+        List<MatchPlayer> nextPlayers = players.stream()
+                .map(player -> player.userId().equals(userId) ? finish(player, botSubmissionId, submittedAt) : player)
+                .toList();
+        Builder next = nextPlayers.stream().allMatch(MatchPlayer::finished)
+                ? transition(MatchPhase.SIMULATION_LOADING) : toBuilder();
+        return next.players(nextPlayers).build();
     }
 
     /** Marks a player finished with no clock deduction, for fixtures and non-building paths. */
@@ -146,7 +75,7 @@ public record MatchSession(
     private MatchPlayer finish(MatchPlayer player, UUID botSubmissionId, Instant submittedAt) {
         long remainingMs = player.clockRemainingMs();
         if (submittedAt != null && countdownEndsAt != null) {
-            long spentMs = Math.max(0, java.time.Duration.between(countdownEndsAt, submittedAt).toMillis());
+            long spentMs = Math.max(0, Duration.between(countdownEndsAt, submittedAt).toMillis());
             remainingMs = Math.max(0, remainingMs - spentMs);
         }
         return new MatchPlayer(
@@ -167,23 +96,12 @@ public record MatchSession(
 
     /** Records a player's choice of what to do when their clock runs out. */
     public MatchSession withTimeoutFallback(UUID userId, String timeoutFallback) {
-        return copy(
-                players.stream()
+        return toBuilder()
+                .players(players.stream()
                         .map(player -> player.userId().equals(userId)
                                 ? player.withTimeoutFallback(timeoutFallback)
                                 : player)
-                        .toList(),
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                arenaEntities,
-                entityPlacementsByUserId,
-                playbackStartsAt,
-                replayPlayback,
-                resultRevealsAt,
-                roundReadyAt,
-                seriesComplete);
+                        .toList()).build();
     }
 
     /**
@@ -191,10 +109,8 @@ public record MatchSession(
      * the segment end state stays so a reconnecting client can see the frozen position.
      */
     public MatchSession nextRound() {
-        return new MatchSession(
-                matchId,
-                simulationSeed,
-                players.stream()
+        return transition(MatchPhase.LOADOUT_SELECT)
+                .players(players.stream()
                         .map(player -> new MatchPlayer(
                                 player.userId(),
                                 player.username(),
@@ -209,24 +125,16 @@ public record MatchSession(
                                 player.clockRemainingMs(),
                                 player.timeoutFallback(),
                                 null))
-                        .toList(),
-                null,
-                null,
-                null,
-                null,
-                roundNumber + 1,
-                List.of(),
-                Map.of(),
-                null,
-                null,
-                null,
-                null,
-                false,
-                mode(),
-                baseClockSeconds(),
-                incrementSeconds(),
-                surrenderVotes(),
-                segmentEndState());
+                        .toList())
+                .loadoutSelectionEndsAt(null)
+                .countdownEndsAt(null)
+                .buildingEndsAt(null)
+                .roundNumber(roundNumber + 1)
+                .playbackStartsAt(null)
+                .replayPlayback(null)
+                .resultRevealsAt(null)
+                .roundReadyAt(null)
+                .ended(false).build();
     }
 
     public MatchSession withLoadoutSelection(Instant deadline) {
@@ -246,24 +154,21 @@ public record MatchSession(
                         player.timeoutFallback(),
                         player.buildEndsAt()))
                 .toList();
-        return copy(
-                unlockedPlayers,
-                deadline,
-                null,
-                null,
-                null,
-                List.of(),
-                Map.of(),
-                null,
-                null,
-                null,
-                null,
-                false);
+        return transition(MatchPhase.LOADOUT_SELECT)
+                .players(unlockedPlayers)
+                .loadoutSelectionEndsAt(deadline)
+                .countdownEndsAt(null)
+                .buildingEndsAt(null)
+                .playbackStartsAt(null)
+                .replayPlayback(null)
+                .resultRevealsAt(null)
+                .roundReadyAt(null)
+                .ended(false).build();
     }
 
     public MatchSession withSelectedLoadout(UUID userId, String selectedLoadout, boolean selected) {
-        return copy(
-                players.stream()
+        return toBuilder()
+                .players(players.stream()
                         .map(player -> player.userId().equals(userId)
                                 ? new MatchPlayer(
                                         player.userId(),
@@ -280,18 +185,7 @@ public record MatchSession(
                                         player.timeoutFallback(),
                                         player.buildEndsAt())
                                 : player)
-                        .toList(),
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                arenaEntities,
-                entityPlacementsByUserId,
-                playbackStartsAt,
-                replayPlayback,
-                resultRevealsAt,
-                roundReadyAt,
-                seriesComplete);
+                        .toList()).build();
     }
 
     /** Toggles one authenticated player's match-wide surrender vote. */
@@ -303,32 +197,13 @@ public record MatchSession(
         } else {
             nextVotes.remove(userId);
         }
-        return new MatchSession(
-                matchId,
-                simulationSeed,
-                players,
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                roundNumber,
-                arenaEntities,
-                entityPlacementsByUserId,
-                playbackStartsAt,
-                replayPlayback,
-                resultRevealsAt,
-                roundReadyAt,
-                seriesComplete,
-                mode(),
-                baseClockSeconds(),
-                incrementSeconds(),
-                nextVotes,
-                segmentEndState());
+        return toBuilder()
+                .surrenderVotes(nextVotes).build();
     }
 
     public MatchSession withDefaultLoadoutSelections() {
-        return copy(
-                players.stream()
+        return toBuilder()
+                .players(players.stream()
                         .map(player -> new MatchPlayer(
                                 player.userId(),
                                 player.username(),
@@ -343,55 +218,7 @@ public record MatchSession(
                                 player.clockRemainingMs(),
                                 player.timeoutFallback(),
                                 player.buildEndsAt()))
-                        .toList(),
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                arenaEntities,
-                entityPlacementsByUserId,
-                playbackStartsAt,
-                replayPlayback,
-                resultRevealsAt,
-                roundReadyAt,
-                seriesComplete);
-    }
-
-    public MatchSession withEntityPlacement(Instant nextEntityPlacementEndsAt) {
-        return copy(
-                players,
-                loadoutSelectionEndsAt,
-                nextEntityPlacementEndsAt,
-                null,
-                null,
-                List.of(),
-                Map.of(),
-                null,
-                null,
-                null,
-                null,
-                false);
-    }
-
-    public MatchSession withEntityPlacements(
-            UUID userId,
-            List<MatchPlaybackDTO.ArenaEntityDTO> objects) {
-        Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> placements =
-                new HashMap<>(entityPlacementsByUserId);
-        placements.put(userId, List.copyOf(objects != null ? objects : List.of()));
-        return copy(
-                players,
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                arenaEntities,
-                Map.copyOf(placements),
-                playbackStartsAt,
-                replayPlayback,
-                resultRevealsAt,
-                roundReadyAt,
-                seriesComplete);
+                        .toList()).build();
     }
 
     /**
@@ -426,19 +253,15 @@ public record MatchSession(
                 .max(Instant::compareTo)
                 .orElse(nextCountdownEndsAt);
         Instant nextBuildingEndsAt = latestExpiry;
-        return copy(
-                clockedPlayers,
-                loadoutSelectionEndsAt,
-                null,
-                nextCountdownEndsAt,
-                nextBuildingEndsAt,
-                arenaEntities,
-                entityPlacementsByUserId,
-                null,
-                null,
-                null,
-                null,
-                false);
+        return transition(MatchPhase.BUILDING)
+                .players(clockedPlayers)
+                .countdownEndsAt(nextCountdownEndsAt)
+                .buildingEndsAt(nextBuildingEndsAt)
+                .playbackStartsAt(null)
+                .replayPlayback(null)
+                .resultRevealsAt(null)
+                .roundReadyAt(null)
+                .ended(false).build();
     }
 
     public MatchSession withReplay(
@@ -446,99 +269,126 @@ public record MatchSession(
             Instant nextPlaybackStartsAt,
             Instant nextResultRevealsAt,
             Instant nextRoundReadyAt,
-            boolean nextSeriesComplete) {
-        return copy(
-                players,
-                null,
-                null,
-                null,
-                null,
-                arenaEntities,
-                entityPlacementsByUserId,
-                nextPlaybackStartsAt,
-                nextReplayPlayback,
-                nextResultRevealsAt,
-                nextRoundReadyAt,
-                nextSeriesComplete);
+            boolean nextEnded) {
+        return transition(MatchPhase.REPLAY)
+                .loadoutSelectionEndsAt(null)
+                .countdownEndsAt(null)
+                .buildingEndsAt(null)
+                .playbackStartsAt(nextPlaybackStartsAt)
+                .replayPlayback(nextReplayPlayback)
+                .resultRevealsAt(nextResultRevealsAt)
+                .roundReadyAt(nextRoundReadyAt)
+                .ended(nextEnded).build();
     }
 
-    public MatchSession withSegmentEndState(List<MatchReplayDTO.ReplayBotDTO> nextSegmentEndState) {
-        return new MatchSession(
-                matchId,
-                simulationSeed,
-                players,
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                roundNumber,
-                arenaEntities,
-                entityPlacementsByUserId,
-                playbackStartsAt,
-                replayPlayback,
-                resultRevealsAt,
-                roundReadyAt,
-                seriesComplete,
-                mode(),
-                baseClockSeconds(),
-                incrementSeconds(),
-                surrenderVotes(),
-                nextSegmentEndState);
+    public MatchSession withSegmentEndState(List<EndBotState> nextSegmentEndState) {
+        return toBuilder()
+                .segmentEndState(nextSegmentEndState).build();
     }
 
     public MatchSession withoutReplay() {
-        return copy(
-                players,
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                arenaEntities,
-                entityPlacementsByUserId,
-                null,
-                null,
-                null,
-                null,
-                false);
+        return toBuilder()
+                .playbackStartsAt(null)
+                .replayPlayback(null)
+                .resultRevealsAt(null)
+                .roundReadyAt(null)
+                .ended(false).build();
     }
 
     public boolean isReplay() {
-        return playbackStartsAt != null;
+        return phase == MatchPhase.REPLAY || phase == MatchPhase.RESULT_READY;
     }
 
-    private MatchSession copy(
-            List<MatchPlayer> nextPlayers,
-            Instant nextLoadoutSelectionEndsAt,
-            Instant nextEntityPlacementEndsAt,
-            Instant nextCountdownEndsAt,
-            Instant nextBuildingEndsAt,
-            List<MatchPlaybackDTO.ArenaEntityDTO> nextArenaEntities,
-            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> nextEntityPlacementsByUserId,
-            Instant nextPlaybackStartsAt,
-            MatchReplayDTO nextReplayPlayback,
-            Instant nextResultRevealsAt,
-            Instant nextRoundReadyAt,
-            boolean nextSeriesComplete) {
-        return new MatchSession(
-                matchId,
-                simulationSeed,
-                nextPlayers,
-                nextLoadoutSelectionEndsAt,
-                nextEntityPlacementEndsAt,
-                nextCountdownEndsAt,
-                nextBuildingEndsAt,
-                roundNumber,
-                nextArenaEntities,
-                nextEntityPlacementsByUserId,
-                nextPlaybackStartsAt,
-                nextReplayPlayback,
-                nextResultRevealsAt,
-                nextRoundReadyAt,
-                nextSeriesComplete,
-                mode(),
-                baseClockSeconds(),
-                incrementSeconds(),
-                surrenderVotes(),
-                segmentEndState());
+    private Builder transition(MatchPhase target) {
+        phase.checkTransitionTo(target);
+        return toBuilder().phase(target);
+    }
+
+    public MatchSession simulating() { return transition(MatchPhase.SIMULATING).build(); }
+    public MatchSession simulationFailed() { return transition(MatchPhase.SIMULATION_LOADING).build(); }
+    public MatchSession resultReady() { return transition(MatchPhase.RESULT_READY).build(); }
+
+    public Builder toBuilder() {
+        return new Builder()
+                .matchId(matchId)
+                .simulationSeed(simulationSeed)
+                .players(players)
+                .loadoutSelectionEndsAt(loadoutSelectionEndsAt)
+                .countdownEndsAt(countdownEndsAt)
+                .buildingEndsAt(buildingEndsAt)
+                .roundNumber(roundNumber)
+                .playbackStartsAt(playbackStartsAt)
+                .replayPlayback(replayPlayback)
+                .resultRevealsAt(resultRevealsAt)
+                .roundReadyAt(roundReadyAt)
+                .ended(ended)
+                .mode(mode)
+                .baseClockSeconds(baseClockSeconds)
+                .incrementSeconds(incrementSeconds)
+                .surrenderVotes(surrenderVotes)
+                .segmentEndState(segmentEndState)
+                .phase(phase);
+    }
+
+    public static final class Builder {
+        private UUID matchId;
+        private long simulationSeed;
+        private List<MatchPlayer> players;
+        private Instant loadoutSelectionEndsAt;
+        private Instant countdownEndsAt;
+        private Instant buildingEndsAt;
+        private int roundNumber;
+        private Instant playbackStartsAt;
+        private MatchReplayDTO replayPlayback;
+        private Instant resultRevealsAt;
+        private Instant roundReadyAt;
+        private boolean ended;
+        private MatchMode mode;
+        private int baseClockSeconds;
+        private int incrementSeconds;
+        private Set<UUID> surrenderVotes;
+        private List<EndBotState> segmentEndState;
+        private MatchPhase phase;
+
+        public Builder matchId(UUID value) { matchId = value; return this; }
+        public Builder simulationSeed(long value) { simulationSeed = value; return this; }
+        public Builder players(List<MatchPlayer> value) { players = value; return this; }
+        public Builder loadoutSelectionEndsAt(Instant value) { loadoutSelectionEndsAt = value; return this; }
+        public Builder countdownEndsAt(Instant value) { countdownEndsAt = value; return this; }
+        public Builder buildingEndsAt(Instant value) { buildingEndsAt = value; return this; }
+        public Builder roundNumber(int value) { roundNumber = value; return this; }
+        public Builder playbackStartsAt(Instant value) { playbackStartsAt = value; return this; }
+        public Builder replayPlayback(MatchReplayDTO value) { replayPlayback = value; return this; }
+        public Builder resultRevealsAt(Instant value) { resultRevealsAt = value; return this; }
+        public Builder roundReadyAt(Instant value) { roundReadyAt = value; return this; }
+        public Builder ended(boolean value) { ended = value; return this; }
+        public Builder mode(MatchMode value) { mode = value; return this; }
+        public Builder baseClockSeconds(int value) { baseClockSeconds = value; return this; }
+        public Builder incrementSeconds(int value) { incrementSeconds = value; return this; }
+        public Builder surrenderVotes(Set<UUID> value) { surrenderVotes = value; return this; }
+        public Builder segmentEndState(List<EndBotState> value) { segmentEndState = value; return this; }
+        private Builder phase(MatchPhase value) { phase = value; return this; }
+
+        public MatchSession build() {
+            return new MatchSession(
+                    matchId,
+                    simulationSeed,
+                    players,
+                    loadoutSelectionEndsAt,
+                    countdownEndsAt,
+                    buildingEndsAt,
+                    roundNumber,
+                    playbackStartsAt,
+                    replayPlayback,
+                    resultRevealsAt,
+                    roundReadyAt,
+                    ended,
+                    mode,
+                    baseClockSeconds,
+                    incrementSeconds,
+                    surrenderVotes,
+                    segmentEndState,
+                    phase);
+        }
     }
 }

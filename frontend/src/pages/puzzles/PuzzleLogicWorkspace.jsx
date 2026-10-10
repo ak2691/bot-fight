@@ -16,9 +16,8 @@ import {
     createExpressionCondition,
     normalizeConditions,
     normalizeRoots,
-} from "../../gameArena/botlogic/code/BotCode.js";
-import { BOT_LOGIC_TREE_V1 } from "../../gameArena/botlogic/code/configuration/constants.js";
-import { createEditorNodeId, normalizePriority } from "../../gameArena/botlogic/code/configuration/identifiers.js";
+} from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { createEditorNodeId, normalizePriority } from "../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameArena/gameconfig/CombatLoadouts.js";
 import { TreeLogicBoard } from "../../gameArena/coding/LogicBoard.jsx";
 import AddIcon from "../../gameArena/coding/controls/AddIcon.jsx";
@@ -30,7 +29,6 @@ import {
     sanitizeConfigurationConditions,
 } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { normalizePuzzleCustomVariables } from "./puzzleLogicNormalization.js";
-import { upgradeStoredStrategyCoordinates } from "../../gameArena/persistence/arenaStrategyStorage.js";
 
 const INITIAL_ZOOM = 0.85;
 const INITIAL_PAN = { x: 40, y: 36 };
@@ -135,10 +133,7 @@ export function normalizePuzzleLogic(configuration, options = {}) {
     return sanitizeConfigurationConditions(
         {
             ...configuration,
-            // Existing puzzles without a discriminator were authored with the
-            // historical top-left/Y-down contract. New puzzles are created
-            // with an explicit v2 above.
-            version: configuration.version ?? BOT_LOGIC_TREE_V1,
+            version: BOT_LOGIC_TREE_VERSION,
             customVariables: normalizedCustomVariables,
             roots,
         },
@@ -212,10 +207,7 @@ export default function PuzzleLogicWorkspace({
     const [zoom, setZoom] = useState(INITIAL_ZOOM);
     const [pan, setPan] = useState(INITIAL_PAN);
     const [history, setHistory] = useState({ undo: [], redo: [] });
-    const currentConfiguration = useMemo(() => {
-        const source = configuration ?? createDefaultPuzzleLogic();
-        return readOnly ? source : upgradeStoredStrategyCoordinates(source);
-    }, [configuration, readOnly]);
+    const currentConfiguration = useMemo(() => configuration ?? createDefaultPuzzleLogic(), [configuration]);
     const defaultVariable = stateVariables.find((variable) => variable.id === "selectable.distance")
         ?? stateVariables[0]
         ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")

@@ -7,7 +7,7 @@ import { sanitizeStrategyConfigurationForLoadout } from "../gameArena/persistenc
 import { TUTORIAL_COMPLETION_PREFIX, loadTutorialBooleanState } from "../gameArena/persistence/tutorialStorage.js";
 import { buildTutorialArenaShapes, getTutorialScenario, TUTORIAL_ACTIONS } from "./TutorialPresets.js";
 import { completeTutorialGoal } from "./tutorialCompletion.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../gameArena/botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../shared/engine/botlogic/code/BotCode.js";
 
 // The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);

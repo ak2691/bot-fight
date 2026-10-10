@@ -1,5 +1,7 @@
 package com.example.botfight.service.cache;
 
+import java.util.Map;
+
 import com.example.botfight.DTO.match.MatchHistoryPageDTO;
 import com.example.botfight.DTO.profile.ProfileDTO;
 import com.example.botfight.DTO.profile.ProfileSearchPageDTO;
@@ -224,7 +226,7 @@ public class DatabaseLookupCache {
             String reason) {
         List<K> keys = cache.asMap().entrySet().stream()
                 .filter(entry -> predicate.test(entry.getValue()))
-                .map(java.util.Map.Entry::getKey)
+                .map(Map.Entry::getKey)
                 .toList();
         if (!keys.isEmpty()) {
             LOGGER.info(
@@ -304,48 +306,10 @@ public class DatabaseLookupCache {
             int playerTeamSize,
             int opponentTeamSize,
             JsonNode logicConfiguration,
-            JsonNode winConditions,
-            JsonNode loseConditions,
             List<CachedPuzzleBot> bots) {
-
-        public CachedPuzzle(
-                UUID id,
-                long puzzleNumber,
-                String name,
-                String description,
-                int initialElapsedMs,
-                boolean hideOpponentCode,
-                int timeLimitMs,
-                int maxActionNodes,
-                int maxConditionNodes,
-                int maxCustomVariables,
-                JsonNode logicConfiguration,
-                JsonNode winConditions,
-                JsonNode loseConditions,
-                List<CachedPuzzleBot> bots) {
-            this(
-                    id,
-                    puzzleNumber,
-                    name,
-                    description,
-                    initialElapsedMs,
-                    hideOpponentCode,
-                    timeLimitMs,
-                    maxActionNodes,
-                    maxConditionNodes,
-                    maxCustomVariables,
-                    1,
-                    1,
-                    logicConfiguration,
-                    winConditions,
-                    loseConditions,
-                    bots);
-        }
 
         public CachedPuzzle {
             logicConfiguration = copy(logicConfiguration);
-            winConditions = copy(winConditions);
-            loseConditions = copy(loseConditions);
             bots = List.copyOf(bots);
         }
 

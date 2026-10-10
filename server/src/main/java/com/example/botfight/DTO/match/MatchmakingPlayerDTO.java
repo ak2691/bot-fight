@@ -17,33 +17,8 @@ public record MatchmakingPlayerDTO(
         int roundWins,
         String selectedLoadout,
         boolean loadoutSelected,
-        boolean entityPlacementSubmitted,
         Long clockRemainingMs,
         Instant buildEndsAt,
         String timeoutFallback) {
-    public MatchmakingPlayerDTO(
-            UUID userId,
-            String username,
-            int slot,
-            int teamNumber,
-            boolean finished,
-            int roundWins,
-            String selectedLoadout,
-            boolean loadoutSelected,
-            boolean entityPlacementSubmitted) {
-        this(userId, username, slot, teamNumber, finished, roundWins, selectedLoadout, loadoutSelected,
-                entityPlacementSubmitted, null, null, null);
-    }
 
-    public MatchmakingPlayerDTO(
-            UUID userId,
-            String username,
-            int slot,
-            boolean finished,
-            int roundWins,
-            String selectedLoadout,
-            boolean loadoutSelected) {
-        this(userId, username, slot, slot <= 2 ? slot : 1, finished, roundWins,
-                selectedLoadout, loadoutSelected, false);
-    }
 }

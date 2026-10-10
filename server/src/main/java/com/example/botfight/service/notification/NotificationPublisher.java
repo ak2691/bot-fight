@@ -24,10 +24,6 @@ public class NotificationPublisher {
         this.blockLookup = blockLookup;
     }
 
-    public NotificationPublisher(SimpMessagingTemplate messagingTemplate) {
-        this(messagingTemplate, BlockLookup.none());
-    }
-
     public void send(String principalName, NotificationEventDTO event) {
         if (principalName == null || principalName.isBlank() || event == null) {
             return;

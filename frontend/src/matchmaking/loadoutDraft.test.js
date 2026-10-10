@@ -6,7 +6,7 @@ import {
     offeredWeaponIds,
     toggleDraftAbility,
 } from "./loadoutDraft.js";
-import { BOT_ABILITIES } from "../gameArena/loadout/BotLoadout.js";
+import { BOT_ABILITIES } from "../../../shared/engine/loadout/BotLoadout.js";
 
 const roundOneOffers = [3, 6, 10];
 const roundTwoOffers = [13, 14, 15];

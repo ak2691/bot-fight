@@ -1,10 +1,11 @@
 package com.example.botfight.controller;
 
+import com.example.botfight.service.chatmoderation.ChatReportValidationException;
+
 import com.example.botfight.DTO.chatmoderation.ChatReportAcknowledgementDTO;
 import com.example.botfight.DTO.chatmoderation.ChatReportRequestDTO;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.chatmoderation.ChatReportService;
-import java.security.Principal;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -42,7 +43,7 @@ public class ChatReportController {
                 request == null ? null : request.note()));
     }
 
-    @ExceptionHandler(com.example.botfight.service.chatmoderation.ChatReportValidationException.class)
+    @ExceptionHandler(ChatReportValidationException.class)
     public ResponseEntity<Map<String, String>> handleValidation() {
         return ResponseEntity.badRequest().body(Map.of("message", "Report request was not accepted."));
     }

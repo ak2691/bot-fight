@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
-import { createAbilityEntity } from "../entities/EntityFactory.js";
-import { ABILITY_STATS } from "../../loadout/BotLoadout.js";
-import { ENTITY_CONTRACTS, phaseEffects, triggerView } from "../contracts/AbilityContracts.js";
-import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
-import { abilityIdFromLegacyName } from "../../gameconfig/AbilityRegistry.js";
+import { abilityHitsTarget } from "../../../../../shared/engine/ecs/abilities/AbilityHitDetectionSystem.js";
+import { createAbilityEntity } from "../../../../../shared/engine/ecs/entities/EntityFactory.js";
+import { ABILITY_STATS } from "../../../../../shared/engine/loadout/BotLoadout.js";
+import { ENTITY_CONTRACTS, phaseEffects, triggerView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { abilityIdFromBoundary } from "../../../../../shared/engine/gameconfig/AbilityCompatibility.js";
+import { abilityIdFromName } from "../../../../../shared/engine/gameconfig/AbilityRegistry.js";
 import { applyBotAction, tickAbilityEntityWorld } from "../../testing/pureTicks.js";
-import { preparingAbilityId } from "../../gameconfig/AbilityState.js";
+import { preparingAbilityId } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 
 // Mirrors server SniperFireballParityTest; keep both in step.
 const sniperBot = (extra = {}) => ({
@@ -18,7 +18,7 @@ const sniperBot = (extra = {}) => ({
 const firing = (extra) => ({ ...sniperBot(extra), triggeredAbility: 3 });
 
 test("Sniper keeps its ID and legacy name but reads Sniper in the catalogue", () => {
-    assert.equal(abilityIdFromLegacyName("gun"), 3);
+    assert.equal(abilityIdFromName("gun"), 3);
     assert.equal(abilityIdFromBoundary("gun"), 3);
 });
 

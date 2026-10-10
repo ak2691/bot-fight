@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { abilityRecord, activeRemainingMs, cooldownRemainingMs, preparingAbilityId, preparingRemainingMs, pendingCooldownMs } from "./AbilityState.js";
+import { abilityRecord, activeRemainingMs, cooldownRemainingMs, preparingAbilityId, preparingRemainingMs, pendingCooldownMs } from "../../../../shared/engine/gameconfig/AbilityState.js";
 import {
     abilityChargesFor,
     abilityChargeCount,
@@ -11,8 +11,8 @@ import {
     initialAbilityState,
     interruptCurrentAbility,
     rechargeAbility,
-} from "./AbilityResourceSystem.js";
-import { ABILITY_STATS } from "./Abilities.js";
+} from "../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
+import { ABILITY_STATS } from "../../../../shared/engine/gameconfig/Abilities.js";
 import { tickBotResources } from "../testing/pureTicks.js";
 
 const alive = { hp: 100 };

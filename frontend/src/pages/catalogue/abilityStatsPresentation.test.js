@@ -7,7 +7,7 @@ import {
     abilityStatGroups,
     abilityStatsForDisplay,
 } from "./abilityStatsPresentation.js";
-import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
+import { ALL_ABILITY_DEFINITIONS } from "../../../../shared/engine/loadout/BotLoadout.js";
 
 test("ability stats expose only the player-facing vocabulary", () => {
     const rows = abilityStatsForDisplay({ effects: [], stats: { cooldownMs: 12000, durationMs: 1000, falloff: { maxAmount: 50, minAmount: 25, falloffStart: 0, falloffEnd: 50 }, range: 70, speed: 32, visualSize: 140 } });
@@ -61,15 +61,15 @@ test("Snare Bomb exposes its trigger radius", () => {
     ]);
 });
 
-test("Snare Bomb exposes only its meaningful destruction phase attributes", () => {
+test("Snare Bomb lists each phase from its entity data", () => {
     const ability = ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 29);
     assert.equal(ability.label, "Snare Bomb");
     assert.deepEqual(
-        abilityStatsForDisplay(ability).filter(({ section }) => section === "On destruction"),
+        abilityStatsForDisplay(ability).filter(({ section }) => section === "Destroyed phase"),
         [
-            { label: "Radius", value: "120 units", section: "On destruction" },
-            { label: "Damage", value: "40", section: "On destruction" },
-            { label: "Status effect", value: "Slow (3 sec)", section: "On destruction" },
+            { label: "Radius", value: "120 units", section: "Destroyed phase" },
+            { label: "Speed", value: "0 units per tick", section: "Destroyed phase" },
+            { label: "Damage", value: "40", section: "Destroyed phase" },
         ],
     );
     assert.equal(
@@ -106,8 +106,8 @@ test("rectangular projectiles expose independent hitbox dimensions", () => {
     }
     assert.ok(grenadeRows.some(({ label, value, section }) => label === "Hitbox width" && value === "12 units" && section === "Travel phase"));
     assert.ok(grenadeRows.some(({ label, value, section }) => label === "Hitbox length" && value === "12 units" && section === "Armed phase"));
-    assert.ok(fireballRows.some(({ label, value }) => label === "Hitbox width" && value === "30 units"));
-    assert.ok(fireballRows.some(({ label, value }) => label === "Hitbox length" && value === "30 units"));
+    assert.ok(fireballRows.some(({ label, value }) => label === "Hitbox width" && value === "64 units"));
+    assert.ok(fireballRows.some(({ label, value }) => label === "Hitbox length" && value === "64 units"));
     assert.ok(silenceRows.some(({ label, value }) => label === "Hitbox width" && value === "150 units"));
     assert.ok(silenceRows.some(({ label, value }) => label === "Hitbox length" && value === "190 units"));
     assert.ok(stunRows.some(({ label, value }) => label === "Hitbox width" && value === "80 units"));
@@ -123,7 +123,7 @@ test("rectangular projectiles expose independent hitbox dimensions", () => {
 });
 
 test("pull effects expose their per-tick strength", () => {
-    for (const [abilityId, strength] of [[14, 6], [27, 10], [28, 150]]) {
+    for (const [abilityId, strength] of [[14, 6], [27, 10], [28, 250]]) {
         const ability = ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId);
         assert.deepEqual(
             abilityStatsForDisplay(ability)
@@ -173,14 +173,14 @@ test("positive-effect percentages are included in player-facing stats", () => {
 
 test("authored positive-effect rows do not repeat generated effect metadata", () => {
     const reactiveArmor = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 16));
-    assert.deepEqual(reactiveArmor.filter(({ label }) => label === "Damage reduction"), [{ label: "Damage reduction", value: "50%", section: "Active phase" }]);
-    assert.deepEqual(reactiveArmor.filter(({ label }) => label === "Damage reflection"), [{ label: "Damage reflection", value: "50%", section: "Active phase" }]);
+    assert.deepEqual(reactiveArmor.filter(({ label }) => label === "Damage reduction"), [{ label: "Damage reduction", value: "50%" }]);
+    assert.deepEqual(reactiveArmor.filter(({ label }) => label === "Damage reflection"), [{ label: "Damage reflection", value: "50%" }]);
 
     const overclock = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 33));
-    assert.deepEqual(overclock.filter(({ label }) => label === "Cooldown recovery"), [{ label: "Cooldown recovery", value: "50%", section: "Active phase" }]);
+    assert.deepEqual(overclock.filter(({ label }) => label === "Cooldown recovery"), [{ label: "Cooldown recovery", value: "50%" }]);
 
     const damageImmunity = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 23));
-    assert.deepEqual(damageImmunity.filter(({ label }) => label === "Damage immunity"), [{ label: "Damage immunity", value: "100%", section: "Active phase" }]);
+    assert.deepEqual(damageImmunity.filter(({ label }) => label === "Damage immunity"), [{ label: "Damage immunity", value: "100%" }]);
 
     for (const [abilityId, duration] of [[16, "4 sec"], [23, "1.5 sec"], [33, "4 sec"]]) {
         assert.deepEqual(
@@ -259,7 +259,7 @@ test("every ability has a plain-language description", () => {
 
 test("phase steps, effect chips and grouped stats come from the real ability data", () => {
     const steps = abilityPhaseSteps(abilityById(4));
-    assert.deepEqual(steps.map((step) => step.title), ["TRAVEL", "ARMED", "IMPACT"]);
+    assert.deepEqual(steps.map((step) => step.title), ["TRAVEL", "ARMED", "ACTIVE"]);
     assert.equal(steps[0].line, "Flies at 32 u/tick");
     assert.equal(steps[0].detail, "12 \u00d7 12 u hitbox");
     assert.equal(abilityPhaseSteps(abilityById(7)).length, 0);

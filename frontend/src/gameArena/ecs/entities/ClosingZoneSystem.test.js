@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CLOSING_ZONE_CONFIG, TIMED_ROUNDS_V2_ZONE_CONFIG } from "../../gameconfig/ArenaHazardConfig.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
+import { CLOSING_ZONE_CONFIG, TIMED_ROUNDS_V2_ZONE_CONFIG } from "../../../../../shared/engine/gameconfig/ArenaHazardConfig.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../../../shared/engine/modelPayloads/arenaConstants.js";
 import {
     closingZoneSafeRadius,
     closingZoneWarningDiameter,
     tickClosingZoneWorld,
-} from "./ClosingZoneSystem.js";
+} from "../../../../../shared/engine/ecs/entities/ClosingZoneSystem.js";
 
 const arena = { width: ARENA_WIDTH_UNITS, height: ARENA_HEIGHT_UNITS };
 

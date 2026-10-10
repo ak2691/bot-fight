@@ -1,4 +1,4 @@
-import { BOT_SIZE } from "../../modelPayloads/arenaConstants.js";
+import { BOT_SIZE } from "../../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { activeRenderer, activeVisualFrame } from "./rendererHelpers.js";
 
 /** Overclock: two pulsing rings around the bot. */

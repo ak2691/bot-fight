@@ -1,5 +1,12 @@
 package com.example.botfight.service.matchmaking;
 
+import com.example.botfight.repository.MatchParticipantRepository;
+import com.example.botfight.repository.PlayerRatingRepository;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.rating.EloRatingService;
+import java.util.concurrent.TimeUnit;
+import org.mockito.Mockito;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,12 +63,12 @@ class MatchParticipationMutualExclusionTest {
 
     @BeforeEach
     void setUp() {
-        matchmakingService = new MatchmakingService(
-                matchService,
+        matchmakingService = new MatchmakingService(matchService,
                 clock,
                 new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(3)),
-                null,
-                coordinator);
+                new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)),
+                coordinator,
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
         customLobbyService = new CustomLobbyService(
                 currentUserService,
                 userRepository,
@@ -88,12 +95,20 @@ class MatchParticipationMutualExclusionTest {
         CustomLobbyDTO lobby = customLobbyService.create(ownerAuthentication);
         UUID leaderId = UUID.randomUUID();
         UUID partyId = UUID.randomUUID();
-        matchmakingService.joinQueue(leaderId, "leader", "leader@example.test", "leader-socket");
+        matchmakingService.joinQueue(new QueueJoinRequest(
+                leaderId,
+                "leader",
+                "leader@example.test",
+                "leader-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         List<MatchEntrant> party = List.of(
                 new MatchEntrant(leaderId, "leader", "leader@example.test", "leader-socket"),
                 new MatchEntrant(owner.getId(), owner.getUsername(), owner.getEmail(), "owner-socket"));
 
-        assertThatThrownBy(() -> matchmakingService.joinQueue(
+        assertThatThrownBy(() -> matchmakingService.joinQueue(new QueueJoinRequest(
                 leaderId,
                 "leader",
                 "leader@example.test",
@@ -101,7 +116,7 @@ class MatchParticipationMutualExclusionTest {
                 MatchMode.TWOS,
                 party,
                 partyId,
-                QueuePool.REGISTERED))
+                QueuePool.REGISTERED)))
                 .isInstanceOf(AuthException.class)
                 .hasMessageContaining("Leave the custom lobby");
 
@@ -119,8 +134,15 @@ class MatchParticipationMutualExclusionTest {
 
     @Test
     void aQueuedUserCannotCreateALobbyUntilTheyExplicitlyLeaveTheQueue() {
-        matchmakingService.joinQueue(
-                target.getId(), target.getUsername(), target.getEmail(), "target-socket");
+        matchmakingService.joinQueue(new QueueJoinRequest(
+                target.getId(),
+                target.getUsername(),
+                target.getEmail(),
+                "target-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThatThrownBy(() -> customLobbyService.create(targetAuthentication))
                 .isInstanceOf(AuthException.class)
@@ -139,8 +161,15 @@ class MatchParticipationMutualExclusionTest {
         var lobby = customLobbyService.create(ownerAuthentication);
         var invite = customLobbyService.invite(ownerAuthentication, lobby.lobbyId(), target.getUsername());
 
-        matchmakingService.joinQueue(
-                target.getId(), target.getUsername(), target.getEmail(), "target-socket");
+        matchmakingService.joinQueue(new QueueJoinRequest(
+                target.getId(),
+                target.getUsername(),
+                target.getEmail(),
+                "target-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         assertThatThrownBy(() -> customLobbyService.accept(
                 targetAuthentication, invite.invite().inviteId()))
                 .isInstanceOf(AuthException.class)
@@ -151,11 +180,25 @@ class MatchParticipationMutualExclusionTest {
         assertThat(customLobbyService.currentForPrincipal(target.getEmail())).isNull();
         matchmakingService.leaveQueue(target.getId());
 
-        matchmakingService.joinQueue(
-                target.getId(), target.getUsername(), target.getEmail(), "target-socket");
-        List<com.example.botfight.service.match.event.OutboundMatchmakingEvent> found =
-                matchmakingService.joinQueue(
-                        opponent.getId(), opponent.getUsername(), opponent.getEmail(), "opponent-socket");
+        matchmakingService.joinQueue(new QueueJoinRequest(
+                target.getId(),
+                target.getUsername(),
+                target.getEmail(),
+                "target-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        List<OutboundMatchmakingEvent> found =
+                matchmakingService.joinQueue(new QueueJoinRequest(
+                        opponent.getId(),
+                        opponent.getUsername(),
+                        opponent.getEmail(),
+                        "opponent-socket",
+                        MatchMode.ONES,
+                        null,
+                        null,
+                        QueuePool.REGISTERED));
         UUID pendingMatchId = found.getFirst().event().matchId();
         assertThat(matchmakingService.hasTransientActivity(target.getId())).isTrue();
         assertThatThrownBy(() -> customLobbyService.accept(
@@ -204,8 +247,15 @@ class MatchParticipationMutualExclusionTest {
                 ready.countDown();
                 start.await();
                 try {
-                    matchmakingService.joinQueue(
-                            owner.getId(), owner.getUsername(), owner.getEmail(), "owner-socket");
+                    matchmakingService.joinQueue(new QueueJoinRequest(
+                            owner.getId(),
+                            owner.getUsername(),
+                            owner.getEmail(),
+                            "owner-socket",
+                            MatchMode.ONES,
+                            null,
+                            null,
+                            QueuePool.REGISTERED));
                     return true;
                 } catch (AuthException rejected) {
                     return false;
@@ -221,11 +271,11 @@ class MatchParticipationMutualExclusionTest {
                     return false;
                 }
             });
-            assertThat(ready.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(ready.await(2, TimeUnit.SECONDS)).isTrue();
             start.countDown();
 
-            boolean queueSucceeded = queueAttempt.get(2, java.util.concurrent.TimeUnit.SECONDS);
-            boolean lobbySucceeded = lobbyAttempt.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            boolean queueSucceeded = queueAttempt.get(2, TimeUnit.SECONDS);
+            boolean lobbySucceeded = lobbyAttempt.get(2, TimeUnit.SECONDS);
             assertThat((queueSucceeded ? 1 : 0) + (lobbySucceeded ? 1 : 0)).isEqualTo(1);
             assertThat(matchmakingService.hasTransientActivity(owner.getId())).isEqualTo(queueSucceeded);
             assertThat(customLobbyService.currentForPrincipal(owner.getEmail()) != null)

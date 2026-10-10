@@ -1,5 +1,7 @@
 package com.example.botfight.service;
 
+import org.mockito.Mockito;
+
 import com.example.botfight.service.auth.UnverifiedAccountCleanupService;
 
 import static org.mockito.ArgumentMatchers.eq;
@@ -16,7 +18,7 @@ class UnverifiedAccountCleanupServiceTest {
 
     @Test
     void deletesUnverifiedAccountsOlderThanTwentyFourHoursAtStartup() {
-        UserRepository userRepository = org.mockito.Mockito.mock(UserRepository.class);
+        UserRepository userRepository = Mockito.mock(UserRepository.class);
         when(userRepository.deleteUnverifiedAccountsCreatedBefore(Instant.parse("2026-08-01T12:00:00Z")))
                 .thenReturn(2);
         UnverifiedAccountCleanupService service = new UnverifiedAccountCleanupService(

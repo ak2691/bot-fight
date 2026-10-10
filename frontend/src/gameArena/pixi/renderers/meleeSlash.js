@@ -1,6 +1,6 @@
 import { botAbilityActiveMs } from "../botAbilityPresentationDefinitions.js";
 import { abilityHitbox, abilityStats, abilityVisual, radians } from "./rendererHelpers.js";
-import { sweepAngle, visualProgress } from "../../gameconfig/visualState.js";
+import { sweepAngle, visualProgress } from "../../../../../shared/engine/gameconfig/visualState.js";
 
 /** Slash: the body swing sprite, drawn while the ability's active stage runs. */
 export default Object.freeze({

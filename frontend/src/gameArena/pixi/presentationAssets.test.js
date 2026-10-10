@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { ABILITY_STATS } from "../gameconfig/Abilities.js";
-import { sweepAngle } from "../gameconfig/visualState.js";
+import { ABILITY_STATS } from "../../../../shared/engine/gameconfig/Abilities.js";
+import { sweepAngle } from "../../../../shared/engine/gameconfig/visualState.js";
 import { animationFrameAt, FIREBALL_FRAME_INTERVAL_MS, FIREBALL_FRAME_NAMES, orderedAnimationFrames } from "./abilityAnimationFrames.js";
 import { HEAVY_SLASH_ART_ROTATION_OFFSET, heavySlashRotation } from "./pixiVisualState.js";
 import { visualRayLength } from "./rayPresentationGeometry.js";
-import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
+import { compassDegreesToRadians } from "../../../../shared/engine/botlogic/planner/arenaAngles.js";
 
 const CROSSHAIR_PATH = fileURLToPath(new URL("../../assets/arena/abilities/support/crosshair.png", import.meta.url));
 const PIXI_CANVAS_PATH = fileURLToPath(new URL("./PixiCanvas.jsx", import.meta.url));

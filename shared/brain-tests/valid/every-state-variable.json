@@ -1,0 +1,974 @@
+{
+  "description": "One condition per state variable, as the editor creates them.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b0",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                }
+              }
+            ],
+            "priority": 1,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b1",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.distance",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "selectable1": "my_bot",
+                "selectable2": "opponent_1",
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0
+              }
+            ],
+            "priority": 2,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b2",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.hp",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 3,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b3",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.damageTakenLastTick",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 4,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b4",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.hpNetChangeLastTick",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 5,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b5",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.x",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 6,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b6",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.y",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 7,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b7",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.alive",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 8,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b8",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.absoluteBearing",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "selectable1": "my_bot",
+                "selectable2": "opponent_1"
+              }
+            ],
+            "priority": 9,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b9",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.movementDirection",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 10,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b10",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.speed",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 11,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b11",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.approachAngle",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "selectable1": "opponent_1",
+                "selectable2": "my_bot"
+              }
+            ],
+            "priority": 12,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b12",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.moving",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 13,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b13",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.relativeBearing",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "selectable1": "my_bot",
+                "selectable2": "opponent_1",
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0,
+                "targetAngle": 0
+              }
+            ],
+            "priority": 14,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b14",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.facing",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 15,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b15",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.count",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1_grenade"
+              }
+            ],
+            "priority": 16,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b16",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.age",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1_grenade"
+              }
+            ],
+            "priority": 17,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b17",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.edgeDistance",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 18,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b18",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.dangerZoneEdgeDistance",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 19,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b19",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityReady",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "ability": 1,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 20,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b20",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityActive",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "ability": 1,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 21,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b21",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityOnCooldown",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "ability": 1,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 22,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b22",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityActiveMs",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "ability": 1,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 23,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b23",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityCooldownMs",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "ability": 1,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 24,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b24",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilitySinceHit",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "ability": 1,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 25,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b25",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityCharges",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "ability": 12,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 26,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b26",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityPreparing",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "ability": 3,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 27,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b27",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityBaseRange",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "ability": 1,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 28,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b28",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityPreparationMs",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 10
+                },
+                "ability": 3,
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 29,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b29",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.anyAbilityPreparing",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "priority": 30,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b30",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.stamina",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 31,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b31",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.fastTurning",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 32,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b32",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.sprinting",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 33,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b33",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedStatusEffectActive",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "statusEffect": "burn",
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 34,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b34",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedStatusEffectDurationMs",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "statusEffect": "burn",
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 35,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b35",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.exists",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "opponent_1_grenade"
+              }
+            ],
+            "priority": 36,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          }
+        ]
+      }
+    ],
+    "customVariables": []
+  }
+}

@@ -1,37 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
-import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRatingChanges, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
-import { botSprinting, botStamina } from "../gameArena/gameconfig/StaminaSystem.js";
-import { runningChainSnapshot } from "../gameArena/botlogic/code/runtime/chainPresentation.js";
-import { createBotState } from "../gameArena/modelPayloads/botState.js";
-import { activeRemainingMs } from "../gameArena/gameconfig/AbilityState.js";
-
-test("hydrated replay bots are flat bot state with the bot kind and every field", () => {
-    const bot = hydrateReplayBot({ slot: 2, userId: "u2", x: 300, y: 400, hp: 120, rotation: 90 });
-    assert.equal(bot.kind, "bot");
-    assert.deepEqual([bot.slot, bot.x, bot.y, bot.hp, bot.rotation], [2, 300, 400, 120, 90]);
-    assert.deepEqual(Object.keys(bot).slice(0, Object.keys(createBotState({})).length), Object.keys(createBotState({})));
-    for (const nested of ["health", "stats", "transform"]) assert.equal(nested in bot, false);
-});
-
-test("chain presentation matches compact server fields and clears absent state", () => {
-    const stack = [
-        { chainId: "chain.punish", path: [0] },
-        { chainId: "chain.followup", path: [1, "then", 0, "body", 2] },
-    ];
-    const snapshot = runningChainSnapshot(stack);
-    assert.deepEqual(snapshot, {
-        chainId: "chain.followup", path: [1, "then", 0, "body", 2], callDepth: 2, name: "chain.followup",
-    });
-    const hydrated = hydrateReplayBot({ slot: 1, runningChain: snapshot });
-    stack[1].path[0] = 9;
-    snapshot.path[0] = 8;
-    assert.deepEqual(hydrated.runningChain.path, [1, "then", 0, "body", 2]);
-    assert.equal(hydrateReplayBot({ slot: 1 }, hydrated).runningChain, null);
-    assert.equal(runningChainSnapshot([]), null);
-    assert.equal(runningChainSnapshot(stack, [{ id: "chain.followup", name: "Follow up" }]).name, "Follow up");
-});
+import { centeredTeamPosition, displayedRoundWins, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayClockSeconds, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRatingChange, replayRatingChanges, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey, replayFrameBots, replayFrameEntities } from "./replayPresentation.js";
 
 test("replay schedule preserves the server deadlines when the ready event arrives late", () => {
     assert.deepEqual(localReplaySchedule(10_000, 30_000, 9_000), {
@@ -76,103 +45,6 @@ test("replay visual timers follow authoritative frame time without presentation 
     assert.equal(replayRemainingMs(10_000, frameTimes[0], frameTimes[1]), 9_900);
     assert.equal(replayRemainingMs(10_000, frameTimes[0], frameTimes[10]), 9_000);
     assert.equal(replayRemainingMs(10_000, frameTimes[0], frameTimes[100]), 0);
-});
-
-test("local replay preserves the organized ability timers used by Bot Room", () => {
-    // The replay DTO fields become ability records; the derived old fields read back the same timers.
-    const state = replayBotAbilityState({
-        abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 },
-    });
-    for (const [id, ms] of Object.entries({ 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 })) assert.equal(activeRemainingMs(state, id), ms);
-    assert.equal(state.abilityState[3].stage, "active");
-});
-
-test("replay does not infer one ability visual from another equipped ability", () => {
-    const state = replayBotAbilityState({ abilities: [3, 5], abilityActiveMs: { 5: 500 } });
-    assert.equal(activeRemainingMs(state, 5), 500);
-    assert.equal(activeRemainingMs(state, 3) ?? 0, 0);
-});
-
-test("replay reconstructs direct ability visuals with the shared Bot Room duration", () => {
-    const frames = [
-        { elapsedMs: 100, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-        { elapsedMs: 200, bots: [{ slot: 1, x: 130, y: 240, rotation: 40, triggeredAbility: 16, abilityActiveMs: {} }] },
-        { elapsedMs: 300, bots: [{ slot: 1, x: 170, y: 280, rotation: 90, abilityActiveMs: {} }] },
-        { elapsedMs: 500, bots: [{ slot: 1, x: 220, y: 330, rotation: 120, abilityActiveMs: {} }] },
-    ];
-
-    assert.equal(combatVisualDurationMs(16), 300);
-    assert.deepEqual(replayAbilityVisual(frames[1].bots[0], frames, 1), {
-        ability: 16,
-        visualType: "reactiveArmor",
-        visualSize: 80,
-        ms: 300,
-        x: 130,
-        y: 240,
-        rotation: 40,
-    });
-    assert.deepEqual(replayAbilityVisual(frames[2].bots[0], frames, 2), {
-        ability: 16,
-        visualType: "reactiveArmor",
-        visualSize: 80,
-        ms: 200,
-        x: 130,
-        y: 240,
-        rotation: 40,
-    });
-    assert.equal(replayAbilityVisual(frames[3].bots[0], frames, 3), null);
-});
-
-test("replay reconstructs the renamed Vampiric Beam visual from its authoritative id", () => {
-    const frames = [
-        { elapsedMs: 100, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-        { elapsedMs: 200, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, triggeredAbility: 32, abilityActiveMs: {} }] },
-        { elapsedMs: 300, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-    ];
-
-    assert.deepEqual(replayAbilityVisual(frames[1].bots[0], frames, 1), {
-        ability: 32,
-        visualType: "vampiricBeam",
-        visualSize: 10,
-        ms: combatVisualDurationMs(32),
-        x: 100,
-        y: 200,
-        rotation: 10,
-    });
-});
-
-test("replay activation visual duration comes from the ability phase contract", () => {
-    const frames = [
-        { elapsedMs: 100, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-        { elapsedMs: 200, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, triggeredAbility: 34, abilityActiveMs: {} }] },
-        { elapsedMs: 300, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-        { elapsedMs: 400, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-    ];
-
-    assert.deepEqual(replayAbilityVisual(frames[1].bots[0], frames, 1), {
-        ability: 34,
-        visualType: "basicStrike",
-        visualSize: 80,
-        ms: 200,
-        x: 100,
-        y: 200,
-        rotation: 10,
-    });
-    assert.equal(replayAbilityVisual(frames[2].bots[0], frames, 2).ms, 100);
-    assert.equal(replayAbilityVisual(frames[3].bots[0], frames, 3), null);
-});
-
-test("replay keeps a lock-on target after its trigger frame", () => {
-    const frames = [
-        { elapsedMs: 100, bots: [{ slot: 1, abilityActiveMs: {} }] },
-        { elapsedMs: 200, bots: [{ slot: 1, triggeredAbility: 20, abilityActiveMs: { 20: 200 }, abilityTargetX: 720, abilityTargetY: 340 }] },
-        { elapsedMs: 300, bots: [{ slot: 1, abilityActiveMs: { 20: 100 } }] },
-    ];
-
-    assert.deepEqual(replayAbilityTarget(frames[2].bots[0], frames, 2), {
-        abilityTargetX: 720,
-        abilityTargetY: 340,
-    });
 });
 
 test("replay result stays hidden until the authoritative reveal deadline", () => {
@@ -267,58 +139,6 @@ test("match replay timer starts at 1:30 and counts down to zero", () => {
     assert.equal(replayRemainingSeconds(90_000, 95_000), 0);
 });
 
-test("compact replay bots recover participant metadata by slot", () => {
-    const bot = hydrateReplayBot(
-        {
-            slot: 2,
-            x: 500,
-            y: 700,
-            rotation: 0,
-            hp: 85,
-            abilityCooldowns: { 3: 1000, 19: 1500, 20: 10000 },
-            abilityCharges: { 3: 9 },
-            abilityRechargeMs: { 3: 0 },
-            abilityActiveMs: { 3: 700 },
-        },
-        { slot: 2, x: 500, y: 700, rotation: 0, hp: 100, maxHp: 140 },
-        {
-            slot: 2,
-            userId: "user-2",
-            username: "Opponent",
-            teamNumber: 2,
-            selectedLoadout: "custom:g",
-        },
-    );
-
-    assert.equal(bot.userId, "user-2");
-    assert.equal(bot.username, "Opponent");
-    assert.equal(bot.teamNumber, 2);
-    assert.equal(bot.maxHp, 140);
-    assert.deepEqual(bot.abilityCooldowns, { 3: 1000, 19: 1500, 20: 10000 });
-    assert.deepEqual(bot.abilityCharges, { 3: 9 });
-    assert.deepEqual(bot.abilityRechargeMs, { 3: 0 });
-    assert.deepEqual(bot.abilities, [19, 3]);
-});
-
-test("initial replay bots carry resource state before the preparation countdown ends", () => {
-    const bot = hydrateReplayBot({
-        slot: 1,
-        x: 500,
-        y: 400,
-        hp: 100,
-        maxHp: 100,
-        abilities: [3, 5, 19, 20],
-        abilityCooldowns: { 3: 0, 5: 0, 19: 1500, 20: 10000 },
-        abilityCharges: { 3: 10, 5: 4 },
-        abilityRechargeMs: { 3: 0, 5: 0 },
-    });
-
-    assert.deepEqual(bot.abilities, [19, 3, 5, 20]); // an old replay keeps the Lock On it recorded
-    assert.deepEqual(bot.abilityCooldowns, { 3: 0, 5: 0, 19: 1500, 20: 10000 });
-    assert.deepEqual(bot.abilityCharges, { 3: 10, 5: 4 });
-    assert.deepEqual(bot.abilityRechargeMs, { 3: 0, 5: 0 });
-});
-
 test("replay status order preserves the current acquisition order", () => {
     assert.deepEqual(replayAbilitiesFor([12, 1, 3, 13]), [19, 12, 1, 3, 13]);
     assert.deepEqual(replayAbilitiesFor([34, 1]), [19, 34, 1]); // an old replay keeps the Basic Strike it recorded
@@ -394,58 +214,6 @@ test("entity-heavy replay damage matching indexes each current shape once", () =
     assert.equal(currentEntityIdReads, entities.length);
 });
 
-test("replay gun rays retain the activation position while the bot moves", () => {
-    const frames = [
-        { bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-        { bots: [{ slot: 1, x: 130, y: 240, rotation: 40, abilityActiveMs: { 3: 900 }, abilityCooldowns: { 3: 900 } }] },
-        { bots: [{ slot: 1, x: 170, y: 280, rotation: 90, abilityActiveMs: { 3: 800 }, abilityCooldowns: { 3: 800 } }] },
-        { bots: [{ slot: 1, x: 220, y: 330, rotation: 120, abilityActiveMs: { 3: 1000 }, abilityCooldowns: { 3: 1000 } }] },
-    ];
-
-    assert.deepEqual(replayRayOrigin(frames[2].bots[0], frames, 2), {
-        gunRayOriginX: 130,
-        gunRayOriginY: 240,
-        gunRayRotation: 40,
-        replayGunActiveMs: 800,
-    });
-    assert.deepEqual(replayRayOrigin(frames[3].bots[0], frames, 3), {
-        gunRayOriginX: 220,
-        gunRayOriginY: 330,
-        gunRayRotation: 120,
-        replayGunActiveMs: 1000,
-    });
-});
-
-test("replay gun rays use the one-tick activation marker during rotation", () => {
-    const frames = [
-        { bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-        { bots: [{ slot: 1, x: 130, y: 240, rotation: 40, abilityActiveMs: { 3: 900 }, abilityCooldowns: { 3: 900 }, triggeredAbility: 3 }] },
-        { bots: [{ slot: 1, x: 170, y: 280, rotation: 90, abilityActiveMs: { 3: 800 }, abilityCooldowns: { 3: 800 } }] },
-    ];
-
-    assert.deepEqual(replayRayOrigin(frames[2].bots[0], frames, 2), {
-        gunRayOriginX: 130,
-        gunRayOriginY: 240,
-        gunRayRotation: 40,
-        replayGunActiveMs: 800,
-    });
-});
-
-test("replay gun rays prefer the authoritative activation pose when it is supplied", () => {
-    const frames = [
-        { bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
-        { bots: [{ slot: 1, x: 130, y: 240, rotation: 40, abilityActiveMs: { 3: 900 }, triggeredAbility: 3, visualOriginX: 125, visualOriginY: 235, visualOriginRotation: 35 }] },
-        { bots: [{ slot: 1, x: 170, y: 280, rotation: 90, abilityActiveMs: { 3: 800 } }] },
-    ];
-
-    assert.deepEqual(replayRayOrigin(frames[2].bots[0], frames, 2), {
-        gunRayOriginX: 125,
-        gunRayOriginY: 235,
-        gunRayRotation: 35,
-        replayGunActiveMs: 800,
-    });
-});
-
 test("replay recovery appends only frames newer than the current cursor", () => {
     assert.deepEqual(
         mergeReplayFrames(
@@ -495,17 +263,20 @@ test("forfeit team formation keeps match-spawn spacing while centering the winne
     assert.deepEqual(centeredTeamPosition(1, 2), { x: 2_000 / 3, y: 500, rotation: 0 });
 });
 
-
-test("hydrated replay bots carry server stamina and sprinting for the stamina meter, with no exhaustion", () => {
-    const quiet = hydrateReplayBot({ slot: 1, hp: 100 }, { slot: 1 });
-    assert.equal(quiet.stamina, 100);
-    assert.equal("exhausted" in quiet, false);
-    assert.equal(quiet.sprinting, false);
-    assert.equal(quiet.fastTurning, false);
-    const spent = hydrateReplayBot({ slot: 1, hp: 100, stamina: 12, sprinting: true, fastTurning: true }, { slot: 1 });
-    assert.equal(spent.stamina, 12);
-    assert.equal(spent.sprinting, true);
-    assert.equal(spent.fastTurning, true);
-    assert.equal(botStamina(spent), 12);
-    assert.equal(botSprinting(spent), true);
+test("native frames preserve ability visuals, targets, variables and chain state", () => {
+    const bot = { kind: "bot", id: "main", slot: 1, x: 10, y: 20, hp: 250,
+        abilityVisual: { ability: 20, ms: 200 }, abilityTargetX: 91,
+        customVariables: { "custom.counter": 3 }, runningChain: { chainId: "chain.a", path: [1] } };
+    const entity = { id: "beam", type: "beam", x: 30, y: 40 };
+    const frame = { elapsedMs: 100, shapes: [bot, entity] };
+    assert.equal(replayFrameBots(frame)[0], bot);
+    assert.equal(replayFrameEntities(frame)[0], entity);
+    const rendered = interpolateReplayFrame(frame, { elapsedMs: 200, shapes: [{ ...bot, x: 20 }, entity] }, 150);
+    assert.equal(rendered.shapes[0].x, 15);
+    assert.equal(rendered.shapes[0].abilityVisual, bot.abilityVisual);
+    assert.equal(rendered.shapes[0].abilityTargetX, 91);
+    assert.equal(rendered.shapes[0].runningChain, bot.runningChain);
+    const handoff = initialReplayHandoffFrame({ shapes: [bot, entity] },
+        { elapsedMs: 100, shapes: [{ ...bot, x: 20 }, entity] }, 50);
+    assert.equal(handoff.shapes[0].x, 15);
 });

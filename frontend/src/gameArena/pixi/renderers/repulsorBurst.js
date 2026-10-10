@@ -5,7 +5,7 @@ import {
     repulsorBurstDiameter,
     repulsorBurstFrameIndex,
     repulsorBurstProgress,
-} from "../../gameconfig/visualState.js";
+} from "../../../../../shared/engine/gameconfig/visualState.js";
 import { activeVisualFrame, clamp } from "./rendererHelpers.js";
 
 function burstStartTime(shape, abilityId, now) {

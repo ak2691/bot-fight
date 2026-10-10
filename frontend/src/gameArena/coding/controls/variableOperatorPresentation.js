@@ -1,4 +1,4 @@
-import { CUSTOM_VARIABLE_OPERATIONS } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { CUSTOM_VARIABLE_OPERATIONS } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 
 export const VARIABLE_OPERATOR_OPTIONS = Object.freeze([
     Object.freeze({ id: CUSTOM_VARIABLE_OPERATIONS.SET, label: "Set", glyph: "set", compactSymbol: "=" }),

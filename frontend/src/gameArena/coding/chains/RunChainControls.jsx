@@ -1,4 +1,4 @@
-import { MAX_CHAINS } from "../../botlogic/code/configuration/constants.js";
+import { MAX_CHAINS } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
 
 const NEW_CHAIN = "__new__";
 

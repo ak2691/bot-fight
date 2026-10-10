@@ -1,7 +1,7 @@
 import {
     BOT_LOGIC_TREE_VERSION,
     normalizeAbilityStrategyConfiguration,
-} from "../../gameArena/botlogic/code/BotCode.js";
+} from "../../../../shared/engine/botlogic/code/BotCode.js";
 
 export function normalizePuzzleCustomVariables(configuration) {
     const source = Array.isArray(configuration?.customVariables)

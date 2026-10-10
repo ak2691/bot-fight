@@ -1,10 +1,10 @@
-import { createBotState } from "./botState.js";
+import { createBotState } from "../../../../shared/engine/modelPayloads/botState.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildAutoPlayStartShapes, buildInitialArenaShapes, buildMatchSpawnShapes } from "./arenaShapes.js";
-import { PRACTICE_OPPONENT_START, PRACTICE_PLAYER_START } from "./arenaConstants.js";
+import { PRACTICE_OPPONENT_START, PRACTICE_PLAYER_START } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { buildTutorialArenaShapes } from "../../tutorial/TutorialPresets.js";
-import { abilityRecord } from "../gameconfig/AbilityState.js";
+import { abilityRecord } from "../../../../shared/engine/gameconfig/AbilityState.js";
 
 test("resuming autoplay preserves arena entities", () => {
     const shapes = [

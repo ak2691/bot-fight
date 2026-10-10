@@ -1,5 +1,9 @@
 # Timed Rounds Implementation Plan
 
+Historical implementation record: Java simulation paths and browser/server parity
+work below have been superseded by the sole engine in `shared/engine/`. Use
+[ABILITIES.md](ABILITIES.md) and the current context maps for gameplay changes.
+
 Status: partly built. S1-S6, P0a/P0b (movement and stamina on both runtimes), C1-C4 (action chains and Time Since Hit) and fast turn are built. Lock On (20) and Basic Strike (34) are out of the base kit (the base kit is Dash and Sprint, with fast turn on Rotate). P3 (the segmented simulation) and P4 (the server match lifecycle: clocks, picks, resolution, ruleset `duel-v2`, 300 HP, guarantee removal) are built. The client has only the mirrored constants and draft rules; P5 (the pick panel, build HUD, clocks and the guarantee UI removal) onward, and S7, are not started. This turns the design in [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) into implementation work for Sonnet. Section 9 has one prompt per work package. File paths and symbols were checked against the code on 2026-10-01; confirm them again before editing.
 
 ## 1. Locked decisions

@@ -1,0 +1,44 @@
+{
+  "rule": "Conditions are AND-only; join is not a field.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": []
+    },
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 5
+                },
+                "join": "or"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

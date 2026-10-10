@@ -3,7 +3,6 @@ package com.example.botfight.service.chatmoderation;
 import com.example.botfight.DTO.chatmoderation.ChatModerationAuditDTO;
 import com.example.botfight.DTO.chatmoderation.ChatReportDetailDTO;
 import com.example.botfight.DTO.chatmoderation.ChatReportSummaryDTO;
-import com.example.botfight.config.ChatModerationProperties;
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.domain.auth.UserRole;
 import com.example.botfight.domain.chatmoderation.ChatModerationAudit;

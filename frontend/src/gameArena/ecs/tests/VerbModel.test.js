@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { spawnPlacements } from "../entities/EntityFactory.js";
-import { ABILITY_STAGES, abilityRecord } from "../../gameconfig/AbilityState.js";
-import { interruptCurrentAbility } from "../../gameconfig/AbilityResourceSystem.js";
-import { GAMEPLAY_DATA } from "../../gameconfig/gameplayData.js";
-import { withTestAbilities } from "../contracts/AbilityContracts.js";
-import { compassDirection, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
+import { spawnPlacements } from "../../../../../shared/engine/ecs/entities/EntityFactory.js";
+import { ABILITY_STAGES, abilityRecord } from "../../../../../shared/engine/gameconfig/AbilityState.js";
+import { interruptCurrentAbility } from "../../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
+import { GAMEPLAY_DATA } from "../../../../../shared/engine/gameconfig/gameplayData.js";
+import { withTestAbilities } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { compassDirection, vectorToCompassDegrees } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
 import { applyBotAction, tickAbilityEntityWorld } from "../../testing/pureTicks.js";
 
 // Mirrors server VerbModelTest; keep both in step. These tests swap real ability IDs for small test

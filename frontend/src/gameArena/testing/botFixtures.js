@@ -1,4 +1,4 @@
-import { createBotState, isBotState } from "../modelPayloads/botState.js";
+import { createBotState, isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
 
 const BOT_TYPES = new Set(["circle", "bot", "botModel", "opponentModel"]);
 

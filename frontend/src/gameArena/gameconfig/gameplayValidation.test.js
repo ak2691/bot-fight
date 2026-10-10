@@ -4,8 +4,8 @@ import abilitiesFile from "../../../../shared/gameplay/abilities.json" with { ty
 import channelsFile from "../../../../shared/gameplay/channels.json" with { type: "json" };
 import movementFile from "../../../../shared/gameplay/movement.json" with { type: "json" };
 import statusesFile from "../../../../shared/gameplay/statuses.json" with { type: "json" };
-import { GAMEPLAY_DATA } from "./gameplayData.js";
-import { validateGameplayData } from "./gameplayValidation.js";
+import { GAMEPLAY_DATA } from "../../../../shared/engine/gameconfig/gameplayData.js";
+import { validateGameplayData } from "../../../../shared/engine/gameconfig/gameplayValidation.js";
 
 // One valid data set, then one broken copy per rule. GameplayDataTest.java runs the same cases on the server.
 const fresh = () => structuredClone({ abilities: abilitiesFile, statuses: statusesFile, movement: movementFile, channels: channelsFile });
@@ -27,7 +27,7 @@ function assertBroken(expected, edit) {
 
 test("the shipped files are valid and the loaded data is frozen", () => {
     validateGameplayData(fresh());
-    assert.equal(GAMEPLAY_DATA.abilities.abilities.length, 36);
+    assert.equal(GAMEPLAY_DATA.abilities.abilities.length, 34);
     assert.equal(Object.isFrozen(GAMEPLAY_DATA), true);
     assert.equal(Object.isFrozen(GAMEPLAY_DATA.abilities.abilities[0].onTrigger[0].effects[0]), true);
 });
@@ -81,7 +81,6 @@ test("4. each verb runs where it is allowed", () => {
     assertBroken("hit needs targets", (data) => { verb(data, 1).targets = []; });
     assertBroken("needs a hitbox", (data) => { verb(data, 1).hitbox = null; });
     assertBroken("move needs distance and unitsPerTick", (data) => { verb(data, 19).distance = null; });
-    assertBroken("unknown faceTarget", (data) => { verb(data, 20).target = "somewhere"; });
     assertBroken("emitVisual needs a positive visibleMs", (data) => { eventVerb(data, 4, "collision", "emitVisual", 2).visibleMs = 0; });
 });
 
@@ -157,7 +156,7 @@ test("11. entity phases move in a known mode and timer events repeat", () => {
     assertBroken("a schedule event repeats", (data) => { phase(data, 17).on.schedule.schedule.mode = "once"; });
     assertBroken("a schedule event needs intervalMs", (data) => { phase(data, 17).on.schedule.schedule.intervalMs = null; });
     assertBroken("only a schedule event waits for its hit", (data) => { phase(data, 4).on.collision.waitForHit = true; });
-    assertBroken("bindToCast", (data) => { delete entity(data, 4).bindToCast; });
+    assertBroken("bindToCast", (data) => { entity(data, 4).bindToCast = "yes"; });
 });
 
 test("12. followOwner and bindToCast entities validate", () => {

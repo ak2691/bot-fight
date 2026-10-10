@@ -1,6 +1,6 @@
 package com.example.botfight.service;
 
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
+import com.example.botfight.service.match.MatchPersistenceService;
 import com.example.botfight.service.match.MatchStartupRecoveryService;
 import com.example.botfight.service.system.StartupReadinessService;
 

@@ -71,49 +71,6 @@ public class ProfileService {
     private final DatabaseLookupCache databaseLookupCache;
     private final EloRatingService eloRatingService;
 
-    public ProfileService(
-            CurrentUserService currentUserService,
-            UserRepository userRepository,
-            MatchParticipantRepository matchParticipantRepository,
-            PuzzleCompletionRepository puzzleCompletionRepository,
-            ProfileRepository profileRepository,
-            @Qualifier("profileUpdateRateLimiter") SlidingWindowRateLimiter<UUID> profileUpdateRateLimiter,
-            @Qualifier("authenticatedGetRateLimiter")
-            TokenBucketRateLimiter<String> authenticatedGetRateLimiter) {
-        this(
-                currentUserService,
-                userRepository,
-                matchParticipantRepository,
-                puzzleCompletionRepository,
-                profileRepository,
-                profileUpdateRateLimiter,
-                authenticatedGetRateLimiter,
-                new DatabaseLookupCache(),
-                null);
-    }
-
-    public ProfileService(
-            CurrentUserService currentUserService,
-            UserRepository userRepository,
-            MatchParticipantRepository matchParticipantRepository,
-            PuzzleCompletionRepository puzzleCompletionRepository,
-            ProfileRepository profileRepository,
-            @Qualifier("profileUpdateRateLimiter") SlidingWindowRateLimiter<UUID> profileUpdateRateLimiter,
-            @Qualifier("authenticatedGetRateLimiter")
-            TokenBucketRateLimiter<String> authenticatedGetRateLimiter,
-            DatabaseLookupCache databaseLookupCache) {
-        this(
-                currentUserService,
-                userRepository,
-                matchParticipantRepository,
-                puzzleCompletionRepository,
-                profileRepository,
-                profileUpdateRateLimiter,
-                authenticatedGetRateLimiter,
-                databaseLookupCache,
-                null);
-    }
-
     @Autowired
     public ProfileService(
             CurrentUserService currentUserService,
@@ -302,11 +259,7 @@ public class ProfileService {
         if (user.guest()) {
             return new CachedRatings(null, null);
         }
-        if (eloRatingService == null) {
-            return new CachedRatings(
-                    EloRatingService.DEFAULT_RATING,
-                    EloRatingService.DEFAULT_RATING);
-        }
+
         return new CachedRatings(
                 eloRatingService.ratingFor(user.id(), MatchMode.ONES),
                 eloRatingService.ratingFor(user.id(), MatchMode.TWOS));

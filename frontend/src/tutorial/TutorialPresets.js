@@ -1,9 +1,9 @@
-import { encodeSandboxLoadout } from "../gameArena/loadout/BotLoadout.js";
+import { encodeSandboxLoadout } from "../../../shared/engine/loadout/BotLoadout.js";
 import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../gameArena/modelPayloads/arenaShapes.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
-import { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "../gameArena/botlogic/code/configuration/configurationFactories.js";
-import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES, CUSTOM_VARIABLE_OPERATIONS } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
-import { abilityIdFromLegacyName } from "../gameArena/gameconfig/AbilityRegistry.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../shared/engine/modelPayloads/arenaConstants.js";
+import { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "../../../shared/engine/botlogic/code/configuration/configurationFactories.js";
+import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES, CUSTOM_VARIABLE_OPERATIONS } from "../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { abilityIdFromName } from "../../../shared/engine/gameconfig/AbilityRegistry.js";
 
 const TUTORIAL_CENTER_X = ARENA_WIDTH_UNITS / 2;
 const TUTORIAL_CENTER_Y = ARENA_HEIGHT_UNITS / 2;
@@ -38,14 +38,14 @@ const fastFace = (selectable = BOT_CODE_SELECTABLES.OPPONENT) => ({ ...face(sele
 const ability = (actionId, selectable = BOT_CODE_SELECTABLES.OPPONENT, fields = {}) => ({ action: actionId, selectable, ...fields });
 
 export const TUTORIAL_ACTIONS = Object.freeze({
-    SLASH: abilityIdFromLegacyName("slash"),
-    STUN: abilityIdFromLegacyName("stun"),
-    FIREBALL: abilityIdFromLegacyName("fireball"),
-    RAIL_SHOT: abilityIdFromLegacyName("rail_shot"),
-    GRENADE: abilityIdFromLegacyName("grenade"),
-    HEAVY_SLASH: abilityIdFromLegacyName("heavy_slash"),
-    WIND_BURST: abilityIdFromLegacyName("wind_burst"),
-    DASH: abilityIdFromLegacyName("dash"),
+    SLASH: abilityIdFromName("slash"),
+    STUN: abilityIdFromName("stun"),
+    FIREBALL: abilityIdFromName("fireball"),
+    RAIL_SHOT: abilityIdFromName("rail_shot"),
+    GRENADE: abilityIdFromName("grenade"),
+    HEAVY_SLASH: abilityIdFromName("heavy_slash"),
+    WIND_BURST: abilityIdFromName("wind_burst"),
+    DASH: abilityIdFromName("dash"),
 });
 
 export function createEmptyTutorialCode() {

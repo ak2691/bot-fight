@@ -3,8 +3,8 @@ import {
     MAX_EQUIPPED_ABILITIES,
     ROUND_ABILITY_DRAFT,
     normalizedBotLoadout,
-} from "../gameArena/loadout/BotLoadout.js";
-import { abilityIdFromBoundary } from "../gameArena/gameconfig/AbilityCompatibility.js";
+} from "../../../shared/engine/loadout/BotLoadout.js";
+import { abilityIdFromBoundary } from "../../../shared/engine/gameconfig/AbilityCompatibility.js";
 
 const ABILITY_BY_ID = new Map(BOT_ABILITIES.map((ability) => [ability.id, ability]));
 const WEAPON_IDS = new Set(BOT_ABILITIES.filter((ability) => ability.category === "weapon").map((ability) => ability.id));

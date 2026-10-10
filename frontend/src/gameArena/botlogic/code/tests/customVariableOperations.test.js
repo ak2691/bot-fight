@@ -6,8 +6,8 @@ import {
     countActionSlots,
     normalizeAbilityStrategyConfiguration,
     selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized,
-} from "../BotCode.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../BotCode.js";
+} from "../../../../../../shared/engine/botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../../shared/engine/botlogic/code/BotCode.js";
 
 // The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);

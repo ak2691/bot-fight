@@ -1,0 +1,33 @@
+{
+  "rule": "Loops nest at most twice.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "chains": [
+      {
+        "id": "chain.a",
+        "name": "A",
+        "steps": [
+          {
+            "type": "repeat",
+            "count": 1,
+            "steps": [
+              {
+                "type": "repeat",
+                "count": 1,
+                "steps": [
+                  {
+                    "type": "repeat",
+                    "count": 1,
+                    "steps": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

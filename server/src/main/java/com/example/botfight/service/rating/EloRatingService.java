@@ -1,5 +1,7 @@
 package com.example.botfight.service.rating;
 
+import java.util.Objects;
+
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.domain.match.Match;
 import com.example.botfight.domain.match.MatchMode;
@@ -41,10 +43,6 @@ public class EloRatingService {
     private final PlayerRatingRepository playerRatingRepository;
     private final MatchParticipantRepository matchParticipantRepository;
 
-    public EloRatingService(PlayerRatingRepository playerRatingRepository) {
-        this(playerRatingRepository, null);
-    }
-
     @Autowired
     public EloRatingService(
             PlayerRatingRepository playerRatingRepository,
@@ -58,7 +56,7 @@ public class EloRatingService {
         List<UUID> uniqueUserIds = userIds == null
                 ? List.of()
                 : userIds.stream()
-                        .filter(java.util.Objects::nonNull)
+                        .filter(Objects::nonNull)
                         .distinct()
                         .toList();
         if (uniqueUserIds.isEmpty()) return Map.of();
@@ -90,7 +88,7 @@ public class EloRatingService {
      * rows created before per-match rating snapshots existed.
      */
     private Map<UUID, Integer> visibleRatings(List<UUID> userIds, MatchMode mode) {
-        if (matchParticipantRepository == null || !isRatedMode(mode)) return Map.of();
+        if (!isRatedMode(mode)) return Map.of();
 
         List<MatchParticipantRepository.RatingSnapshotProjection> snapshots =
                 matchParticipantRepository.findRatingSnapshotsByUserIdsAndMode(userIds, mode);
@@ -104,7 +102,7 @@ public class EloRatingService {
                     || snapshot.getUserId() == null
                     || snapshot.getRatingBefore() == null
                     || snapshot.getRatingAfter() == null) continue;
-            java.time.Instant visibleAt = snapshot.getResultVisibleAt();
+            Instant visibleAt = snapshot.getResultVisibleAt();
             if (visibleAt == null || visibleAt.isAfter(now)) {
                 pendingBefore.putIfAbsent(snapshot.getUserId(), snapshot.getRatingBefore());
             } else {

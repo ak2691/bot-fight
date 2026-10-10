@@ -1,12 +1,12 @@
-import { tickAbilityEntityWorld as tickAbilityEntityWorldInPlace } from "../ecs/abilities/AbilityEntitySystem.js";
-import { dealDamage as dealDamageInPlace, settleHealing as settleHealingInPlace } from "../ecs/abilities/effects.js";
-import { resolveTriggerVerbsForRoster as resolveTriggerVerbsInPlace } from "../ecs/abilities/verbs.js";
-import { applyBotAction as applyBotActionInPlace } from "../ecs/bots/ActionExecutionSystem.js";
-import { tickBotLifecycle as tickBotLifecycleInPlace } from "../ecs/bots/BotLifecycleSystem.js";
-import { tickBotResources as tickBotResourcesInPlace } from "../ecs/bots/BotResourceSystem.js";
-import { tickBotState as tickBotStateInPlace } from "../ecs/bots/BotStateSystem.js";
-import { tickBotStatus as tickBotStatusInPlace } from "../ecs/bots/BotStatusSystem.js";
-import { tickDeferredStates as tickDeferredStatesInPlace } from "../ecs/bots/DeferredStateSystem.js";
+import { tickAbilityEntityWorld as tickAbilityEntityWorldInPlace } from "../../../../shared/engine/ecs/abilities/AbilityEntitySystem.js";
+import { dealDamage as dealDamageInPlace, settleHealing as settleHealingInPlace } from "../../../../shared/engine/ecs/abilities/effects.js";
+import { resolveTriggerVerbsForRoster as resolveTriggerVerbsInPlace } from "../../../../shared/engine/ecs/abilities/verbs.js";
+import { applyBotAction as applyBotActionInPlace } from "../../../../shared/engine/ecs/bots/ActionExecutionSystem.js";
+import { tickBotLifecycle as tickBotLifecycleInPlace } from "../../../../shared/engine/ecs/bots/BotLifecycleSystem.js";
+import { tickBotResources as tickBotResourcesInPlace } from "../../../../shared/engine/ecs/bots/BotResourceSystem.js";
+import { tickBotState as tickBotStateInPlace } from "../../../../shared/engine/ecs/bots/BotStateSystem.js";
+import { tickBotStatus as tickBotStatusInPlace } from "../../../../shared/engine/ecs/bots/BotStatusSystem.js";
+import { tickDeferredStates as tickDeferredStatesInPlace } from "../../../../shared/engine/ecs/bots/DeferredStateSystem.js";
 
 /**
  * Test helpers: the engine's mutators and systems change their bots and entities in place; these run the same

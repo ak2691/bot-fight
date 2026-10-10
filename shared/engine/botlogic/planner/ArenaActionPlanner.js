@@ -1,0 +1,144 @@
+import { angleDelta, clamp } from "../../gameconfig/geometry.js";
+import { rotationStepDeg } from "../../gameconfig/StaminaSystem.js";
+import { BOT_CODE_SELECTABLES, resolveAbilityStrategySelectable, selectAbilityStrategyActionPlan } from "../code/BotCode.js";
+import { stateFromPayload } from "../code/runtime/runtimeState.js";
+import { compassDirection, relativeMovementVector, vectorToCompassDegrees } from "./arenaAngles.js";
+import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
+import { publicOffsetToInternal, publicPointToInternal } from "../../modelPayloads/arenaCoordinates.js";
+import { leadAimTarget } from "./aimPrediction.js";
+
+/** Builds the action-component payload consumed by ActionExecutionSystem. `configuration` must be normalized. */
+export function buildDeterministicLogicAction(configuration, stateSnapshot) {
+    const plan = selectAbilityStrategyActionPlan(configuration, stateSnapshot);
+    const state = stateFromPayload(stateSnapshot);
+    const movementBlock = plan.movement ?? null;
+    const abilityBlock = plan.ability ?? null;
+    const resolvedAbilityPayload = abilityExecutionPayload(abilityBlock?.action);
+    const abilityBlockWithTarget = resolvedAbilityPayload ? abilityBlock : null;
+    const facingBlock = plan.rotation ?? null;
+    const movementTarget = movementBlock?.movementMode === "coordinates"
+        ? internalCoordinateTarget(movementBlock)
+        : resolveSelectable(state, movementBlock?.selectable);
+    const facingTarget = facingBlock?.targetMode === "coordinates"
+        ? internalCoordinateTarget(facingBlock)
+        : facingBlock?.targetMode === "angle"
+            ? null
+            : facingBlock
+                ? offsetTarget(leadAimTarget(resolveSelectable(state, facingBlock.selectable ?? movementBlock?.selectable), facingBlock, state.player), facingBlock)
+                : resolveSelectable(state, movementBlock?.selectable);
+    const specialTarget = abilityBlockWithTarget?.targetMode === "target"
+        || resolvedAbilityPayload?.activation?.targetMode === "target"
+        ? offsetTarget(leadAimTarget(resolveSelectable(state, abilityBlockWithTarget.selectable), abilityBlockWithTarget, state.player), abilityBlockWithTarget)
+        : null;
+    const configuredAbilityCoordinate = abilityBlockWithTarget?.targetMode === "coordinates"
+        || abilityBlockWithTarget?.movementMode === "coordinates"
+        ? internalCoordinateTarget(abilityBlockWithTarget)
+        : null;
+    const movement = movementVector(movementBlock, state.player, movementTarget);
+    const dashBlock = plan.dash ?? null;
+    const dashPayload = abilityExecutionPayload(dashBlock?.action);
+    const dashCoordinate = dashBlock?.targetMode === "coordinates" || dashBlock?.movementMode === "coordinates"
+        ? internalCoordinateTarget(dashBlock)
+        : null;
+    const dashTarget = dashBlock && dashBlock.movementMode !== "absolute" && !dashCoordinate
+        ? offsetTarget(resolveSelectable(state, dashBlock.selectable), dashBlock)
+        : null;
+    return {
+        dx: movement.dx,
+        dy: movement.dy,
+        ...(movementBlock?.action === "move_walk" && movementBlock.sprint === true ? { sprint: true } : {}),
+        // Cancel is its own channel, independent of the ability lock.
+        ...(plan.cancel?.action === "cancel_windup" ? { cancelWindup: true } : {}),
+        ...(facingBlock?.action === "rotate_toward_enemy" && facingBlock.fastTurn === true ? { fastTurn: true } : {}),
+        dRot: facingBlock?.action === "rotate_toward_enemy"
+            ? facingBlock.targetMode === "angle"
+                ? turnTowardAngle(state.player, facingBlock.targetAngle, facingBlock.fastTurn)
+                : turnToward(state.player, facingTarget, facingBlock.fastTurn)
+            : 0,
+        abilityAction: abilityBlock ? {
+            action: abilityBlock.action,
+            abilityPayload: resolvedAbilityPayload,
+            targetX: specialTarget?.x ?? configuredAbilityCoordinate?.x ?? abilityBlock.targetX,
+            targetY: specialTarget?.y ?? configuredAbilityCoordinate?.y ?? abilityBlock.targetY,
+            ...(abilityBlock.movementMode ? { movementMode: abilityBlock.movementMode } : {}),
+            ...(abilityBlock.movementDirection != null ? { movementDirection: abilityBlock.movementDirection } : {}),
+            ...(abilityBlock.phaseFacingMode != null ? { phaseFacingMode: abilityBlock.phaseFacingMode } : {}),
+        } : null,
+        // Dash is its own channel: it starts alongside whatever ability the tick selects.
+        dashAction: dashBlock && dashPayload ? {
+            action: dashBlock.action,
+            abilityPayload: dashPayload,
+            targetX: dashTarget?.x ?? dashCoordinate?.x ?? dashBlock.targetX,
+            targetY: dashTarget?.y ?? dashCoordinate?.y ?? dashBlock.targetY,
+            ...(dashBlock.movementMode ? { movementMode: dashBlock.movementMode } : {}),
+            ...(dashBlock.movementDirection != null ? { movementDirection: dashBlock.movementDirection } : {}),
+            ...(dashBlock.phaseFacingMode != null ? { phaseFacingMode: dashBlock.phaseFacingMode } : {}),
+        } : null,
+        customVariables: { ...(plan.customVariables ?? state.player.customVariables ?? {}) },
+        // The running chain's call stack persists across ticks like the custom variables.
+        chainStack: plan.chainStack ?? [],
+        runningChain: plan.runningChain ?? null,
+    };
+}
+
+export function idleAction() {
+    return { dx: 0, dy: 0, dRot: 0, abilityAction: null, dashAction: null, customVariables: {}, chainStack: [], runningChain: null };
+}
+
+function offsetTarget(target, block) {
+    if (block?.movementMode) return target;
+    if (!target) return null;
+    const offset = publicOffsetToInternal({ x: block?.targetOffsetX ?? 0, y: block?.targetOffsetY ?? 0 });
+    return { ...target, x: Number(target.x) + offset.x, y: Number(target.y) + offset.y };
+}
+
+function internalCoordinateTarget(block) {
+    return publicPointToInternal({ x: Number(block?.targetX ?? 0), y: Number(block?.targetY ?? 0) });
+}
+
+function resolveSelectable(state, selectable = BOT_CODE_SELECTABLES.OPPONENT) {
+    const objects = Array.isArray(state?.objects) ? state.objects : [];
+    const opponent = state?.opponent
+        ?? objects.find((object) => object.type === "opponentModel")
+        ?? objects.find((object) => object.id === "opponent-model" || object.id === "main")
+        ?? null;
+    return resolveAbilityStrategySelectable({
+        player: state?.player,
+        opponent,
+        teammates: state?.teammates ?? [],
+        opponents: state?.opponents ?? [],
+        bots: state?.bots ?? [],
+        objects,
+    }, selectable ?? BOT_CODE_SELECTABLES.OPPONENT);
+}
+
+function movementVector(block, player, target) {
+    if (!player || block?.action !== "move_walk") return { dx: 0, dy: 0 };
+    const direction = block.movementDirection ?? 0;
+    if (block.movementMode === "absolute") {
+        const numericDirection = Number(direction);
+        if (!Number.isFinite(numericDirection)) return { dx: 0, dy: 0 };
+        const absolute = compassDirection(Math.max(-360, Math.min(360, numericDirection)));
+        return { dx: absolute.x, dy: absolute.y };
+    }
+    if (!target) return { dx: 0, dy: 0 };
+    let inward = { dx: target.x - player.x, dy: target.y - player.y };
+    if (Math.hypot(inward.dx, inward.dy) <= 0.001) {
+        const facing = compassDirection(player.rotation);
+        inward = { dx: facing.x, dy: facing.y };
+    }
+    const relative = relativeMovementVector(inward.dx, inward.dy, direction);
+    return { dx: relative.x, dy: relative.y };
+}
+
+// The step is the one the executor will really use, so a fast turn never overshoots its target.
+function turnToward(player, target, fastTurn) {
+    if (!player || !target) return 0;
+    const bearing = vectorToCompassDegrees(target.x - player.x, target.y - player.y);
+    return clamp(angleDelta(player.rotation ?? 0, bearing) / rotationStepDeg(player, fastTurn), -1, 1);
+}
+
+function turnTowardAngle(player, targetAngle, fastTurn) {
+    if (!player || !Number.isFinite(Number(targetAngle))) return 0;
+    return clamp(angleDelta(player.rotation ?? 0, Number(targetAngle)) / rotationStepDeg(player, fastTurn), -1, 1);
+}

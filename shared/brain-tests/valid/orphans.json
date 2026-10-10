@@ -1,0 +1,37 @@
+{
+  "description": "Unconnected nodes: a conditional and an action.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": []
+    },
+    "roots": [],
+    "orphans": [
+      {
+        "id": "orphan-1",
+        "kind": "conditional",
+        "priority": 1,
+        "branchType": "if",
+        "conditions": [
+          {
+            "type": "always"
+          }
+        ],
+        "children": [],
+        "actions": [
+          {
+            "action": "none"
+          }
+        ],
+        "action": "none"
+      },
+      {
+        "id": "orphan-2",
+        "kind": "action",
+        "action": "move_walk",
+        "movementMode": "target",
+        "movementDirection": 0
+      }
+    ]
+  }
+}

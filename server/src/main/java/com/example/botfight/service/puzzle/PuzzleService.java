@@ -1,5 +1,7 @@
 package com.example.botfight.service.puzzle;
 
+import java.util.stream.Collectors;
+
 import com.example.botfight.DTO.puzzle.PuzzleAdminResponseDTO;
 import com.example.botfight.DTO.puzzle.PuzzleBotRequestDTO;
 import com.example.botfight.DTO.puzzle.PuzzleBotResponseDTO;
@@ -22,10 +24,7 @@ import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzleBot;
 import com.example.botfight.service.cache.DatabaseLookupCache.PuzzleListKey;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
-import com.example.botfight.simulation.bots.BotLogicContracts;
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
-import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
-import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
+import com.example.botfight.simulation.gameconfig.AbilityCatalog;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import com.example.botfight.simulation.geometry.ArenaCoordinates;
 import java.util.ArrayList;
@@ -61,26 +60,17 @@ public class PuzzleService {
     private static final int MAX_DESCRIPTION_LENGTH = 2_000;
     private static final int MAX_SEARCH_QUERY_LENGTH = 100;
     private static final Pattern SEARCH_PUZZLE_NUMBER_PREFIX = Pattern.compile("^(\\d+)(?:\\.|\\s|$).*");
-    private static final int MAX_CONDITION_COUNT = 300;
     private static final int MAX_JSON_BYTES = 750_000;
     private static final int MAX_ACTION_NODES = 100;
-    private static final int MAX_ROOT_NODES = 100;
     private static final int MAX_CONDITION_NODES = 300;
     private static final int MAX_CUSTOM_VARIABLES = 100;
     private static final int MIN_PUZZLE_TEAM_SIZE = 1;
     private static final int MAX_PUZZLE_TEAM_SIZE = 2;
-    private static final int MAX_CONDITION_JSON_BYTES = 100_000;
-    private static final int MAX_PUZZLE_LOGIC_JSON_BYTES = 250_000;
-    private static final double MAX_CONDITION_NUMBER = 1_000_000_000d;
-    private static final double ARENA_WIDTH = ArenaUnits.WIDTH;
     private static final double ARENA_HEIGHT = ArenaUnits.HEIGHT;
     private static final double BOT_SIZE = 60;
     private static final double BOT_RADIUS = BOT_SIZE / 2;
     private static final double BASE_BOT_HP = 300;
-    private static final String PUZZLE_LOGIC_V1 = BotLogicContracts.BRAIN_SCHEMA_V1;
-    private static final String PUZZLE_LOGIC_V2 = BotLogicContracts.BRAIN_SCHEMA_V2;
     public static final String PUZZLE_COORDINATE_SYSTEM_VERSION = "centered-y-up-v1";
-    private static final String PUZZLE_VARIABLE_PREFIX = "custom.puzzle.";
 
     private final PuzzleRepository puzzleRepository;
     private final PuzzleCompletionRepository puzzleCompletionRepository;
@@ -90,27 +80,6 @@ public class PuzzleService {
     private final TokenBucketRateLimiter<UUID> adminPuzzleCreationRateLimiter;
     private final TokenBucketRateLimiter<String> authenticatedGetRateLimiter;
     private final DatabaseLookupCache databaseLookupCache;
-
-    public PuzzleService(
-            PuzzleRepository puzzleRepository,
-            PuzzleCompletionRepository puzzleCompletionRepository,
-            CurrentUserService currentUserService,
-            BotSubmissionValidationService botValidationService,
-            JsonMapper jsonMapper,
-            @Qualifier("adminPuzzleCreationRateLimiter")
-            TokenBucketRateLimiter<UUID> adminPuzzleCreationRateLimiter,
-            @Qualifier("authenticatedGetRateLimiter")
-            TokenBucketRateLimiter<String> authenticatedGetRateLimiter) {
-        this(
-                puzzleRepository,
-                puzzleCompletionRepository,
-                currentUserService,
-                botValidationService,
-                jsonMapper,
-                adminPuzzleCreationRateLimiter,
-                authenticatedGetRateLimiter,
-                new DatabaseLookupCache());
-    }
 
     @Autowired
     public PuzzleService(
@@ -188,19 +157,6 @@ public class PuzzleService {
                 "update-puzzle");
         databaseLookupCache.invalidatePuzzleCatalog("puzzle-updated");
         return toAdminResponse(saved);
-    }
-
-    @Transactional(readOnly = true)
-    public PuzzleListPageDTO listPublished(int requestedPage, int requestedSize) {
-        return listPublished(requestedPage, requestedSize, null);
-    }
-
-    @Transactional(readOnly = true)
-    public PuzzleListPageDTO listPublished(
-            int requestedPage,
-            int requestedSize,
-            Authentication authentication) {
-        return listPublished(requestedPage, requestedSize, "", authentication);
     }
 
     @Transactional(readOnly = true)
@@ -379,8 +335,6 @@ public class PuzzleService {
                 puzzle.puzzleNumber(),
                 puzzle.timeLimitMs(),
                 puzzle.initialElapsedMs(),
-                puzzle.winConditions().deepCopy(),
-                puzzle.loseConditions().deepCopy(),
                 puzzle.logicConfiguration().deepCopy(),
                 List.copyOf(definitions));
     }
@@ -390,7 +344,7 @@ public class PuzzleService {
         List<UUID> puzzleIds = puzzles.stream().map(Puzzle::getId).toList();
         return puzzleCompletionRepository.findByUserIdAndPuzzleIdIn(userId, puzzleIds).stream()
                 .map(completion -> completion.getPuzzle().getId())
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
     }
 
     private PuzzleBotRequestDTO botRequest(CachedPuzzleBot bot, JsonNode brain) {
@@ -450,18 +404,8 @@ public class PuzzleService {
         int boundedOpponentTeamSize = boundedTeamSize(opponentTeamSize);
 
         JsonNode logicConfiguration = request == null ? null : request.getLogicConfiguration();
-        String coordinateVersion = logicConfiguration == null || !logicConfiguration.isObject()
-                ? PUZZLE_LOGIC_V1 : logicConfiguration.path("version").asText(PUZZLE_LOGIC_V1);
-        JsonNode winConditions = arrayOrEmpty(request == null ? null : request.getWinConditions(), "winConditions", errors);
-        JsonNode loseConditions = arrayOrEmpty(request == null ? null : request.getLoseConditions(), "loseConditions", errors);
-        if (winConditions.isArray() && winConditions.isEmpty()) errors.add("winConditions must contain at least one condition");
-        validateConditionArray(winConditions, "winConditions", errors, coordinateVersion);
-        validateConditionArray(loseConditions, "loseConditions", errors, coordinateVersion);
-        if (logicConfiguration == null || logicConfiguration.isNull()) {
-            errors.add("logicConfiguration must be an object");
-        } else {
-            validatePuzzleLogicConfiguration(logicConfiguration, errors);
-        }
+        errors.addAll(botValidationService.validateConditionRulesForSimulation(logicConfiguration).stream()
+                .map(error -> "logicConfiguration: " + error).toList());
 
         List<ValidatedBot> bots = validatePuzzleBots(
                 request,
@@ -485,8 +429,6 @@ public class PuzzleService {
                 maxCustomVariables,
                 boundedPlayerTeamSize,
                 boundedOpponentTeamSize,
-                winConditions,
-                loseConditions,
                 logicConfiguration,
                 List.copyOf(bots));
     }
@@ -595,101 +537,6 @@ public class PuzzleService {
         return Math.max(MIN_PUZZLE_TEAM_SIZE, Math.min(MAX_PUZZLE_TEAM_SIZE, value));
     }
 
-    private void validatePuzzleLogicConfiguration(JsonNode configuration, List<String> errors) {
-        if (configuration == null || !configuration.isObject()) {
-            errors.add("logicConfiguration must be an object");
-            return;
-        }
-        String logicVersion = configuration.path("version").asText("");
-        if (!PUZZLE_LOGIC_V1.equals(logicVersion) && !PUZZLE_LOGIC_V2.equals(logicVersion)) {
-            errors.add("logicConfiguration.version must be " + PUZZLE_LOGIC_V1 + " or " + PUZZLE_LOGIC_V2);
-        }
-        try {
-            if (jsonMapper.writeValueAsString(configuration).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PUZZLE_LOGIC_JSON_BYTES) {
-                errors.add("logicConfiguration is too large");
-            }
-        } catch (Exception exception) {
-            errors.add("logicConfiguration could not be serialized");
-        }
-
-        JsonNode variables = configuration.get("customVariables");
-        if (variables == null || !variables.isArray()) {
-            errors.add("logicConfiguration.customVariables must be an array");
-        } else {
-            if (variables.size() > MAX_CUSTOM_VARIABLES) {
-                errors.add("logicConfiguration uses " + variables.size()
-                        + " custom variables; maximum is " + MAX_CUSTOM_VARIABLES);
-            }
-            for (int index = 0; index < variables.size(); index += 1) {
-                JsonNode variable = variables.get(index);
-                String id = variable == null ? "" : variable.path("id").asText("");
-                if (!id.startsWith(PUZZLE_VARIABLE_PREFIX)) {
-                    errors.add("logicConfiguration.customVariables[" + index + "].id must use the puzzle namespace");
-                }
-            }
-        }
-
-        JsonNode roots = configuration.get("roots");
-        if (roots == null || !roots.isArray()) {
-            errors.add("logicConfiguration.roots must be an array");
-            return;
-        }
-        if (roots.size() > MAX_ROOT_NODES) errors.add("logicConfiguration cannot contain more than " + MAX_ROOT_NODES + " roots");
-        int actionCount = countActionNodes(roots);
-        int conditionCount = countConditionNodes(roots);
-        if (actionCount > MAX_ACTION_NODES) errors.add("logicConfiguration exceeds the total action limit");
-        if (conditionCount > MAX_CONDITION_NODES) errors.add("logicConfiguration exceeds the total condition limit");
-
-        boolean hasWinRoot = false;
-        for (int rootIndex = 0; rootIndex < roots.size(); rootIndex += 1) {
-            JsonNode root = roots.get(rootIndex);
-            String path = "logicConfiguration.roots[" + rootIndex + "]";
-            String kind = root == null ? "" : root.path("kind").asText("");
-            if (!Set.of("win", "lose", "modify").contains(kind)) {
-                errors.add(path + ".kind must be win, lose, or modify");
-                continue;
-            }
-            if ("win".equals(kind)) hasWinRoot = true;
-            JsonNode branches = root.get("branches");
-            if (branches == null || !branches.isArray() || branches.isEmpty()) {
-                errors.add(path + ".branches must contain at least one conditional");
-                continue;
-            }
-            for (int branchIndex = 0; branchIndex < branches.size(); branchIndex += 1) {
-                JsonNode branch = branches.get(branchIndex);
-                String branchPath = path + ".branches[" + branchIndex + "]";
-                JsonNode conditions = branch == null ? null : branch.get("conditions");
-                if (conditions == null || !conditions.isArray() || conditions.isEmpty()) {
-                    errors.add(branchPath + ".conditions must contain at least one condition");
-                }
-                JsonNode children = branch == null ? null : branch.get("children");
-                if (children != null && children.isArray() && !children.isEmpty()) {
-                    errors.add(branchPath + ".children are not supported in puzzle rules");
-                }
-                JsonNode actions = branch == null ? null : branch.get("actions");
-                int actionSize = actions != null && actions.isArray() ? actions.size() : 0;
-                boolean hasLegacyAction = branch != null
-                        && branch.hasNonNull("action")
-                        && !"none".equals(branch.path("action").asText(""));
-                if (hasLegacyAction) {
-                    errors.add(branchPath + ".action is not supported; use the fixed modify custom variable action");
-                }
-                if ("modify".equals(kind)) {
-                    if (actionSize != 1 || !"variable".equals(actions.get(0).path("action").asText(""))) {
-                        errors.add(branchPath + " must contain exactly one modify custom variable action");
-                    }
-                } else if (actionSize > 0) {
-                    errors.add(branchPath + " cannot contain actions for a win or lose condition");
-                }
-            }
-        }
-        if (!hasWinRoot) errors.add("logicConfiguration must contain at least one win condition");
-
-        errors.addAll(botValidationService.validateConditionRulesForSimulation(configuration).stream()
-                .map(error -> "logicConfiguration: " + error)
-                .toList());
-    }
-
     private ValidatedBot validateBot(
             PuzzleBotRequestDTO request,
             PuzzleBotRole role,
@@ -703,7 +550,7 @@ public class PuzzleService {
                 : validationPath;
         String loadout = request == null || request.getLoadout() == null ? "custom:" : request.getLoadout().trim();
         if (loadout.isBlank() || loadout.length() > 40) errors.add(path + ".loadout must be between 1 and 40 characters");
-        if (!validLoadoutEncoding(loadout)) errors.add(path + ".loadout is not a supported loadout encoding");
+
 
         double defaultX = 0;
         double defaultY = role == PuzzleBotRole.PLAYER ? -450 : 450;
@@ -732,30 +579,13 @@ public class PuzzleService {
 
         JsonNode brain = brainWithLoadout(request == null ? null : request.getBrain(), loadout, path, errors);
         if (brain != null) {
-            errors.addAll(botValidationService.validateForSimulation(brain).stream()
+            errors.addAll(botValidationService.validatePuzzleBrainForSimulation(brain, maxActionNodes, maxConditionNodes, maxCustomVariables, role == PuzzleBotRole.PLAYER).stream()
                     .map(error -> path + ".brain: " + error)
                     .toList());
-            int actions = countActionNodes(brain.path("roots"));
-            int conditions = countConditionNodes(brain.path("roots"));
-            int variables = brain.path("customVariables").isArray() ? brain.path("customVariables").size() : 0;
-            if (actions > maxActionNodes) errors.add(path + ".brain uses " + actions + " action nodes; puzzle allows " + maxActionNodes);
-            if (conditions > maxConditionNodes) errors.add(path + ".brain uses " + conditions + " condition nodes; puzzle allows " + maxConditionNodes);
-            if (variables > maxCustomVariables) errors.add(path + ".brain uses " + variables + " custom variables; puzzle allows " + maxCustomVariables);
-            if (role == PuzzleBotRole.PLAYER) rejectPuzzleVariableNamespace(brain, path, errors);
+
         }
         ArenaCoordinates.Point internalStart = ArenaCoordinates.toInternal(startX, startY);
         return new ValidatedBot(0, 0, role, loadout, internalStart.x(), internalStart.y(), rotation, startHp, brain);
-    }
-
-    private void rejectPuzzleVariableNamespace(JsonNode brain, String path, List<String> errors) {
-        JsonNode variables = brain == null ? null : brain.get("customVariables");
-        if (variables == null || !variables.isArray()) return;
-        for (int index = 0; index < variables.size(); index += 1) {
-            String id = variables.get(index).path("id").asText("");
-            if (id.startsWith(PUZZLE_VARIABLE_PREFIX)) {
-                errors.add(path + ".brain.customVariables[" + index + "] uses a reserved puzzle variable namespace");
-            }
-        }
     }
 
     private JsonNode brainWithLoadout(JsonNode source, String loadout, String path, List<String> errors) {
@@ -769,7 +599,7 @@ public class PuzzleService {
         }
         ObjectNode loadoutNode = jsonMapper.createObjectNode();
         ArrayNode abilities = loadoutNode.putArray("abilities");
-        for (Integer ability : abilityIds(loadout)) abilities.add(ability);
+        for (Integer ability : puzzleLoadoutAbilities(loadout, path, errors)) abilities.add(ability);
         object.set("loadout", loadoutNode);
         try {
             if (jsonMapper.writeValueAsString(object).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_JSON_BYTES) {
@@ -802,8 +632,6 @@ public class PuzzleService {
         puzzle.setMaxCustomVariables(validated.maxCustomVariables());
         puzzle.setPlayerTeamSize(validated.playerTeamSize());
         puzzle.setOpponentTeamSize(validated.opponentTeamSize());
-        puzzle.setWinConditions(toJson(validated.winConditions()));
-        puzzle.setLoseConditions(toJson(validated.loseConditions()));
         puzzle.setLogicConfiguration(toJson(validated.logicConfiguration()));
     }
 
@@ -872,8 +700,6 @@ public class PuzzleService {
         response.setPlayerTeamSize(puzzle.getPlayerTeamSize());
         response.setOpponentTeamSize(puzzle.getOpponentTeamSize());
         response.setLogicConfiguration(readJson(puzzle.getLogicConfiguration(), jsonMapper.createObjectNode()));
-        response.setWinConditions(readJson(puzzle.getWinConditions(), jsonMapper.createArrayNode()));
-        response.setLoseConditions(readJson(puzzle.getLoseConditions(), jsonMapper.createArrayNode()));
         response.setBots(orderedBots(puzzle.getBots()).stream().map(this::toBotResponse).toList());
         return response;
     }
@@ -893,8 +719,6 @@ public class PuzzleService {
                 puzzle.getPlayerTeamSize(),
                 puzzle.getOpponentTeamSize(),
                 readJson(puzzle.getLogicConfiguration(), jsonMapper.createObjectNode()),
-                readJson(puzzle.getWinConditions(), jsonMapper.createArrayNode()),
-                readJson(puzzle.getLoseConditions(), jsonMapper.createArrayNode()),
                 orderedBots(puzzle.getBots()).stream().map(this::toCachedPuzzleBot).toList());
     }
 
@@ -928,8 +752,6 @@ public class PuzzleService {
         response.setPlayerTeamSize(puzzle.playerTeamSize());
         response.setOpponentTeamSize(puzzle.opponentTeamSize());
         response.setLogicConfiguration(puzzle.logicConfiguration().deepCopy());
-        response.setWinConditions(puzzle.winConditions().deepCopy());
-        response.setLoseConditions(puzzle.loseConditions().deepCopy());
         response.setBots(puzzle.bots().stream().sorted(cachedBotOrder()).map(this::toBotResponse).toList());
         return response;
     }
@@ -989,324 +811,30 @@ public class PuzzleService {
         }
     }
 
-    private JsonNode arrayOrEmpty(JsonNode value, String field, List<String> errors) {
-        if (value == null || value.isNull()) return jsonMapper.createArrayNode();
-        if (!value.isArray()) {
-            errors.add(field + " must be an array");
-            return jsonMapper.createArrayNode();
-        }
-        return value;
-    }
-
-    private void validateConditionArray(JsonNode value, String field, List<String> errors, String coordinateVersion) {
-        if (value == null || !value.isArray()) return;
-        if (value.size() > MAX_CONDITION_COUNT) errors.add(field + " cannot contain more than " + MAX_CONDITION_COUNT + " conditions");
+    /** Decode the non-brain loadout field using Spring's ability catalog; the brain schema checks totals and uniqueness. */
+    private List<Integer> puzzleLoadoutAbilities(String loadout, String path, List<String> errors) {
+        List<Integer> ids = new ArrayList<>();
         try {
-            if (jsonMapper.writeValueAsString(value).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_CONDITION_JSON_BYTES) {
-                errors.add(field + " is too large");
-            }
-        } catch (Exception exception) {
-            errors.add(field + " could not be serialized");
-        }
-        for (int index = 0; index < value.size(); index += 1) {
-            JsonNode condition = value.get(index);
-            if (condition == null || !condition.isObject()) errors.add(field + "[" + index + "] must be an object");
-            else validateCondition(condition, field + "[" + index + "]", errors, coordinateVersion);
-        }
-    }
-
-    private void validateCondition(JsonNode condition, String path, List<String> errors, String coordinateVersion) {
-        validateBotCondition(condition, path, errors, coordinateVersion);
-    }
-
-    private void validateBotCondition(JsonNode condition, String path, List<String> errors, String coordinateVersion) {
-        JsonNode typeNode = condition.get("type");
-        if (typeNode == null || !typeNode.isTextual()
-                || !Set.of(BotLogicContracts.CONDITION_ALWAYS, BotLogicContracts.CONDITION_EXPRESSION).contains(typeNode.asText())) {
-            errors.add(path + ".type must be always or expression");
-            return;
-        }
-
-        validateConditionId(condition, path, errors);
-        JsonNode join = condition.get("join");
-        if (join != null && (!join.isTextual() || !Set.of("and", "or").contains(join.asText()))) {
-            errors.add(path + ".join must be and or or");
-        }
-        if (BotLogicContracts.CONDITION_ALWAYS.equals(typeNode.asText())) return;
-
-        String left = condition.path("left").asText("");
-        BotLogicContracts.VariableContract leftContract = BotLogicContracts.variableContract(left);
-        boolean customLeft = isCustomVariableId(left);
-        if (leftContract == null && !customLeft) {
-            errors.add(path + ".left is not a supported state variable");
-        }
-
-        String leftValueType = leftContract == null ? null : BotLogicContracts.variableValueType(left);
-        JsonNode comparator = condition.get("comparator");
-        Set<String> comparators = "boolean".equals(leftValueType)
-                ? BotLogicContracts.booleanComparators()
-                : BotLogicContracts.numericComparators();
-        if (comparator == null || !comparator.isTextual() || !comparators.contains(comparator.asText())) {
-            errors.add(path + ".comparator is not supported for this variable");
-        }
-
-        String targetMode = validateConditionTarget(condition, path, leftContract, errors, coordinateVersion);
-        validateConditionSelectable(condition.get("selectable"), path + ".selectable", null, null, errors);
-        validateConditionSelectable(condition.get("selectable1"), path + ".selectable1", null, null, errors);
-        validateConditionSelectable(condition.get("selectable2"), path + ".selectable2", null, null, errors);
-        if (leftContract != null && leftContract.isPairVariable()) {
-            JsonNode selectable1 = condition.has("selectable1")
-                    ? condition.get("selectable1") : textNode(BotLogicContracts.defaultSelectable1ForVariable(leftContract));
-            JsonNode selectable2 = condition.has("selectable2")
-                    ? condition.get("selectable2")
-                    : condition.has("selectable") ? condition.get("selectable")
-                        : textNode(BotLogicContracts.defaultSelectable2ForVariable(leftContract));
-            validateConditionSelectable(selectable1, path + ".selectable1", leftContract.pairSelectableIdentities(0), leftContract, errors);
-            if (BotLogicContracts.TARGET_MODE_TARGET.equals(targetMode)) {
-                validateConditionSelectable(selectable2, path + ".selectable2", leftContract.pairSelectableIdentities(1), leftContract, errors);
-            }
-        } else {
-            validateConditionSelectable(condition.get("leftSelectable"), path + ".leftSelectable",
-                    leftContract == null ? null : leftContract.selectableIdentities(),
-                    leftContract, errors);
-        }
-
-        validateConditionSelection(condition, path, leftContract, errors);
-
-        JsonNode right = condition.get("right");
-        if (right == null || !right.isObject()) {
-            errors.add(path + ".right must be an operand object");
-            return;
-        }
-        String rightType = right.path("type").asText("");
-        if ("variable".equals(rightType)) {
-            String rightId = right.path("value").asText("");
-            BotLogicContracts.VariableContract rightContract = BotLogicContracts.variableContract(rightId);
-            if (rightContract == null && !isCustomVariableId(rightId)) {
-                errors.add(path + ".right.value is not a supported state variable");
-            }
-            if (rightContract != null && !"number".equals(BotLogicContracts.variableValueType(rightId))) {
-                errors.add(path + ".right.value must reference a numeric variable");
-            }
-            validateConditionSelectable(right.get("rightSelectable"), path + ".rightSelectable",
-                    rightContract == null ? null : rightContract.selectableIdentities(),
-                    rightContract, errors);
-            return;
-        }
-        if ("boolean".equals(rightType)) {
-            if (leftContract != null && !"boolean".equals(leftValueType)) {
-                errors.add(path + ".right boolean operand requires a boolean left variable");
-            }
-            if (!right.has("value") || !right.get("value").isBoolean()) {
-                errors.add(path + ".right.value must be boolean");
-            }
-            return;
-        }
-        if ("number".equals(rightType)) {
-            if ("boolean".equals(leftValueType)) errors.add(path + ".right number operand requires a numeric left variable");
-            JsonNode value = right.get("value");
-            if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
-                    || Math.abs(value.asDouble()) > MAX_CONDITION_NUMBER) {
-                errors.add(path + ".right.value must be a finite number");
-            } else if (leftContract != null) {
-                BotLogicContracts.NumericRange range = leftContract.numericRangeFor(coordinateVersion);
-                boolean positiveRelativeBearingOutOfRange = leftContract.boundedRelativeBearing()
-                        && range != null && value.asDouble() > range.maximum();
-                if (range != null && !range.contains(value.asDouble()) && !positiveRelativeBearingOutOfRange) {
-                    errors.add(path + ".right.value must be between "
-                            + formatNumericBound(range.minimum()) + " and " + formatNumericBound(range.maximum()));
+            if (loadout.startsWith("sandbox:")) {
+                String body = loadout.substring("sandbox:".length());
+                if (!body.isBlank()) {
+                    for (String value : body.split(",", -1)) {
+                        int id = Integer.parseInt(value);
+                        if (!AbilityCatalog.exists(id) || AbilityCatalog.isStandard(id)) throw new IllegalArgumentException();
+                        ids.add(id);
+                    }
                 }
-            }
-            return;
-        }
-        errors.add(path + ".right.type must be number, boolean, or variable");
-    }
-
-    private String validateConditionTarget(
-            JsonNode condition,
-            String path,
-            BotLogicContracts.VariableContract variableContract,
-            List<String> errors,
-            String coordinateVersion) {
-        boolean hasTargetFields = condition.has("targetMode") || condition.has("targetX")
-                || condition.has("targetY") || condition.has("targetAngle");
-        if (variableContract == null || variableContract.targetModes().isEmpty()) {
-            if (hasTargetFields) errors.add(path + ".targetMode is not supported for this variable");
-            return BotLogicContracts.TARGET_MODE_TARGET;
-        }
-        JsonNode modeNode = condition.get("targetMode");
-        String mode;
-        if (modeNode == null) {
-            mode = condition.has("targetX") || condition.has("targetY")
-                    ? BotLogicContracts.TARGET_MODE_COORDINATES
-                    : condition.has("targetAngle") ? BotLogicContracts.TARGET_MODE_ANGLE : BotLogicContracts.TARGET_MODE_TARGET;
-        } else if (!modeNode.isTextual()) {
-            errors.add(path + ".targetMode must be target, coordinates, or angle");
-            return BotLogicContracts.TARGET_MODE_TARGET;
-        } else {
-            mode = modeNode.asText();
-        }
-        if (!variableContract.targetModes().contains(mode)) {
-            errors.add(path + ".targetMode is not supported for this variable");
-            return BotLogicContracts.TARGET_MODE_TARGET;
-        }
-        if (BotLogicContracts.TARGET_MODE_COORDINATES.equals(mode)) {
-            double minimum = PUZZLE_LOGIC_V2.equals(coordinateVersion) ? -ARENA_WIDTH / 2 : 0;
-            double maximum = PUZZLE_LOGIC_V2.equals(coordinateVersion) ? ARENA_WIDTH / 2 : ARENA_WIDTH;
-            validateConditionCoordinate(condition.get("targetX"), path + ".targetX", minimum, maximum, errors);
-            validateConditionCoordinate(condition.get("targetY"), path + ".targetY", minimum, maximum, errors);
-        } else if (BotLogicContracts.TARGET_MODE_ANGLE.equals(mode)) {
-            JsonNode angle = condition.get("targetAngle");
-            if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
-                    || angle.asDouble() < BotLogicContracts.ANGLE_MIN || angle.asDouble() > BotLogicContracts.ANGLE_MAX) {
-                errors.add(path + ".targetAngle must be an angle from -360 to 360 degrees");
-            }
-        }
-        return mode;
-    }
-
-    private void validateConditionCoordinate(JsonNode value, String path, double minimum, double maximum, List<String> errors) {
-        if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
-                || value.asDouble() < minimum || value.asDouble() > maximum) {
-            errors.add(path + " must be a finite coordinate from " + (int) minimum + " to " + (int) maximum);
-        }
-    }
-
-    private String formatNumericBound(double value) {
-        return value == Math.rint(value) ? Long.toString((long) value) : Double.toString(value);
-    }
-
-    private void validateConditionId(JsonNode condition, String path, List<String> errors) {
-        JsonNode id = condition.get("id");
-        if (id != null && (!id.isTextual() || id.asText().length() > 100)) {
-            errors.add(path + ".id must be a string of at most 100 characters");
-        }
-    }
-
-    private void validateConditionSelection(
-            JsonNode condition,
-            String path,
-            BotLogicContracts.VariableContract variable,
-            List<String> errors) {
-        JsonNode ability = condition.get("ability");
-        if (ability != null && (!ability.isIntegralNumber() || !ability.canConvertToInt()
-                || !AbilityContracts.actions().contains(ability.intValue()))) {
-            errors.add(path + ".ability is not supported");
-        }
-        if (variable != null && variable.requiresAbility() && ability == null) {
-            errors.add(path + ".ability is required for this variable");
-        }
-
-        JsonNode statusEffect = condition.get("statusEffect");
-        if (statusEffect != null && (!statusEffect.isTextual()
-                || !BotLogicContracts.statusEffects().contains(statusEffect.asText().toLowerCase(java.util.Locale.ROOT)))) {
-            errors.add(path + ".statusEffect is not supported");
-        }
-        if (variable != null && variable.requiresStatusEffect()
-                && (statusEffect == null || !statusEffect.isTextual() || statusEffect.asText().isBlank())) {
-            errors.add(path + ".statusEffect is required for this variable");
-        }
-    }
-
-    private void validateConditionSelectable(
-            JsonNode selectable,
-            String path,
-            Set<BotLogicContracts.SelectableIdentity> requiredSelectableIdentities,
-            BotLogicContracts.VariableContract variable,
-            List<String> errors) {
-        if (selectable == null) return;
-        if (!selectable.isTextual() || selectable.asText().length() > 100 || !BotLogicContracts.isAllowedSelectable(selectable.asText())) {
-            errors.add(path + " is not a supported selectable");
-            return;
-        }
-        if (variable != null && variable.requiresHealthSelectable()
-                && !BotLogicContracts.selectableSupportsCapability(selectable.asText(), BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH)) {
-            errors.add(path + " must reference a health-bearing selectable");
-        }
-        String base = selectable.asText().split(":", -1)[0];
-        if (variable != null && !variable.selectableOrderable() && selectable.asText().contains(":")) {
-            errors.add(path + " does not support selectable ordering");
-        }
-        if (!BotLogicContracts.selectableMatchesIdentities(base, requiredSelectableIdentities)) {
-            errors.add(path + " does not provide the selectable identities required by this variable");
-        }
-    }
-
-    private JsonNode textNode(String value) {
-        return jsonMapper.getNodeFactory().textNode(value);
-    }
-
-    private boolean isCustomVariableId(String value) {
-        return value != null && value.matches("custom\\.[A-Za-z0-9_.-]{1,52}");
-    }
-
-    private boolean validLoadoutEncoding(String loadout) {
-        if (loadout == null) return false;
-        if (loadout.startsWith("sandbox:")) {
-            String body = loadout.substring("sandbox:".length());
-            if (body.isBlank()) return true;
-            String[] values = body.split(",", -1);
-            if (values.length > 6) return false;
-            Set<Integer> ids = new HashSet<>();
-            for (String value : values) {
-                try {
-                    int id = Integer.parseInt(value);
-                    if (!ids.add(id)
-                            || !AbilityContracts.actions().contains(id)
-                            || GameConfigCatalog.STANDARD_ABILITIES.contains(id)) return false;
-                } catch (NumberFormatException exception) {
-                    return false;
+            } else if (loadout.startsWith("custom:")) {
+                for (char code : loadout.substring("custom:".length()).toCharArray()) {
+                    Integer id = AbilityCatalog.idForCode(String.valueOf(code));
+                    if (id == null) throw new IllegalArgumentException();
+                    ids.add(id);
                 }
-            }
-            return true;
+            } else throw new IllegalArgumentException();
+        } catch (IllegalArgumentException invalid) {
+            errors.add(path + ".loadout is not a supported loadout encoding");
         }
-        if (loadout.startsWith("custom:")) {
-            String body = loadout.substring("custom:".length());
-            return body.length() <= 6
-                    && body.chars().distinct().count() == body.length()
-                    && body.chars().allMatch(code -> CompactAbilityCode.idForCode(String.valueOf((char) code)) != null);
-        }
-        return false;
-    }
-
-    private Set<Integer> abilityIds(String loadout) {
-        Set<Integer> result = new HashSet<>();
-        if (loadout == null) return result;
-        if (loadout.startsWith("sandbox:")) {
-            for (String value : loadout.substring("sandbox:".length()).split(",")) {
-                try { result.add(Integer.parseInt(value)); } catch (NumberFormatException ignored) { }
-            }
-        } else if (loadout.startsWith("custom:")) {
-            loadout.substring("custom:".length()).chars()
-                    .mapToObj(code -> CompactAbilityCode.idForCode(String.valueOf((char) code)))
-                    .filter(java.util.Objects::nonNull)
-                    .forEach(result::add);
-        }
-        return result;
-    }
-
-    private int countActionNodes(JsonNode node) {
-        if (node == null) return 0;
-        if (node.isArray()) { int total = 0; for (JsonNode child : node) total += countActionNodes(child); return total; }
-        if (!node.isObject()) return 0;
-        int total = 0;
-        if (node.path("actions").isArray()) total += node.path("actions").size();
-        else if (node.has("action") && !"none".equals(node.path("action").asText())) total += 1;
-        for (var entry : node.properties()) {
-            if (!Set.of("actions", "action").contains(entry.getKey())) total += countActionNodes(entry.getValue());
-        }
-        return total;
-    }
-
-    private int countConditionNodes(JsonNode node) {
-        if (node == null) return 0;
-        if (node.isArray()) { int total = 0; for (JsonNode child : node) total += countConditionNodes(child); return total; }
-        if (!node.isObject()) return 0;
-        int total = node.path("conditions").isArray() ? node.path("conditions").size() : 0;
-        for (var entry : node.properties()) {
-            if (!"conditions".equals(entry.getKey())) total += countConditionNodes(entry.getValue());
-        }
-        return total;
+        return ids;
     }
 
     private int valueOrDefault(Integer value, int fallback) { return value == null ? fallback : value; }
@@ -1330,8 +858,6 @@ public class PuzzleService {
             int maxCustomVariables,
             int playerTeamSize,
             int opponentTeamSize,
-            JsonNode winConditions,
-            JsonNode loseConditions,
             JsonNode logicConfiguration,
             List<ValidatedBot> bots) { }
 
@@ -1354,8 +880,6 @@ public class PuzzleService {
             long puzzleNumber,
             int timeLimitMs,
             int initialElapsedMs,
-            JsonNode winConditions,
-            JsonNode loseConditions,
             JsonNode logicConfiguration,
             List<PuzzleBotDefinition> bots) {
         public PuzzleAttemptDefinition {
@@ -1366,8 +890,6 @@ public class PuzzleService {
                 long puzzleNumber,
                 int timeLimitMs,
                 int initialElapsedMs,
-                JsonNode winConditions,
-                JsonNode loseConditions,
                 JsonNode logicConfiguration,
                 PuzzleBotDefinition playerBot,
                 PuzzleBotDefinition opponentBot) {
@@ -1375,8 +897,6 @@ public class PuzzleService {
                     puzzleNumber,
                     timeLimitMs,
                     initialElapsedMs,
-                    winConditions,
-                    loseConditions,
                     logicConfiguration,
                     List.of(
                             playerBot.withIdentity(PuzzleBotRole.PLAYER, 1, 1),

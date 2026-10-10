@@ -1,5 +1,8 @@
 package com.example.botfight.service;
 
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.AuthService;
 import com.example.botfight.service.auth.EmailVerificationService;
@@ -33,9 +36,9 @@ import org.springframework.security.core.Authentication;
 
 class AuthServiceTest {
 
-    private final UserRepository userRepository = org.mockito.Mockito.mock(UserRepository.class);
+    private final UserRepository userRepository = Mockito.mock(UserRepository.class);
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-    private final EmailVerificationService emailVerificationService = org.mockito.Mockito.mock(EmailVerificationService.class);
+    private final EmailVerificationService emailVerificationService = Mockito.mock(EmailVerificationService.class);
     private final AuthService service = new AuthService(userRepository, passwordEncoder, emailVerificationService);
 
     @Test
@@ -53,7 +56,7 @@ class AuthServiceTest {
         assertThat(response.isVerificationRequired()).isTrue();
         assertThat(response.getEmail()).isEqualTo("Pilot@Example.com");
 
-        verify(userRepository).save(org.mockito.ArgumentMatchers.argThat(user ->
+        verify(userRepository).save(ArgumentMatchers.argThat(user ->
                 user.getNormalizedEmail().equals("pilot@example.com")
                         && passwordEncoder.matches("password123", user.getPasswordHash())
                         && !user.isEmailVerified()));
@@ -164,7 +167,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> service.changePassword(authenticationFor(user), new PasswordChangeRequestDTO()))
                 .isInstanceOf(AuthException.class)
                 .hasMessage("This account does not use password authentication.");
-        verify(userRepository, org.mockito.Mockito.never()).save(user);
+        verify(userRepository, Mockito.never()).save(user);
     }
 
     @Test
@@ -216,8 +219,8 @@ class AuthServiceTest {
     }
 
     private HttpServletRequest requestWithSession() {
-        HttpServletRequest request = org.mockito.Mockito.mock(HttpServletRequest.class);
-        HttpSession session = org.mockito.Mockito.mock(HttpSession.class);
+        HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+        HttpSession session = Mockito.mock(HttpSession.class);
         when(request.getSession(true)).thenReturn(session);
         return request;
     }

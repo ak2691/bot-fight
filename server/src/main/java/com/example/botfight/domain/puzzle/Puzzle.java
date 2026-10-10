@@ -67,14 +67,6 @@ public class Puzzle {
     private int opponentTeamSize = 1;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "win_conditions", nullable = false)
-    private String winConditions = "[]";
-
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "lose_conditions", nullable = false)
-    private String loseConditions = "[]";
-
-    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "logic_configuration", nullable = false)
     private String logicConfiguration = "{}";
 
@@ -129,12 +121,6 @@ public class Puzzle {
 
     public int getOpponentTeamSize() { return opponentTeamSize; }
     public void setOpponentTeamSize(int opponentTeamSize) { this.opponentTeamSize = opponentTeamSize; }
-
-    public String getWinConditions() { return winConditions; }
-    public void setWinConditions(String winConditions) { this.winConditions = winConditions; }
-
-    public String getLoseConditions() { return loseConditions; }
-    public void setLoseConditions(String loseConditions) { this.loseConditions = loseConditions; }
 
     public String getLogicConfiguration() { return logicConfiguration; }
     public void setLogicConfiguration(String logicConfiguration) { this.logicConfiguration = logicConfiguration; }

@@ -1,0 +1,44 @@
+{
+  "rule": "A literal compared to selectable.hp is at least 0.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": []
+    },
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.hp",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": -1
+                },
+                "leftSelectable": "opponent_1"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -6,11 +6,9 @@ import com.example.botfight.DTO.customlobby.CustomLobbyClockRequestDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyStartDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyStateEventDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyTeamRequestDTO;
-import com.example.botfight.DTO.match.MatchmakingEventDTO;
 import com.example.botfight.DTO.party.PartyStateEventDTO;
 import com.example.botfight.service.customlobby.CustomLobbyService;
 import com.example.botfight.service.customlobby.CustomLobbyStatePublisher;
-import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.notification.NotificationPublisher;
 import com.example.botfight.service.party.PartyService;
@@ -19,10 +17,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,31 +30,24 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/custom-lobbies")
 public class CustomLobbyController {
 
-    private static final long DEADLINE_CALLBACK_BUFFER_MILLIS = 250L;
 
     private final CustomLobbyService customLobbyService;
     private final CustomLobbyStatePublisher customLobbyStatePublisher;
     private final NotificationPublisher notificationPublisher;
     private final PartyStatePublisher partyStatePublisher;
-    private final MatchService matchService;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final TaskScheduler lifecycleScheduler;
+    private final com.example.botfight.service.match.event.MatchEventPublisher matchEventPublisher;
 
     public CustomLobbyController(
             CustomLobbyService customLobbyService,
             CustomLobbyStatePublisher customLobbyStatePublisher,
             NotificationPublisher notificationPublisher,
             PartyStatePublisher partyStatePublisher,
-            MatchService matchService,
-            SimpMessagingTemplate messagingTemplate,
-            @Qualifier("matchmakingLifecycleScheduler") TaskScheduler lifecycleScheduler) {
+            com.example.botfight.service.match.event.MatchEventPublisher matchEventPublisher) {
         this.customLobbyService = customLobbyService;
         this.customLobbyStatePublisher = customLobbyStatePublisher;
         this.notificationPublisher = notificationPublisher;
         this.partyStatePublisher = partyStatePublisher;
-        this.matchService = matchService;
-        this.messagingTemplate = messagingTemplate;
-        this.lifecycleScheduler = lifecycleScheduler;
+        this.matchEventPublisher = matchEventPublisher;
     }
 
     @PostMapping
@@ -213,25 +201,6 @@ public class CustomLobbyController {
     }
 
     private void publishMatchEvents(List<OutboundMatchmakingEvent> events) {
-        if (events == null) return;
-        events.stream()
-                .filter(matchService::isCurrentEvent)
-                .forEach(event -> {
-                    MatchmakingEventDTO payload = event.event().withServerNow(Instant.now());
-                    messagingTemplate.convertAndSendToUser(
-                            event.principalName(),
-                            MatchmakingSocketDestinations.forMatchmakingEvent(payload),
-                            payload);
-                    if ("MATCH_STARTED".equals(payload.type())
-                            && "LOADOUT_SELECT".equals(payload.status())
-                            && payload.matchId() != null
-                            && payload.loadoutSelectionEndsAt() != null) {
-                        lifecycleScheduler.schedule(
-                                () -> publishMatchEvents(
-                                        matchService.resolveLoadoutSelectionTimeout(payload.matchId())),
-                                payload.loadoutSelectionEndsAt()
-                                        .plusMillis(DEADLINE_CALLBACK_BUFFER_MILLIS));
-                    }
-                });
+        matchEventPublisher.publish(events);
     }
 }

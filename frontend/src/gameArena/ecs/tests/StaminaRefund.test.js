@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
-import { initialMovementState } from "../../gameconfig/StaminaSystem.js";
-import { recordAbilityHit, settleAbilityHits } from "../../gameconfig/AbilityHitRecord.js";
+import { MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../../../../shared/engine/gameconfig/MovementConfig.js";
+import { initialMovementState } from "../../../../../shared/engine/gameconfig/StaminaSystem.js";
+import { recordAbilityHit, settleAbilityHits } from "../../../../../shared/engine/gameconfig/AbilityHitRecord.js";
 import { advanceShapes as advanceArenaPreviewTickNormalized } from "../../testing/fightTick.js";
 import { buildInitialArenaShapes } from "../../modelPayloads/arenaShapes.js";
-import { normalizeAbilityStrategyConfiguration } from "../../botlogic/code/BotCode.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import { applyBotAction } from "../../testing/pureTicks.js";
 
 // The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
@@ -165,18 +164,6 @@ test("a Fireball pays once for the activation that spawned it, burn ticks pay no
     const burned = trace.findLastIndex((entry) => entry.hp < trace[impact].hp);
     assert.ok(burned > impact, "the burn keeps damaging after the impact");
     for (let tick = impact; tick < trace.length; tick += 1) assert.equal(trace[tick].stamina, 50, `tick ${tick}`);
-});
-
-test("an old Exhausted condition migrates to a Stamina threshold", () => {
-    const condition = (comparator, value) => ({ type: "expression", left: "bot.exhausted", leftSelectable: "my_bot", comparator, right: { type: "boolean", value } });
-    const brain = (conditions) => ({ roots: [{ name: "Old", branches: [{ conditions, actions: [{ action: "move_walk" }] }] }] });
-    const migrated = (conditions) => normalizeAbilityStrategyConfiguration(brain(conditions)).roots[0].branches[0].conditions;
-
-    const [isTrue, isFalse, notTrue] = migrated([condition("eq", true), condition("eq", false), condition("neq", true)]);
-    assert.deepEqual([isTrue.left, isTrue.comparator, isTrue.right], ["bot.stamina", "lt", { type: "number", value: 1 }]);
-    assert.deepEqual([isFalse.left, isFalse.comparator, isFalse.right], ["bot.stamina", "gte", { type: "number", value: 1 }]);
-    assert.deepEqual([notTrue.left, notTrue.comparator], ["bot.stamina", "gte"]);
-    assert.equal(isTrue.leftSelectable, "my_bot");
 });
 
 test("parity trace: dash, idle, hit, idle, dash", () => {

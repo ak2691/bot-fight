@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
+import { ALL_ABILITY_DEFINITIONS } from "../../../../shared/engine/loadout/BotLoadout.js";
 import {
     CATALOGUE_CHIPS,
     MOVEMENT_SECTION,
@@ -9,12 +9,11 @@ import {
     SECTION_TITLES,
     STAMINA_NOTE,
     WEAPONS_SECTION,
-    isListedAbility,
     movementSettingsMatching,
     sectionOf,
 } from "./catalogueSections.js";
 
-const listed = ALL_ABILITY_DEFINITIONS.filter(isListedAbility);
+const listed = ALL_ABILITY_DEFINITIONS;
 
 test("the catalogue lists weapons first, then movement, then the three draft tiers", () => {
     assert.deepEqual(SECTION_KEYS, [WEAPONS_SECTION, MOVEMENT_SECTION, 1, 2, 3]);
@@ -22,11 +21,9 @@ test("the catalogue lists weapons first, then movement, then the three draft tie
     assert.deepEqual(CATALOGUE_CHIPS.map((chip) => chip.label), ["Weapons", "Movement", "Rounds 1-2", "Rounds 3-4", "Rounds 5-6", "Effects"]);
 });
 
-test("Dash sits under Movement beside Sprint and Fast turn, and Lock On and Basic Strike are not listed", () => {
+test("Dash sits under Movement beside Sprint and Fast turn", () => {
     assert.equal(sectionOf(listed.find((ability) => ability.id === 19)), MOVEMENT_SECTION);
     assert.deepEqual(MOVEMENT_SETTINGS.map((setting) => setting.label), ["Sprint", "Fast turn"]);
-    assert.equal(listed.some((ability) => ability.id === 20 || ability.id === 34), false);
-    assert.equal(ALL_ABILITY_DEFINITIONS.some((ability) => ability.id === 20), true, "the definitions stay for old replays");
     for (const ability of listed) {
         assert.ok(SECTION_KEYS.includes(sectionOf(ability)), `${ability.label} has a section`);
     }

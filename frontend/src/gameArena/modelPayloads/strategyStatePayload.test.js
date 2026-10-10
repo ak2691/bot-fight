@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildStatePayload as buildStatePayloadFromBots, createStatePayloadFactory as createFactoryFromBots, setPayloadFreezing } from "./strategyStatePayload.js";
+import { buildStatePayload as buildStatePayloadFromBots, createStatePayloadFactory as createFactoryFromBots, setPayloadFreezing } from "../../../../shared/engine/modelPayloads/strategyStatePayload.js";
 import { asBots } from "../testing/botFixtures.js";
-import { stateFromPayload } from "../botlogic/code/runtime/runtimeState.js";
-import { statusEffectFor, statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { SELECTABLE_IDENTITIES } from "./selectableIdentities.js";
-import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../botlogic/planner/ArenaActionPlanner.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../botlogic/code/BotCode.js";
+import { stateFromPayload } from "../../../../shared/engine/botlogic/code/runtime/runtimeState.js";
+import { statusEffectFor, statusIsActive } from "../../../../shared/engine/ecs/contracts/StatusContracts.js";
+import { SELECTABLE_IDENTITIES } from "../../../../shared/engine/modelPayloads/selectableIdentities.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../shared/engine/botlogic/code/BotCode.js";
 import { applyBotAction } from "../testing/pureTicks.js";
 
 setPayloadFreezing(true);

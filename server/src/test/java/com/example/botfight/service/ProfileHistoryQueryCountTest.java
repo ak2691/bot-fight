@@ -1,5 +1,10 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.rating.EloRatingService;
+
+import com.example.botfight.repository.PlayerRatingRepository;
+import org.mockito.Mockito;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -28,7 +33,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
-import java.util.UUID;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
@@ -178,7 +182,8 @@ class ProfileHistoryQueryCountTest {
                 profileRepository,
                 new SlidingWindowRateLimiter<>(Clock.systemUTC(), 20, Duration.ofMinutes(1)),
                 new TokenBucketRateLimiter<String>(Clock.systemUTC(), 20, Duration.ofSeconds(1)),
-                new DatabaseLookupCache());
+                new DatabaseLookupCache(),
+                new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)));
     }
 
     private AppUser persistUser(String username) {

@@ -1,0 +1,7 @@
+{
+  "rule": "roots is required.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2"
+  }
+}

@@ -1,13 +1,13 @@
 import {
     BASE_BOT_HP,
-} from "./arenaConstants.js";
-import { initialAbilityState } from "../gameconfig/AbilityResourceSystem.js";
-import { cloneAbilityState } from "../gameconfig/AbilityState.js";
-import { BASE_BOT_STATS, DEFAULT_BOT_LOADOUT, STANDARD_ABILITY_IDS, decodeBotLoadout, decodeSandboxLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
-import { withoutBotStatuses } from "../gameconfig/DefensiveState.js";
-import { initialMovementState } from "../gameconfig/StaminaSystem.js";
-import { isClosingZone } from "../ecs/entities/ClosingZoneSystem.js";
-import { createBotState, isBotState } from "./botState.js";
+} from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { initialAbilityState } from "../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
+import { cloneAbilityState } from "../../../../shared/engine/gameconfig/AbilityState.js";
+import { BASE_BOT_STATS, DEFAULT_BOT_LOADOUT, STANDARD_ABILITY_IDS, decodeBotLoadout, decodeSandboxLoadout, encodeBotLoadout, normalizedBotLoadout } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { withoutBotStatuses } from "../../../../shared/engine/gameconfig/DefensiveState.js";
+import { initialMovementState } from "../../../../shared/engine/gameconfig/StaminaSystem.js";
+import { isClosingZone } from "../../../../shared/engine/ecs/entities/ClosingZoneSystem.js";
+import { createBotState, isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
 import {
     ARENA_HEIGHT_UNITS,
     ARENA_WIDTH_UNITS,
@@ -19,7 +19,7 @@ import {
     DUEL_SLOT_ONE_Y,
     DUEL_SLOT_TWO_X,
     DUEL_SLOT_TWO_Y,
-} from "./arenaConstants.js";
+} from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 
 export const MAIN_SHAPE = createBotState({
     id: "main",

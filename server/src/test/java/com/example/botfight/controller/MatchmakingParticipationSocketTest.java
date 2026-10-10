@@ -1,5 +1,16 @@
 package com.example.botfight.controller;
 
+import com.example.botfight.DTO.match.MatchEventType;
+
+import com.example.botfight.repository.MatchParticipantRepository;
+import com.example.botfight.repository.PlayerRatingRepository;
+import com.example.botfight.service.party.PartyStatePublisher;
+import com.example.botfight.service.rating.EloRatingService;
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
+import com.example.botfight.support.TestDependencies;
+import java.time.Instant;
+import org.mockito.Mockito;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,7 +52,7 @@ class MatchmakingParticipationSocketTest {
 
     @Test
     void craftedStompQueueJoinCannotQueueACustomLobbyMember() {
-        Clock clock = Clock.fixed(java.time.Instant.parse("2026-09-01T12:00:00Z"), ZoneOffset.UTC);
+        Clock clock = Clock.fixed(Instant.parse("2026-09-01T12:00:00Z"), ZoneOffset.UTC);
         UUID userId = UUID.randomUUID();
         AppUser user = new AppUser();
         user.setId(userId);
@@ -54,28 +65,33 @@ class MatchmakingParticipationSocketTest {
         when(matchService.activeMatchStatus(userId))
                 .thenReturn(com.example.botfight.DTO.match.ActiveMatchStatusDTO.none());
         when(matchService.isMatchStartReserved(userId)).thenReturn(false);
-        MatchmakingService matchmakingService = new MatchmakingService(
-                matchService,
+        MatchmakingService matchmakingService = new MatchmakingService(matchService,
                 clock,
                 new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
-                null,
-                coordinator);
+                new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)),
+                coordinator,
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
         CurrentUserService currentUserService = mock(CurrentUserService.class);
         Authentication authentication = mock(Authentication.class);
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
         when(authentication.getName()).thenReturn(user.getEmail());
         SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
-        MatchmakingSocketController controller = new MatchmakingSocketController(
+        MatchmakingSocketController controller = com.example.botfight.support.TestMatchSockets.controller(
                 matchmakingService,
                 matchService,
                 messagingTemplate,
                 currentUserService,
-                mock(TaskScheduler.class));
+                TestDependencies.partyService(),
+                Mockito.mock(PartyStatePublisher.class),
+                mock(TaskScheduler.class),
+                task -> mock(TaskScheduler.class).schedule(task, Instant.now()),
+                new SingleUserWebSocketSessionRegistry(event -> {}, SingleUserWebSocketSessionRegistry.DEFAULT_MAX_SESSIONS_PER_PRINCIPAL),
+                Mockito.mock(CustomLobbyService.class),
+                Mockito.mock(CustomLobbyStatePublisher.class));
         SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create();
         headers.setSessionId("lobby-member-socket");
 
-        Throwable failure = catchThrowable(() -> controller.joinQueue(
-                new MatchmakingJoinRequestDTO("ONES"), authentication, headers));
+        Throwable failure = catchThrowable(() -> controller.joinQueue(new MatchmakingJoinRequestDTO("ONES"), authentication, headers));
 
         assertThat(failure)
                 .isInstanceOf(AuthException.class)
@@ -87,7 +103,7 @@ class MatchmakingParticipationSocketTest {
                 eq(authentication.getName()),
                 eq(MatchmakingSocketDestinations.MATCHMAKING),
                 event.capture());
-        assertThat(event.getValue().type()).isEqualTo("MATCH_ERROR");
+        assertThat(event.getValue().type()).isEqualTo(MatchEventType.MATCH_ERROR);
         assertThat(event.getValue().message()).contains("Leave the custom lobby");
         assertThat(matchmakingService.hasTransientActivity(userId)).isFalse();
         assertThat(coordinator.isCustomLobbyMember(userId)).isTrue();

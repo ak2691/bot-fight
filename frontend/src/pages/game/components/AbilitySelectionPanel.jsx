@@ -3,8 +3,8 @@ import { AbilityModal } from "../../catalogue/AbilityCataloguePage.jsx";
 import { abilityTypeLabels, typeTagClass } from "../../catalogue/abilityTypeTags.js";
 import { getAbilityCatalogueIcon } from "../../../abilityCatalogueIcons.js";
 import MatchToolIcon from "../../../gameArena/coding/controls/MatchToolIcon.jsx";
-import { BOT_ABILITIES, MAX_EQUIPPED_ABILITIES, abilityBaseRange } from "../../../gameArena/loadout/BotLoadout.js";
-import { abilityStats } from "../../../gameArena/gameconfig/Abilities.js";
+import { BOT_ABILITIES, MAX_EQUIPPED_ABILITIES, abilityBaseRange } from "../../../../../shared/engine/loadout/BotLoadout.js";
+import { abilityStats } from "../../../../../shared/engine/gameconfig/Abilities.js";
 import { loadoutDraftState, offeredWeaponIds, toggleDraftAbility } from "../../../matchmaking/loadoutDraft.js";
 
 const DEFAULT_MAX_ROUNDS = 6;

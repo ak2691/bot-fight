@@ -1,5 +1,7 @@
 package com.example.botfight.service.puzzle;
 
+import com.example.botfight.service.submission.BrainSchemaValidator;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -25,7 +27,7 @@ import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzle;
 import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzleBot;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
-import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
+import com.example.botfight.support.WorkerStub;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.List;
 import java.util.Optional;
@@ -69,8 +71,6 @@ class PuzzleServiceTest {
         puzzle.setName("Before");
         puzzle.setDescription("Old description");
         puzzle.setStatus(PuzzleStatus.PUBLISHED);
-        puzzle.setWinConditions("[]");
-        puzzle.setLoseConditions("[]");
         puzzle.setLogicConfiguration("{}");
         PuzzleBot player = bot(playerBotId, PuzzleBotRole.PLAYER, "custom:");
         PuzzleBot opponent = bot(opponentBotId, PuzzleBotRole.OPPONENT, "custom:");
@@ -80,7 +80,8 @@ class PuzzleServiceTest {
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(admin);
         when(puzzleRepository.findByPuzzleNumber(7L)).thenReturn(Optional.of(puzzle));
         when(puzzleRepository.saveAndFlush(puzzle)).thenReturn(puzzle);
-        when(botValidationService.validateForSimulation(any())).thenReturn(List.of());
+        when(botValidationService.validatePuzzleBrainForSimulation(any(), eq(80), eq(200), eq(20), eq(true)))
+                .thenReturn(List.of());
         when(botValidationService.validateConditionRulesForSimulation(any())).thenReturn(List.of());
 
         PuzzleSaveRequestDTO request = validUpdateRequest();
@@ -100,6 +101,8 @@ class PuzzleServiceTest {
         assertThat(opponent.getBrainPayload()).contains("loadout");
         verify(puzzleRepository).saveAndFlush(puzzle);
         verify(botValidationService).validateConditionRulesForSimulation(request.getLogicConfiguration());
+        verify(botValidationService).validatePuzzleBrainForSimulation(any(), eq(80), eq(200), eq(20), eq(true));
+        verify(botValidationService).validatePuzzleBrainForSimulation(any(), eq(100), eq(300), eq(100), eq(false));
         verify(databaseLookupCache).invalidatePuzzleCatalog("puzzle-updated");
     }
 
@@ -122,8 +125,7 @@ class PuzzleServiceTest {
         when(puzzleRepository.findByPuzzleNumber(7L)).thenReturn(Optional.of(puzzle));
         when(puzzleRepository.saveAndFlush(puzzle)).thenReturn(puzzle);
 
-        BotSubmissionValidationService validationService = new BotSubmissionValidationService(
-                jsonMapper, new GameConfigCatalog());
+        BotSubmissionValidationService validationService = new BotSubmissionValidationService(new BrainSchemaValidator(), WorkerStub.validating());
         PuzzleService validatingService = new PuzzleService(
                 puzzleRepository,
                 puzzleCompletionRepository,
@@ -154,13 +156,6 @@ class PuzzleServiceTest {
                 .isEqualTo(-450);
         assertThat(puzzle.getLogicConfiguration()).contains("-100", "-450");
 
-        request.setWinConditions(jsonMapper.readTree("""
-                [{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"lt",
-                  "right":{"type":"number","value":-1}}]
-                """));
-        assertThatThrownBy(() -> validatingService.update(7L, request, authentication))
-                .isInstanceOf(PuzzleValidationException.class)
-                .hasMessageContaining("winConditions[0].right.value must be between 0 and 300");
     }
 
     @Test
@@ -181,8 +176,6 @@ class PuzzleServiceTest {
                 1,
                 1,
                 jsonMapper.createObjectNode(),
-                jsonMapper.createArrayNode(),
-                jsonMapper.createArrayNode(),
                 List.of(
                         new CachedPuzzleBot(UUID.randomUUID(), PuzzleBotRole.PLAYER, 1, 1, "custom:",
                                 600, 1050, 0, 150, jsonMapper.createObjectNode()),
@@ -205,6 +198,37 @@ class PuzzleServiceTest {
         assertThat(response.getBots().get(1).getStartY()).isEqualTo(450.0);
     }
 
+    @Test
+    void workerPuzzleRuleErrorsPreventPersistence() throws Exception {
+        AppUser admin = new AppUser();
+        admin.setId(UUID.randomUUID());
+        admin.setRole(UserRole.ADMIN);
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(admin);
+        when(botValidationService.validateConditionRulesForSimulation(any()))
+                .thenReturn(List.of("Puzzle rules must contain at least one win condition."));
+        PuzzleSaveRequestDTO request = validUpdateRequest();
+
+        assertThatThrownBy(() -> service.create(request, authentication))
+                .isInstanceOf(PuzzleValidationException.class)
+                .hasMessageContaining("at least one win condition");
+        verify(puzzleRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void nonBrainLoadoutStillRequiresCatalogAbilities() throws Exception {
+        AppUser admin = new AppUser();
+        admin.setId(UUID.randomUUID());
+        admin.setRole(UserRole.ADMIN);
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(admin);
+        PuzzleSaveRequestDTO request = validUpdateRequest();
+        request.getPlayerBot().setLoadout("sandbox:9999");
+
+        assertThatThrownBy(() -> service.create(request, authentication))
+                .isInstanceOf(PuzzleValidationException.class)
+                .hasMessageContaining("playerBot.loadout is not a supported loadout encoding");
+        verify(puzzleRepository, org.mockito.Mockito.never()).save(any());
+    }
+
     private PuzzleSaveRequestDTO validUpdateRequest() throws Exception {
         PuzzleSaveRequestDTO request = new PuzzleSaveRequestDTO();
         request.setCoordinateSystemVersion("centered-y-up-v1");
@@ -219,7 +243,7 @@ class PuzzleServiceTest {
         request.setMaxCustomVariables(20);
         request.setLogicConfiguration(jsonMapper.readTree("""
                 {
-                  "version":"bot-logic-tree-v1",
+                  "version":"bot-logic-tree-v2",
                   "customVariables":[],
                   "roots":[{
                     "id":"win",
@@ -234,8 +258,6 @@ class PuzzleServiceTest {
                   }]
                 }
                 """));
-        request.setWinConditions(jsonMapper.readTree("[{\"type\":\"always\"}]"));
-        request.setLoseConditions(jsonMapper.createArrayNode());
         request.setPlayerBot(botRequest(570, -450, 90, 140));
         request.setOpponentBot(botRequest(-570, 450, -90, 120));
         return request;

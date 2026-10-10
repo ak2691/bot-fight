@@ -3,21 +3,29 @@ import test from "node:test";
 import {
     BOT_CODE_ACTIONS,
     BOT_CODE_SELECTABLES,
-    CUSTOM_VARIABLE_OPERATIONS,
     STATE_VARIABLES,
+    normalizeAbilityStrategyConfiguration,
     normalizeConditions,
-    selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized,
-} from "../BotCode.js";
-import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../planner/ArenaActionPlanner.js";
-import { coordinateLimitsFor } from "../configuration/constants.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../BotCode.js";
+    selectAbilityStrategyActionPlan,
+} from "../../../../../../shared/engine/botlogic/code/BotCode.js";
+import { buildDeterministicLogicAction } from "../../../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
 
-// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
-const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);
-const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
+// Brain coordinates are public (centered, Y-up); the engine works in internal (top-left, Y-down) units.
+const plan = (brain, payload) => selectAbilityStrategyActionPlan(normalizeAbilityStrategyConfiguration(brain), payload);
+const act = (brain, payload) => buildDeterministicLogicAction(normalizeAbilityStrategyConfiguration(brain), payload);
 
-const V1 = "bot-logic-tree-v1";
-const V2 = "bot-logic-tree-v2";
+function battlePayload(player = { x: 600, y: 600, rotation: 0 }) {
+    return {
+        playerModel: { ...player, hp: 100, abilities: [], customVariables: {}, abilityState: {} },
+        objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 150, rotation: 180, hp: 100 }],
+    };
+}
+
+const brain = (action, conditions = [{ type: "always" }], customVariables = []) => ({
+    version: "bot-logic-tree-v2",
+    customVariables,
+    roots: [{ branches: [{ conditions, actions: [action] }] }],
+});
 
 test("position variables expose the full signed public coordinate range", () => {
     for (const id of ["selectable.x", "selectable.y"]) {
@@ -27,125 +35,42 @@ test("position variables expose the full signed public coordinate range", () => 
     }
 });
 
-function battlePayload(player = { x: 600, y: 600, rotation: 0 }) {
-    return {
-        playerModel: { ...player, hp: 100, abilities: [], customVariables: {}, abilityState: {} },
-        objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 150, rotation: 180, hp: 100 }],
-    };
-}
-
-function configuration(version, action, conditions = [{ type: "always" }], customVariables = []) {
-    return {
-        version,
-        customVariables,
-        roots: [{ branches: [{ conditions, actions: [action] }] }],
-    };
-}
-
-function pointMove(version, targetX, targetY) {
-    return configuration(version, {
-        action: BOT_CODE_ACTIONS.MOVE_WALK,
-        movementMode: "coordinates",
-        targetX,
-        targetY,
-    });
-}
-
-test("v1 internal and v2 centered targets produce the same internal movement", () => {
-    assert.deepEqual(coordinateLimitsFor(V1), { minimum: 0, maximum: 1200, offsetMagnitude: 1200 });
-    assert.deepEqual(coordinateLimitsFor(V2), { minimum: -600, maximum: 600, offsetMagnitude: 600 });
-    const v1 = pointMove(V1, 600, 150);
-    const v2 = pointMove(V2, 0, 450);
-
-    assert.deepEqual(buildDeterministicLogicAction(v1, battlePayload()), buildDeterministicLogicAction(v2, battlePayload()));
-    assert.deepEqual(
-        { dx: buildDeterministicLogicAction(v2, battlePayload()).dx, dy: buildDeterministicLogicAction(v2, battlePayload()).dy },
-        { dx: 0, dy: -1 },
-    );
+test("a public coordinate target moves toward the matching internal point", () => {
+    const towardOpponent = act(brain({ action: BOT_CODE_ACTIONS.MOVE_WALK, movementMode: "coordinates", targetX: 0, targetY: 450 }), battlePayload());
+    assert.ok(Math.abs(towardOpponent.dx) < 1e-9);
+    assert.ok(towardOpponent.dy < 0, "public +Y is internal up");
 });
 
-test("v1 and v2 condition coordinates preserve distance, bearing, and compass semantics", () => {
-    const make = (version, targetX, targetY) => configuration(version, {
-        action: BOT_CODE_ACTIONS.MOVE_WALK,
-        movementMode: "absolute",
-        movementDirection: 0,
-    }, [
-        {
-            type: "expression", left: "selectable.distance", selectable1: BOT_CODE_SELECTABLES.MY,
-            targetMode: "coordinates", targetX, targetY, comparator: "eq", right: { type: "number", value: 450 },
-        },
-        {
-            type: "expression", left: "selectable.relativeBearing", selectable1: BOT_CODE_SELECTABLES.MY,
-            targetMode: "coordinates", targetX, targetY, comparator: "eq", right: { type: "number", value: 0 },
-        },
-    ]);
-    const v1 = make(V1, 600, 150);
-    const v2 = make(V2, 0, 450);
-    const payload = battlePayload();
-
-    assert.ok(selectAbilityStrategyActionPlan(v1, payload).movement);
-    assert.ok(selectAbilityStrategyActionPlan(v2, payload).movement);
-    assert.deepEqual(buildDeterministicLogicAction(v1, payload), buildDeterministicLogicAction(v2, payload));
-});
-
-test("Entity X and Y conditions and custom-variable operands use each brain version", () => {
-    const selectCoordinate = (version, coordinate, expected) => configuration(version, {
-        action: BOT_CODE_ACTIONS.MOVE_WALK,
-        movementMode: "absolute",
-        movementDirection: 90,
-    }, [{
-        type: "expression", left: coordinate, leftSelectable: BOT_CODE_SELECTABLES.MY,
-        comparator: "eq", right: { type: "number", value: expected },
-    }]);
-
-    assert.ok(selectAbilityStrategyActionPlan(selectCoordinate(V1, "selectable.x", 600), battlePayload()).movement);
-    assert.ok(selectAbilityStrategyActionPlan(selectCoordinate(V1, "selectable.y", 600), battlePayload()).movement);
-    assert.ok(selectAbilityStrategyActionPlan(selectCoordinate(V2, "selectable.x", 0), battlePayload()).movement);
-    assert.ok(selectAbilityStrategyActionPlan(selectCoordinate(V2, "selectable.y", 0), battlePayload()).movement);
-
-    const readCoordinate = (version, id) => configuration(version, {
+test("Entity X and Y read public coordinates", () => {
+    const read = (variable) => brain({
         action: BOT_CODE_ACTIONS.VARIABLE,
         variableId: "custom.coordinate",
-        terms: [{ operator: CUSTOM_VARIABLE_OPERATIONS.SET, operand: { type: "variable", value: id, selectable: BOT_CODE_SELECTABLES.MY } }],
+        terms: [{ operator: "set", operand: { type: "variable", value: variable, selectable: BOT_CODE_SELECTABLES.OPPONENT } }],
     }, [{ type: "always" }], [{ id: "custom.coordinate", name: "Coordinate", valueType: "number", initialValue: 0 }]);
-    assert.equal(selectAbilityStrategyActionPlan(readCoordinate(V1, "selectable.x"), battlePayload()).customVariables["custom.coordinate"], 600);
-    assert.equal(selectAbilityStrategyActionPlan(readCoordinate(V2, "selectable.x"), battlePayload()).customVariables["custom.coordinate"], 0);
-    assert.equal(selectAbilityStrategyActionPlan(readCoordinate(V1, "selectable.y"), battlePayload()).customVariables["custom.coordinate"], 600);
-    assert.equal(selectAbilityStrategyActionPlan(readCoordinate(V2, "selectable.y"), battlePayload()).customVariables["custom.coordinate"], 0);
+    assert.equal(plan(read("selectable.x"), battlePayload()).customVariables["custom.coordinate"], 0);
+    assert.equal(plan(read("selectable.y"), battlePayload()).customVariables["custom.coordinate"], 450);
 });
 
-test("negative v2 coordinate comparisons survive frontend normalization and evaluation", () => {
+test("negative coordinate comparisons survive normalization and evaluation", () => {
     const conditions = [
-        {
-            type: "expression", left: "selectable.x", leftSelectable: BOT_CODE_SELECTABLES.MY,
-            comparator: "lt", right: { type: "number", value: -100 },
-        },
-        {
-            type: "expression", left: "selectable.y", leftSelectable: BOT_CODE_SELECTABLES.MY,
-            comparator: "gte", right: { type: "number", value: -450 },
-        },
+        { type: "expression", left: "selectable.x", leftSelectable: BOT_CODE_SELECTABLES.MY, comparator: "lt", right: { type: "number", value: -100 } },
+        { type: "expression", left: "selectable.y", leftSelectable: BOT_CODE_SELECTABLES.MY, comparator: "gte", right: { type: "number", value: -450 } },
     ];
-    const normalized = normalizeConditions(conditions, [], undefined, V2);
-    assert.deepEqual(normalized.map((condition) => condition.right.value), [-100, -450]);
-
-    const strategy = configuration(V2, {
-        action: BOT_CODE_ACTIONS.MOVE_WALK,
-        movementMode: "absolute",
-        movementDirection: 90,
-    }, conditions);
-    const result = selectAbilityStrategyActionPlan(strategy, battlePayload({ x: 400, y: 1050 }));
-    assert.ok(result.movement);
+    assert.deepEqual(normalizeConditions(conditions).map((condition) => condition.right.value), [-100, -450]);
+    const strategy = brain({ action: BOT_CODE_ACTIONS.MOVE_WALK, movementMode: "absolute", movementDirection: 90 }, conditions);
+    assert.ok(plan(strategy, battlePayload({ x: 400, y: 1050 })).movement);
 });
 
-test("public target offsets invert Y while retaining v1 behavior", () => {
-    const make = (version, targetOffsetY) => configuration(version, {
+test("public target offsets invert Y", () => {
+    const rotate = (targetOffsetY) => brain({
         action: BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET,
         selectable: BOT_CODE_SELECTABLES.OPPONENT,
-        targetOffsetX: 20,
+        targetOffsetX: 0,
         targetOffsetY,
     });
+    // Facing east at the center with the opponent due north. A public -600 Y offset puts the aim point
+    // south of the bot (internal +Y), so the bot turns clockwise; an uninverted offset would turn it north.
     const payload = battlePayload({ x: 600, y: 600, rotation: 90 });
-    const v1 = buildDeterministicLogicAction(make(V1, -30), payload);
-    const v2 = buildDeterministicLogicAction(make(V2, 30), payload);
-    assert.deepEqual(v1, v2);
+    assert.ok(act(rotate(-600), payload).dRot > 0);
+    assert.ok(act(rotate(0), payload).dRot < 0);
 });

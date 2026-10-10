@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
-import { initialMovementState } from "../../gameconfig/StaminaSystem.js";
-import { abilityChannel, abilityStaminaCost, channelBlockingStatuses } from "../../gameconfig/AbilityChannels.js";
-import { channelBusy } from "../../gameconfig/AbilityState.js";
-import { initialAbilityState } from "../../gameconfig/AbilityResourceSystem.js";
+import { MOVEMENT_TICK_MS } from "../../../../../shared/engine/gameconfig/MovementConfig.js";
+import { initialMovementState } from "../../../../../shared/engine/gameconfig/StaminaSystem.js";
+import { abilityChannel, abilityStaminaCost, channelBlockingStatuses } from "../../../../../shared/engine/gameconfig/AbilityChannels.js";
+import { channelBusy } from "../../../../../shared/engine/gameconfig/AbilityState.js";
+import { initialAbilityState } from "../../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
 import { applyBotAction } from "../../testing/pureTicks.js";
 
 // Mirrors the server's AbilityChannelsTest; keep the scenarios and numbers in step.
@@ -12,7 +12,7 @@ const DASH = 19;
 const SNIPER = 3; // 900 ms wind-up, 200 ms active
 const DART = 30; // 200 ms wind-up, 300 ms active
 const idle = { dx: 0, dy: 0, dRot: 0 };
-const dash = { action: DASH, targetX: 900, targetY: 400, movementMode: "absolute", movementDirection: "east" };
+const dash = { action: DASH, targetX: 900, targetY: 400, movementMode: "absolute", movementDirection: 90 };
 const snipe = { action: SNIPER, targetX: 900, targetY: 400 };
 const dart = { action: DART, targetX: 900, targetY: 400 };
 

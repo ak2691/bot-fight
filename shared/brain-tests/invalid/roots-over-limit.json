@@ -1,0 +1,615 @@
+{
+  "rule": "At most 100 roots.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "r0",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r1",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r2",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r3",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r4",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r5",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r6",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r7",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r8",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r9",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r10",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r11",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r12",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r13",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r14",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r15",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r16",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r17",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r18",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r19",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r20",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r21",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r22",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r23",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r24",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r25",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r26",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r27",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r28",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r29",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r30",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r31",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r32",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r33",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r34",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r35",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r36",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r37",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r38",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r39",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r40",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r41",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r42",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r43",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r44",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r45",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r46",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r47",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r48",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r49",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r50",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r51",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r52",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r53",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r54",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r55",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r56",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r57",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r58",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r59",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r60",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r61",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r62",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r63",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r64",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r65",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r66",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r67",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r68",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r69",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r70",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r71",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r72",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r73",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r74",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r75",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r76",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r77",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r78",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r79",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r80",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r81",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r82",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r83",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r84",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r85",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r86",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r87",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r88",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r89",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r90",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r91",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r92",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r93",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r94",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r95",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r96",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r97",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r98",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r99",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      },
+      {
+        "id": "r100",
+        "name": "Root",
+        "priority": 1,
+        "branches": []
+      }
+    ]
+  }
+}

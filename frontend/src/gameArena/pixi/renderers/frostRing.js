@@ -1,4 +1,4 @@
-import { visualProgress } from "../../gameconfig/visualState.js";
+import { visualProgress } from "../../../../../shared/engine/gameconfig/visualState.js";
 import { activeRenderer, activeVisualFrame } from "./rendererHelpers.js";
 
 /** Frost Ring: the expanding ring sprite centred on the activation origin. */

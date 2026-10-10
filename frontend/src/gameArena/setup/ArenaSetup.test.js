@@ -4,15 +4,15 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { advanceShapes as advanceArenaPreviewTickNormalized } from "../testing/fightTick.js";
 
-import { DEFAULT_BOT_LOADOUT, encodeBotLoadout } from "../loadout/BotLoadout.js";
-import { PRACTICE_OPPONENT_PUBLIC_START, PRACTICE_PLAYER_PUBLIC_START } from "../modelPayloads/arenaConstants.js";
-import { publicPointToInternal } from "../modelPayloads/arenaCoordinates.js";
+import { DEFAULT_BOT_LOADOUT, encodeBotLoadout } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { PRACTICE_OPPONENT_PUBLIC_START, PRACTICE_PLAYER_PUBLIC_START } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { publicPointToInternal } from "../../../../shared/engine/modelPayloads/arenaCoordinates.js";
 import {
     buildPracticeArenaShapes,
     puzzleBuilderSimulationLookups,
     synchronizePuzzleBuilderBotShape,
 } from "./ArenaSetup.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../shared/engine/botlogic/code/BotCode.js";
 
 // The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);

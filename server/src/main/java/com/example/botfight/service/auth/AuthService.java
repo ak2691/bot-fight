@@ -1,5 +1,7 @@
 package com.example.botfight.service.auth;
 
+import com.example.botfight.domain.auth.UserRole;
+
 import com.example.botfight.DTO.auth.AuthRequestDTO;
 import com.example.botfight.DTO.auth.AuthUserDTO;
 import com.example.botfight.DTO.auth.EmailVerificationRequestDTO;
@@ -179,7 +181,7 @@ public class AuthService {
         guest.setNormalizedEmail(guest.getEmail().toLowerCase(Locale.ROOT));
         guest.setEmailVerified(true);
         guest.setGuest(true);
-        guest.setRole(com.example.botfight.domain.auth.UserRole.GUEST);
+        guest.setRole(UserRole.GUEST);
         guest.setGuestExpiresAt(now.plus(GUEST_SESSION_DURATION));
         AppUser savedGuest = userRepository.save(guest);
         authenticateSession(savedGuest, httpRequest);
@@ -226,7 +228,7 @@ public class AuthService {
         response.setId(user.getId());
         response.setEmail(user.getEmail());
         response.setUsername(user.getUsername());
-        response.setAdmin(user.getRole() == com.example.botfight.domain.auth.UserRole.ADMIN);
+        response.setAdmin(user.getRole() == UserRole.ADMIN);
         response.setHasPassword(user.getPasswordHash() != null && !user.getPasswordHash().isBlank());
         return response;
     }

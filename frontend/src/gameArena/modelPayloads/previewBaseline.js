@@ -1,5 +1,5 @@
 import { resetBotShapeToStartingConfiguration } from "./arenaShapes.js";
-import { isBotState } from "./botState.js";
+import { isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
 
 function botAtStartingState(shape, startingState = null) {
     const start = startingState ?? {

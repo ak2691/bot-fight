@@ -1,5 +1,8 @@
 package com.example.botfight.service.chatmoderation;
 
+import java.util.Arrays;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -156,7 +159,7 @@ class ChatModerationPersistenceTest {
 
     @Test
     void reportRequestHasNoClientEvidenceFieldsAndOpenReportsAreCapped() {
-        assertThat(java.util.Arrays.stream(ChatReportRequestDTO.class.getRecordComponents())
+        assertThat(Arrays.stream(ChatReportRequestDTO.class.getRecordComponents())
                 .map(component -> component.getName())
                 .toList())
                 .containsExactly("reason", "note");
@@ -227,7 +230,7 @@ class ChatModerationPersistenceTest {
                 source.getUsername(),
                 NOW.minusSeconds(1),
                 "verified chat text",
-                java.util.List.of(source.getId(), target.getId()));
+                List.of(source.getId(), target.getId()));
         evidenceRepository.flush();
         jdbcTemplate.update("update chat_message_evidence set expires_at = ? where message_id = ?", expiresAt, messageId);
         return messageId;

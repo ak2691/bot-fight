@@ -1,5 +1,11 @@
 package com.example.botfight.service;
 
+import com.example.botfight.DTO.match.MatchEventType;
+
+import com.example.botfight.service.matchmaking.QueueJoinRequest;
+
+import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -40,11 +46,12 @@ class MatchmakingRatingTest {
 
     @BeforeEach
     void setUp() {
-        service = new MatchmakingService(
-                matchService,
+        service = new MatchmakingService(matchService,
                 clock,
                 new TokenBucketRateLimiter<>(clock, 5, Duration.ofSeconds(3)),
-                eloRatingService);
+                eloRatingService,
+                new MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
         when(matchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
     }
 
@@ -53,29 +60,27 @@ class MatchmakingRatingTest {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
 
-        service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
                 first,
                 "guest-one",
                 "guest-one@example.invalid",
                 "guest-one-socket",
                 MatchMode.ONES,
-                List.of(new MatchEntrant(
-                        first, "guest-one", "guest-one@example.invalid", "guest-one-socket")),
                 null,
-                QueuePool.GUEST);
-        var found = service.joinQueue(
+                null,
+                QueuePool.GUEST));
+        var found = service.joinQueue(new QueueJoinRequest(
                 second,
                 "guest-two",
                 "guest-two@example.invalid",
                 "guest-two-socket",
                 MatchMode.ONES,
-                List.of(new MatchEntrant(
-                        second, "guest-two", "guest-two@example.invalid", "guest-two-socket")),
                 null,
-                QueuePool.GUEST);
+                null,
+                QueuePool.GUEST));
 
         assertThat(found).hasSize(2)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
         verify(eloRatingService, never()).ratingsFor(any(), any());
     }
 
@@ -91,31 +96,30 @@ class MatchmakingRatingTest {
             UUID guest = guests.get(index);
             String username = "guest-" + index;
             String principal = username + "@example.invalid";
-            service.joinQueue(
+            service.joinQueue(new QueueJoinRequest(
                     guest,
                     username,
                     principal,
                     username + "-socket",
                     MatchMode.TWOS,
-                    List.of(new MatchEntrant(guest, username, principal, username + "-socket")),
                     null,
-                    QueuePool.GUEST);
+                    null,
+                    QueuePool.GUEST));
         }
 
         UUID fourth = guests.getLast();
-        var found = service.joinQueue(
+        var found = service.joinQueue(new QueueJoinRequest(
                 fourth,
                 "guest-3",
                 "guest-3@example.invalid",
                 "guest-3-socket",
                 MatchMode.TWOS,
-                List.of(new MatchEntrant(
-                        fourth, "guest-3", "guest-3@example.invalid", "guest-3-socket")),
                 null,
-                QueuePool.GUEST);
+                null,
+                QueuePool.GUEST));
 
         assertThat(found).hasSize(4)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
         verify(eloRatingService, never()).ratingsFor(any(), any());
     }
 
@@ -128,15 +132,26 @@ class MatchmakingRatingTest {
         when(eloRatingService.ratingsFor(eq(List.of(second)), eq(MatchMode.ONES)))
                 .thenReturn(Map.of(second, 1150));
 
-        service.joinQueue(first, "first", "first@example.com", "first-socket", MatchMode.ONES);
-        var waiting = service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
+                first,
+                "first",
+                "first@example.com",
+                "first-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var waiting = service.joinQueue(new QueueJoinRequest(
                 second,
                 "second",
                 "second@example.com",
                 "second-socket",
-                MatchMode.ONES);
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         assertThat(waiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
 
         clock.advance(Duration.ofSeconds(29));
@@ -146,7 +161,7 @@ class MatchmakingRatingTest {
         var found = service.sweepQueues();
 
         assertThat(found).hasSize(2)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
     }
 
     @Test
@@ -161,9 +176,33 @@ class MatchmakingRatingTest {
         when(eloRatingService.ratingsFor(eq(List.of(newest)), eq(MatchMode.ONES)))
                 .thenReturn(Map.of(newest, 1160));
 
-        service.joinQueue(oldest, "oldest", "oldest@example.com", "oldest-socket", MatchMode.ONES);
-        service.joinQueue(middle, "middle", "middle@example.com", "middle-socket", MatchMode.ONES);
-        service.joinQueue(newest, "newest", "newest@example.com", "newest-socket", MatchMode.ONES);
+        service.joinQueue(new QueueJoinRequest(
+                oldest,
+                "oldest",
+                "oldest@example.com",
+                "oldest-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
+                middle,
+                "middle",
+                "middle@example.com",
+                "middle-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
+                newest,
+                "newest",
+                "newest@example.com",
+                "newest-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         clock.advance(Duration.ofSeconds(15));
         var found = service.sweepQueues();
@@ -188,25 +227,52 @@ class MatchmakingRatingTest {
         when(eloRatingService.ratingsFor(eq(List.of(fourth)), eq(MatchMode.TWOS)))
                 .thenReturn(Map.of(fourth, 1200));
 
-        service.joinQueue(first, "first", "first@example.com", "first-socket", MatchMode.TWOS);
-        service.joinQueue(second, "second", "second@example.com", "second-socket", MatchMode.TWOS);
-        service.joinQueue(third, "third", "third@example.com", "third-socket", MatchMode.TWOS);
-        var waiting = service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
+                first,
+                "first",
+                "first@example.com",
+                "first-socket",
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
+                second,
+                "second",
+                "second@example.com",
+                "second-socket",
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
+                third,
+                "third",
+                "third@example.com",
+                "third-socket",
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var waiting = service.joinQueue(new QueueJoinRequest(
                 fourth,
                 "fourth",
                 "fourth@example.com",
                 "fourth-socket",
-                MatchMode.TWOS);
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(waiting).hasSize(1)
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .containsExactly("QUEUE_WAITING");
         clock.advance(Duration.ofSeconds(14));
         assertThat(service.sweepQueues()).isEmpty();
 
         clock.advance(Duration.ofSeconds(1));
         assertThat(service.sweepQueues()).hasSize(4)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
     }
 
     @Test
@@ -221,14 +287,15 @@ class MatchmakingRatingTest {
                 new MatchEntrant(owner, "owner", "owner@example.com", "owner-socket"),
                 new MatchEntrant(teammate, "teammate", "teammate@example.com", "teammate-socket"));
 
-        assertThatThrownBy(() -> service.joinQueue(
+        assertThatThrownBy(() -> service.joinQueue(new QueueJoinRequest(
                 owner,
                 "owner",
                 "owner@example.com",
                 "owner-socket",
                 MatchMode.TWOS,
                 party,
-                UUID.randomUUID()))
+                UUID.randomUUID(),
+                QueuePool.REGISTERED)))
                 .isInstanceOf(AuthException.class)
                 .hasMessageContaining("300 Elo");
     }

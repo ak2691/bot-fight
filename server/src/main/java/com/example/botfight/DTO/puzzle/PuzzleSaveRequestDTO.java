@@ -17,8 +17,6 @@ public class PuzzleSaveRequestDTO {
     private Integer playerTeamSize = 1;
     private Integer opponentTeamSize = 1;
     private JsonNode logicConfiguration;
-    private JsonNode winConditions;
-    private JsonNode loseConditions;
     private PuzzleBotRequestDTO playerBot;
     private PuzzleBotRequestDTO opponentBot;
     private List<PuzzleBotRequestDTO> bots;
@@ -61,12 +59,6 @@ public class PuzzleSaveRequestDTO {
 
     public JsonNode getLogicConfiguration() { return logicConfiguration; }
     public void setLogicConfiguration(JsonNode logicConfiguration) { this.logicConfiguration = logicConfiguration; }
-
-    public JsonNode getWinConditions() { return winConditions; }
-    public void setWinConditions(JsonNode winConditions) { this.winConditions = winConditions; }
-
-    public JsonNode getLoseConditions() { return loseConditions; }
-    public void setLoseConditions(JsonNode loseConditions) { this.loseConditions = loseConditions; }
 
     public PuzzleBotRequestDTO getPlayerBot() { return playerBot; }
     public void setPlayerBot(PuzzleBotRequestDTO playerBot) { this.playerBot = playerBot; }

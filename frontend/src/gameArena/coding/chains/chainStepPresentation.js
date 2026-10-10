@@ -1,7 +1,7 @@
 // Plain-language labels and one-line summaries for chain steps. Formatting only.
-import { ACTION_HEADS, BOT_CODE_ACTIONS, CUSTOM_VARIABLE_OPERATIONS } from "../../botlogic/code/contracts/BotLogicContracts.js";
-import { CHAIN_STEP_TYPES } from "../../botlogic/code/configuration/constants.js";
-import { absoluteMovementAngle, relativeMovementAngle } from "../../botlogic/planner/arenaAngles.js";
+import { ACTION_HEADS, BOT_CODE_ACTIONS, CUSTOM_VARIABLE_OPERATIONS } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { CHAIN_STEP_TYPES } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
+import { movementAngle } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
 import { summarizeCondition, describeCondition } from "../nodes/conditionSummary.js";
 import {
     actionTargetMode,
@@ -50,9 +50,9 @@ const formatPoint = (entry) => `(${Number(entry.targetX ?? 0)}, ${Number(entry.t
 
 /** Where a move heads, worded as on the main canvas: "to Opponent 1", "away from Opponent 1", "90° from Opponent 1". */
 function movementPhrase(entry, selectableTypes) {
-    if (entry.movementMode === "absolute") return `${absoluteMovementAngle(entry.movementDirection)}° absolute`;
+    if (entry.movementMode === "absolute") return `${movementAngle(entry.movementDirection)}° absolute`;
     const subject = entry.movementMode === "coordinates" ? formatPoint(entry) : targetText(entry, selectableTypes);
-    return relativeMovementPhrase(relativeMovementAngle(entry.movementDirection), subject);
+    return relativeMovementPhrase(movementAngle(entry.movementDirection), subject);
 }
 
 /** Plain-language condition list: "Cleave Ready", "Time Since Hit (Cleave) < 0.3 s". Several read as "A and B". */

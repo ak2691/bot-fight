@@ -1,0 +1,8 @@
+{
+  "rule": "Only bot-logic-tree-v2 brains are accepted.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v1",
+    "roots": []
+  }
+}

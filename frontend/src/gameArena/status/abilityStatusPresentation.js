@@ -1,6 +1,6 @@
-import { abilityDefinition } from "../loadout/BotLoadout.js";
-import { abilityChargeCount, abilityRechargeRemainingMs } from "../gameconfig/AbilityResourceSystem.js";
-import { activeRemainingMs, cooldownRemainingMs, windupRemainingMs } from "../gameconfig/AbilityState.js";
+import { abilityDefinition } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { abilityChargeCount, abilityRechargeRemainingMs } from "../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
+import { activeRemainingMs, cooldownRemainingMs, windupRemainingMs } from "../../../../shared/engine/gameconfig/AbilityState.js";
 
 export const ABILITY_RING_COLORS = Object.freeze({
     active: "#7dd3fc",
@@ -10,15 +10,8 @@ export const ABILITY_RING_COLORS = Object.freeze({
     ready: "#22c55e",
 });
 
-export const ABILITY_ACCENT_COLORS = Object.freeze({
-    20: "#facc15",
-});
-
 export function abilityRingColorFor(abilityId, status) {
-    const activeAccent = status?.state === "active" ? ABILITY_ACCENT_COLORS[abilityId] : null;
-    return activeAccent
-        ?? ABILITY_RING_COLORS[status?.state]
-        ?? ABILITY_RING_COLORS.idle;
+    return ABILITY_RING_COLORS[status?.state] ?? ABILITY_RING_COLORS.idle;
 }
 
 export function abilityStatusFor(bot, abilityId) {
@@ -126,7 +119,6 @@ export function statusParticipantNumber(bot, roster = []) {
 }
 
 export function fallbackAbilityText(abilityId, label = "") {
-    if (abilityId === 20) return "LO";
     const words = String(label || abilityId || "?").split(/[\s_-]+/).filter(Boolean);
     return words.map((word) => word[0]).join("").slice(0, 2).toUpperCase() || "?";
 }

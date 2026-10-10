@@ -1,9 +1,12 @@
+import { installBuildVersionReload } from "./security/buildVersion.js"
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './pages/designRefresh.css'
 import App from './App.jsx'
 import botDesignUrl from './assets/arena/abilities/bot/bot-design.png'
+
+installBuildVersionReload()
 
 const faviconLink = document.createElement('link')
 faviconLink.rel = 'icon'

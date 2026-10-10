@@ -49,16 +49,7 @@ public class PartyInviteController {
                     recipient.principalName(),
                     recipient.userId(),
                     accepted.actorUserId(),
-                    new NotificationEventDTO(
-                            "PARTY_MEMBER_JOINED",
-                            accepted.invite().inviteId(),
-                            accepted.invite().inviteId(),
-                            accepted.actorUsername(),
-                            accepted.actorUsername() + " joined your party.",
-                            Instant.now(),
-                            null,
-                            null,
-                            accepted.invite().partyId()));
+                    new NotificationEventDTO("PARTY_MEMBER_JOINED", accepted.invite().inviteId(), accepted.invite().inviteId(), accepted.actorUsername(), accepted.actorUsername() + " joined your party.", Instant.now(), null, null, accepted.invite().partyId(), null));
         }
         partyStatePublisher.send(
                 accepted.partyRecipients(),
@@ -82,16 +73,7 @@ public class PartyInviteController {
                 declined.recipientPrincipalName(),
                 declined.recipientUserId(),
                 declined.actorUserId(),
-                new NotificationEventDTO(
-                        "PARTY_INVITE_DECLINED",
-                        declined.invite().inviteId(),
-                        declined.invite().inviteId(),
-                        declined.actorUsername(),
-                        declined.actorUsername() + " declined your party invite.",
-                        Instant.now(),
-                        null,
-                        null,
-                        declined.invite().partyId()));
+                new NotificationEventDTO("PARTY_INVITE_DECLINED", declined.invite().inviteId(), declined.invite().inviteId(), declined.actorUsername(), declined.actorUsername() + " declined your party invite.", Instant.now(), null, null, declined.invite().partyId(), null));
         return declined.invite();
     }
 }

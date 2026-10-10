@@ -30,10 +30,6 @@ export function matchTeams(match) {
         : [];
 }
 
-export function yourTeam(match) {
-    return matchTeams(match)[0] ?? [];
-}
-
 export function opponentTeams(match) {
     return matchTeams(match).slice(1);
 }

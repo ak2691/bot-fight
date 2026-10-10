@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDefaultAbilityStrategyConfiguration } from "./botlogic/code/BotCode.js";
-import { upgradeStoredStrategyCoordinates } from "./persistence/arenaStrategyStorage.js";
+import { createDefaultAbilityStrategyConfiguration } from "../../../shared/engine/botlogic/code/BotCode.js";
 import {
     PRACTICE_ROOM_STORAGE_KEY,
     readPracticeRoomDraft,
@@ -89,67 +88,8 @@ test("practice starting positions and rotations keep one decimal while HP stays 
     assert.deepEqual([player.startX, player.startY, player.rotation, player.startHp], [12.4, -45.2, 12.4, 71]);
 });
 
-test("legacy practice starts migrate from internal coordinates into centered public coordinates", () => {
+test("drafts saved by an older storage version are discarded", () => {
     const storage = createStorage();
-    storage.setItem(PRACTICE_ROOM_STORAGE_KEY, JSON.stringify({
-        version: 2,
-        config: { bots: [
-            { role: "PLAYER", teamNumber: 1, slot: 1, startX: 600, startY: 1050 },
-            { role: "OPPONENT", teamNumber: 2, slot: 1, startX: 600, startY: 150 },
-        ] },
-    }));
-
-    const migrated = readPracticeRoomDraft(storage);
-    assert.deepEqual(migrated.config.bots.map(({ startX, startY }) => [startX, startY]), [[0, -450], [0, 450]]);
-    savePracticeRoomDraft({ config: migrated.config }, storage);
-    const persisted = JSON.parse(storage.getItem(PRACTICE_ROOM_STORAGE_KEY));
-    assert.equal(persisted.version, 3);
-    assert.deepEqual(persisted.config.bots.map(({ startX, startY }) => [startX, startY]), [[0, -450], [0, 450]]);
-});
-
-test("bots saved in the old nested shape load once as flat roster fields", () => {
-    const nested = (teamNumber, x, y, rotation, hp) => ({
-        teamNumber,
-        slot: 1,
-        transform: { position: { x, y }, rotation, size: 60 },
-        health: { current: hp, max: 300 },
-        stats: { moveSpeed: 5 },
-    });
-    for (const version of [2, 3]) {
-        const storage = createStorage();
-        storage.setItem(PRACTICE_ROOM_STORAGE_KEY, JSON.stringify({
-            version,
-            config: { bots: [nested(1, 600, 1050, 0, 120), nested(2, 600, 150, 180, 300)] },
-        }));
-        const [player, opponent] = readPracticeRoomDraft(storage).config.bots;
-        assert.deepEqual([player.startX, player.startY, player.rotation, player.startHp], [0, -450, 0, 120], `v${version}`);
-        assert.deepEqual([opponent.startX, opponent.startY, opponent.rotation, opponent.startHp], [0, 450, 180, 300], `v${version}`);
-        for (const bot of [player, opponent]) {
-            assert.equal("transform" in bot || "health" in bot || "stats" in bot, false);
-        }
-    }
-});
-
-test("legacy saved Walk coordinates migrate to centered inputs with a zero origin", () => {
-    const upgraded = upgradeStoredStrategyCoordinates({
-        roots: [{ branches: [{
-            conditions: [{ type: "always" }],
-            actions: [
-                { action: "move_walk", movementMode: "coordinates", targetX: 600, targetY: 600 },
-                { action: "rotate_toward_enemy", targetMode: "coordinates", targetX: 150, targetY: 1050 },
-            ],
-        }] }],
-        customVariables: [],
-        editorGraph: {
-            version: "code-editor-graph-v1",
-            targets: [{ id: "target-1", kind: "target", targetKind: "coordinates", targetX: 1200, targetY: 0 }],
-        },
-    });
-
-    assert.equal(upgraded.version, "bot-logic-tree-v2");
-    assert.deepEqual(upgraded.roots[0].branches[0].actions.map(({ targetX, targetY }) => [targetX, targetY]), [
-        [0, 0],
-        [-450, -450],
-    ]);
-    assert.deepEqual([upgraded.editorGraph.targets[0].targetX, upgraded.editorGraph.targets[0].targetY], [600, 600]);
+    storage.setItem(PRACTICE_ROOM_STORAGE_KEY, JSON.stringify({ version: 2, config: { bots: [] } }));
+    assert.equal(readPracticeRoomDraft(storage), null);
 });

@@ -1,0 +1,128 @@
+{
+  "description": "Chains with every step type, run by a root action.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": []
+    },
+    "chains": [
+      {
+        "id": "chain.a",
+        "name": "A",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "target",
+            "movementDirection": 0,
+            "forMs": 300
+          },
+          {
+            "type": "wait",
+            "forMs": 200
+          },
+          {
+            "type": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "steps": [
+              {
+                "type": "end"
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [],
+            "steps": [
+              {
+                "type": "runChain",
+                "chainId": "chain.b"
+              }
+            ]
+          },
+          {
+            "type": "repeat",
+            "count": 3,
+            "steps": [
+              {
+                "type": "exitLoop"
+              }
+            ]
+          },
+          {
+            "type": "repeat",
+            "whileConditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "maxMs": 500,
+            "steps": [
+              {
+                "type": "wait",
+                "forMs": 100
+              }
+            ]
+          },
+          {
+            "type": "wait",
+            "untilConditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "maxMs": 1000
+          }
+        ]
+      },
+      {
+        "id": "chain.b",
+        "name": "A",
+        "steps": [
+          {
+            "type": "end"
+          }
+        ],
+        "loose": [
+          {
+            "x": 10,
+            "y": 20,
+            "step": {
+              "type": "end"
+            }
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.a"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

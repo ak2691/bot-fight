@@ -1,0 +1,40 @@
+{
+  "rule": "Loadout abilities are unique.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": [
+        1,
+        1
+      ]
+    },
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

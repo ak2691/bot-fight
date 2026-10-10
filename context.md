@@ -11,11 +11,11 @@ a browser arena, and submit the normalized configuration for an authoritative
 fight. The React client owns editing, testing feedback, matchmaking UI, Pixi
 presentation, and replay display. The Spring application owns authentication,
 sessions, submissions, validation, matchmaking state, persistence, and rated
-`duel-v2` simulation.
+`duel-v2` orchestration through the authenticated Node worker.
 
-The browser and server intentionally mirror combat and logic behavior, but the
-server is authoritative. Cross-runtime changes must preserve stable IDs, units,
-timing, rounding, targeting, effects, loadout encoding, and replay shape.
+Gameplay has one implementation in `shared/engine/`, imported by the browser
+for previews and by `sim-worker/` for authoritative simulation. Spring owns
+ratings, validation, deadlines, result acceptance and replay authorization.
 
 ## Route by task
 
@@ -23,15 +23,15 @@ timing, rounding, targeting, effects, loadout encoding, and replay shape.
 | --- | --- | --- |
 | React routes, pages, auth, CSRF, frontend API calls | [`frontend/context.md`](frontend/context.md) | `frontend/src/pages/`, `auth/`, `security/` |
 | Testing room, arena UI, Pixi, visuals, interpolation | [`frontend/context.md`](frontend/context.md), then [`frontend/src/gameArena/context.md`](frontend/src/gameArena/context.md) | `frontend/src/gameArena/` |
-| Logic blocks, conditions, actions, targeting, code normalization | [`frontend/context.md`](frontend/context.md); add [`server/context.md`](server/context.md) for submitted/rated behavior | `frontend/src/gameArena/botlogic/`, server validation and simulation areas |
+| Logic blocks, conditions, actions, targeting, code normalization | [`frontend/context.md`](frontend/context.md); add [`server/context.md`](server/context.md) for submitted/rated behavior | `frontend/src/gameArena/botlogic/`, server submission validation and shared engine areas |
 | Matchmaking UI or WebSocket protocol | [`frontend/context.md`](frontend/context.md) and [`server/context.md`](server/context.md) | frontend matchmaking/page areas and server controller/service areas |
 | REST endpoints, auth, CSRF, submissions | [`server/context.md`](server/context.md); add frontend context for callers | server controller, service, security, and DTO areas |
 | Chat reporting and moderation | [`server/context.md`](server/context.md), [`frontend/context.md`](frontend/context.md), and [`docs/CHAT_MODERATION.md`](docs/CHAT_MODERATION.md) | chat moderation services, chat UI, and admin report workflow |
 | Persistence, ownership, migrations | [`server/context.md`](server/context.md) | server domain, repository, and migration areas |
-| Rated fights, deterministic simulation, replay, combat parity | [`server/context.md`](server/context.md), [`frontend/src/gameArena/context.md`](frontend/src/gameArena/context.md), and [`docs/context.md`](docs/context.md) | server simulation and frontend arena/runtime areas |
-| Adding/changing abilities, effects, statuses, stamina, arena entities | [`docs/ABILITIES.md`](docs/ABILITIES.md) first, then both runtime contexts | `shared/gameplay/` and both gameplay runtime areas |
+| Rated fights, deterministic simulation, replay, combat | [`server/context.md`](server/context.md), [`shared/engine/context.md`](shared/engine/context.md), [`frontend/src/gameArena/context.md`](frontend/src/gameArena/context.md), and [`docs/context.md`](docs/context.md) | shared engine, worker transport and server match/replay areas |
+| Adding/changing abilities, effects, statuses, stamina, arena entities | [`docs/ABILITIES.md`](docs/ABILITIES.md) first, then shared engine and server contexts | `shared/gameplay/` and shared engine and server validation areas |
 | Review, regression audit, combat/visual checklist | [`docs/context.md`](docs/context.md) plus the affected runtime context | documentation and affected runtime areas |
-| Docker, ports, local service orchestration | this file, then relevant area context | repository root and component roots |
+| Docker, ports, local service orchestration | this file, then [`sim-worker/context.md`](sim-worker/context.md) for the worker | repository root and component roots |
 | Adding folders or maintaining context maps | [`docs/MAINTAINING_CONTEXT_FILES.md`](docs/MAINTAINING_CONTEXT_FILES.md) | closest existing context boundary |
 
 For a task spanning boundaries, read each relevant area context. For a local
@@ -42,24 +42,34 @@ to find the implementation and tests.
 
 - `frontend/`: React 19 + Vite client. Source is in `frontend/src/`; generated
   `dist/`, installed `node_modules/`, and Vite logs are not source.
-- `server/`: Java 21, Spring Boot 4, Maven backend and in-process authoritative
-  duel simulator. There is no separate active Node simulation package.
+- `server/`: Java 21, Spring Boot 4, Maven backend. Owns authenticated match
+  state, validation, persistence, ratings and mandatory worker calls.
+- `sim-worker/`: internal Node HTTP simulator adapter, Piscina pool, transport bounds and version reporting. Read [`sim-worker/context.md`](sim-worker/context.md).
 - `docs/`: durable gameplay contracts, implementation guides, and regression
   audit checklists. Use its context index instead of opening every document.
-- `shared/gameplay/`: the ability, status and movement data both runtimes read
-  (`abilities.json`, `statuses.json`, `movement.json`). Edit it once; the browser
-  (`gameconfig/gameplayData.js`) and server (`GameplayData.java`) validate it.
-- `shared/gameplay-tests/`: golden scenarios (`goldenScenarios.json`) run by
-  both runtimes, with one committed golden per runtime (`golden.browser.json`,
-  `golden.server.json`: combat log plus per-tick state hashes). Regenerate with
-  `npm run golden:update` (from `frontend/`) and
-  `.\mvnw.cmd test -Dtest=GoldenScenariosTest -Dgolden.update=true` (from `server/`).
-  The parity test also compares per-tick state hashes; to read a mismatch, write the unhashed state lines of
-  both runtimes with `npm run golden:dump -- <id|all>` and `-Dgolden.debug=<id|all>` (to `artifacts/golden-debug/`) and diff them.
+- `shared/gameplay/`: the ability, status, channel and movement data (`abilities.json`, ...). Only the
+  engine reads the gameplay in it (`gameconfig/gameplayData.js` checks it); Spring reads ability IDs and
+  loadout codes. Reformat after edits with `node tools/format-gameplay-json.mjs`.
+- `shared/engine/`: the simulation core (fight, systems, brain runtime, `simulateFight` match loop),
+  plain ES modules shared by the browser and sim-worker; a lint rule keeps UI, DOM and Node
+  imports out. Read [`shared/engine/context.md`](shared/engine/context.md).
+- `shared/gameplay-tests/`: deterministic scenarios and the single committed
+  `golden.browser.json` (combat log and per-tick state hashes). Browser and
+  worker tests execute the same shared engine against it. Regenerate intended
+  gameplay changes with `npm run golden:update` from `frontend/` and review the diff.
+- `shared/schemas/`: JSON Schemas (2020-12). `brain.schema.json` is the only definition of a
+  structurally valid brain (generated: `npm run schema:brain` from `frontend/`, from the
+  browser contracts; the server and the editor both validate against it). `simulation-request.schema.json`
+  and `simulation-response.schema.json` describe what Spring and the simulator worker exchange.
+  The server's pom copies the folder to the classpath as `schemas/`.
+- `shared/brain-tests/`: `valid/` and `invalid/` brain fixtures (each invalid one names its rule and the
+  layer that rejects it: `schema`, or `rules` for the engine's `brainRules.js`, which the worker runs on
+  `POST /validate`). Editor, Spring and worker tests must classify them the same way;
+  regenerate with `npm run fixtures:brain`.
 - `artifacts/`: ignored runtime/base-model assets mounted read-only by Docker.
   Inspect only for an artifact-specific request.
 - `.github/`: repository automation. `.vscode/`: local editor configuration.
-- `docker-compose.yml`: PostgreSQL, pgAdmin, backend, and frontend orchestration.
+- `docker-compose.yml`: PostgreSQL, backend, frontend and internal sim-worker orchestration.
 
 ## Cross-boundary change rule
 
@@ -81,7 +91,10 @@ From `frontend/`: `npm test`, `npm run lint`, `npm run build`.
 From `server/` on Windows: `.\mvnw.cmd test` and
 `.\mvnw.cmd spring-boot:run`.
 
-From the repository root: `docker compose up --build`.
+From `sim-worker/`: `npm test`.
+
+From the repository root: `npm run version:write --prefix sim-worker`, then
+`docker compose build` (requires Docker Linux engine and `SIM_WORKER_SECRET`).
 
 ## Maintaining this map
 

@@ -98,8 +98,7 @@ public class GuestLifecycleService {
     @EventListener
     public void handleSessionDisconnect(WebSocketSessionDisconnectedEvent event) {
         if (event == null || !event.finalSession()
-                || socketRegistry != null
-                    && socketRegistry.hasActiveSessionForPrincipal(event.principalName())) return;
+                || socketRegistry.hasActiveSessionForPrincipal(event.principalName())) return;
         UUID guestId = guestId(event.principal());
         if (guestId != null) disconnectedAtByGuestId.put(guestId, clock.instant());
     }
@@ -139,8 +138,7 @@ public class GuestLifecycleService {
     }
 
     private boolean hasOpenTransport(AppUser guest) {
-        return socketRegistry != null
-                && guest.getEmail() != null
+        return guest.getEmail() != null
                 && socketRegistry.currentSessionIdForPrincipal(guest.getEmail()) != null;
     }
 
@@ -156,11 +154,10 @@ public class GuestLifecycleService {
     }
 
     private boolean hasTransientMatchmakingActivity(UUID userId) {
-        return matchmakingService != null && matchmakingService.hasTransientActivity(userId);
+        return matchmakingService.hasTransientActivity(userId);
     }
 
     private boolean hasActiveMatch(UUID userId) {
-        if (matchService == null) return false;
         ActiveMatchStatusDTO status = matchService.activeMatchStatus(userId);
         return status != null && status.activeMatch();
     }

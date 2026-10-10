@@ -1,5 +1,5 @@
 import { botAbilityActiveMs } from "../botAbilityPresentationDefinitions.js";
-import { abilityActiveOpacity } from "../../gameconfig/visualState.js";
+import { abilityActiveOpacity } from "../../../../../shared/engine/gameconfig/visualState.js";
 import { sniperSightAlpha, sniperSightLength } from "../pixiVisualState.js";
 import { abilityHitbox, abilityVisual, drawActiveRay, rotatePoint, showMuzzleFlash, showRay, windupProgress } from "./rendererHelpers.js";
 

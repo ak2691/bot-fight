@@ -1,5 +1,7 @@
 package com.example.botfight.service.chatmoderation;
 
+import java.util.Objects;
+
 import com.example.botfight.config.ChatModerationProperties;
 import com.example.botfight.domain.chatmoderation.ChatContextType;
 import com.example.botfight.domain.chatmoderation.ChatMessageEvidence;
@@ -68,7 +70,7 @@ public class ChatEvidenceService implements ChatEvidenceRecorder {
         }
         Set<UUID> recipients = new LinkedHashSet<>();
         if (recipientUserIds != null) {
-            recipientUserIds.stream().filter(java.util.Objects::nonNull).forEach(recipients::add);
+            recipientUserIds.stream().filter(Objects::nonNull).forEach(recipients::add);
         }
         if (recipients.size() > 16) {
             throw new IllegalArgumentException("chat delivery roster exceeds the evidence limit");

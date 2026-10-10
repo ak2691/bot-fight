@@ -1,5 +1,9 @@
 package com.example.botfight.service.customlobby;
 
+import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
+import java.util.Set;
+import org.mockito.ArgumentMatchers;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,7 +28,7 @@ import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
-import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.match.MatchTimingPolicy;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
@@ -66,7 +70,8 @@ class CustomLobbyServiceTest {
             BlockLookup.none(),
             socketRegistry,
             partyService,
-            matchmakingService);
+            matchmakingService,
+            new MatchParticipationCoordinator());
 
     @BeforeEach
     void setUp() {
@@ -316,9 +321,7 @@ class CustomLobbyServiceTest {
                 new MatchmakingService.ExternalMatchStartPreparation(UUID.randomUUID(), List.of());
         when(matchmakingService.prepareExternalMatchStart(anyCollection()))
                 .thenReturn(startPreparation);
-        when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM),
-                eq(MatchTimingPolicy.DEFAULT_CUSTOM_BASE_CLOCK_SECONDS),
-                eq(MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS))).thenReturn(
+        when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM), ArgumentMatchers.eq(false), eq(MatchTimingPolicy.DEFAULT_CUSTOM_BASE_CLOCK_SECONDS), eq(MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS))).thenReturn(
                 List.of(new OutboundMatchmakingEvent(owner.getEmail(), event)));
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
 
@@ -330,7 +333,7 @@ class CustomLobbyServiceTest {
         assertThat(started.lobby().lobbyId()).isEqualTo(lobby.lobbyId());
         assertThat(service.currentForPrincipal(owner.getEmail())).isNotNull();
         verify(matchmakingService).prepareExternalMatchStart(
-                eq(java.util.Set.of(owner.getId(), teammate.getId())));
+                eq(Set.of(owner.getId(), teammate.getId())));
         verify(matchmakingService).releaseExternalMatchStart(startPreparation.reservationId());
         CustomLobbyService.LobbyChange finished = service.finishMatch(matchId);
         assertThat(finished.lobby()).isNotNull();
@@ -338,9 +341,7 @@ class CustomLobbyServiceTest {
                 .extracting(member -> member.teamNumber())
                 .containsOnly(CustomLobbyService.TEAM_NONE);
         assertThat(service.currentForPrincipal(owner.getEmail())).isNotNull();
-        verify(matchService).startTeamMatch(any(), eq(MatchMode.CUSTOM),
-                eq(MatchTimingPolicy.DEFAULT_CUSTOM_BASE_CLOCK_SECONDS),
-                eq(MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS));
+        verify(matchService).startTeamMatch(any(), eq(MatchMode.CUSTOM), ArgumentMatchers.eq(false), eq(MatchTimingPolicy.DEFAULT_CUSTOM_BASE_CLOCK_SECONDS), eq(MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS));
         verify(partyService).prepareForCustomMatch(anyCollection());
     }
 
@@ -367,7 +368,7 @@ class CustomLobbyServiceTest {
                 .isInstanceOf(AuthException.class)
                 .hasMessage("a queue match is already starting");
 
-        verify(matchService, never()).startTeamMatch(any(), eq(MatchMode.CUSTOM), anyInt(), anyInt());
+        verify(matchService, never()).startTeamMatch(any(), eq(MatchMode.CUSTOM), ArgumentMatchers.eq(false), anyInt(), anyInt());
         assertThat(service.currentForPrincipal(owner.getEmail()).members()).hasSize(2);
     }
 
@@ -390,7 +391,7 @@ class CustomLobbyServiceTest {
         MatchmakingService.ExternalMatchStartPreparation preparation =
                 new MatchmakingService.ExternalMatchStartPreparation(UUID.randomUUID(), List.of());
         when(matchmakingService.prepareExternalMatchStart(anyCollection())).thenReturn(preparation);
-        when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM), anyInt(), anyInt()))
+        when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM), ArgumentMatchers.eq(false), anyInt(), anyInt()))
                 .thenThrow(new AuthException("the custom match could not be started"));
 
         assertThatThrownBy(() -> service.start(authentication, lobby.lobbyId()))

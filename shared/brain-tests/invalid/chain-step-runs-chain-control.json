@@ -1,0 +1,21 @@
+{
+  "rule": "A chain cannot run chain-control or N/A actions.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "chains": [
+      {
+        "id": "chain.a",
+        "name": "A",
+        "steps": [
+          {
+            "type": "action",
+            "action": "run_chain",
+            "chainId": "chain.a"
+          }
+        ]
+      }
+    ]
+  }
+}

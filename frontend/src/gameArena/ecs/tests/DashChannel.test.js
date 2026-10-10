@@ -1,16 +1,17 @@
+import { asBots } from "../../testing/botFixtures.js";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
-import { initialMovementState } from "../../gameconfig/StaminaSystem.js";
-import { abilityReady } from "../../botlogic/code/runtime/actionRuntime.js";
-import { ACTION_BY_ID } from "../../botlogic/code/contracts/BotLogicContracts.js";
-import { actionExecutionHead } from "../../botlogic/code/BotCode.js";
-import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../botlogic/planner/ArenaActionPlanner.js";
-import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
+import { MOVEMENT_TICK_MS } from "../../../../../shared/engine/gameconfig/MovementConfig.js";
+import { initialMovementState } from "../../../../../shared/engine/gameconfig/StaminaSystem.js";
+import { abilityReady } from "../../../../../shared/engine/botlogic/code/runtime/actionRuntime.js";
+import { ACTION_BY_ID } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { actionExecutionHead } from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
+import { buildStatePayload } from "../../../../../shared/engine/modelPayloads/strategyStatePayload.js";
 import { traceScenario } from "../../botlogic/code/tests/chainScenarioRunner.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import { applyBotAction } from "../../testing/pureTicks.js";
-import { activeRemainingMs, pendingCooldownMs, preparingAbilityId, preparingRemainingMs, cooldownRemainingMs } from "../../gameconfig/AbilityState.js";
+import { activeRemainingMs, pendingCooldownMs, preparingAbilityId, preparingRemainingMs, cooldownRemainingMs } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 
 // The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
@@ -23,7 +24,7 @@ const SNIPER = 3;
 const FIREBALL = 5;
 const WALK = 15;
 const idle = { dx: 0, dy: 0, dRot: 0 };
-const dash = { action: DASH_ABILITY_ID, targetX: 900, targetY: 400, movementMode: "absolute", movementDirection: "east" };
+const dash = { action: DASH_ABILITY_ID, targetX: 900, targetY: 400, movementMode: "absolute", movementDirection: 90 };
 const swing = { action: SLASH };
 const snipe = { action: SNIPER, targetX: 900, targetY: 400 };
 
@@ -66,7 +67,7 @@ test("a dash and a swing chosen on the same tick both start", () => {
     assert.equal(step(bot(), { ...idle, dashAction: dash }).triggeredAbility, DASH_ABILITY_ID);
 });
 
-const state = (shape) => buildStatePayload([shape, { id: "opponent-model", slot: 2, x: 700, y: 400, size: 60, hp: 100, abilities: [] }], "custom");
+const state = (shape) => buildStatePayload(asBots([shape, { id: "opponent-model", slot: 2, x: 700, y: 400, size: 60, hp: 100, abilities: [] }]), "custom");
 const plan = (configuration, shape) => buildDeterministicLogicAction(configuration, state(shape));
 const rootOf = (priority, actions, conditions = [{ type: "always" }]) => ({ priority, branches: [{ priority: 1, branchType: "if", conditions, actions, children: [] }] });
 
@@ -229,7 +230,7 @@ test("a conditional may hold one Dash and one ability, but not two of the same",
 
 test("the picker, node label and chain label read DASH", async () => {
     const { ACTION_HEAD_TONES, groupedActionPickerOptions } = await import("../../coding/nodes/pickerSupport.js");
-    const { ACTION_TYPES } = await import("../../botlogic/code/contracts/BotLogicContracts.js");
+    const { ACTION_TYPES } = await import("../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js");
     const groups = groupedActionPickerOptions(ACTION_TYPES);
     const dashGroup = groups.find((group) => group.head === "dash");
     assert.equal(dashGroup.title, "Dash");

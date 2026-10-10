@@ -1,5 +1,7 @@
 package com.example.botfight.controller;
 
+import com.example.botfight.DTO.match.MatchEventType;
+
 import com.example.botfight.DTO.match.MatchmakingEventDTO;
 
 /**
@@ -26,7 +28,7 @@ public final class MatchmakingSocketDestinations {
         if (event == null
                 || event.matchId() == null
                 || "MATCH_ACCEPT".equals(event.status())
-                || "MATCH_STARTED".equals(event.type())) {
+                || MatchEventType.MATCH_STARTED.equals(event.type())) {
             return MATCHMAKING;
         }
         return MATCH;

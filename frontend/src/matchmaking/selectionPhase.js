@@ -69,7 +69,6 @@ function phaseRank(event) {
     if (event?.type === "PLAYER_FINISHED" || event?.status === "WAITING_FOR_FINISH") return 2;
     if (event?.type === "MATCH_LOADOUT_SELECTED") return 1;
     if (event?.type === "BOT_BUILDING_SESSION_READY"
-        || event?.status === "PREP"
-        || event?.status === "OBJECT_PLACEMENT") return 2;
+        || event?.status === "PREP") return 2;
     return 0;
 }

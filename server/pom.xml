@@ -72,6 +72,12 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-websocket</artifactId>
 		</dependency>
+		<!-- Validates submitted brains against ../shared/schemas/brain.schema.json. 3.x is the Jackson 3 line. -->
+		<dependency>
+			<groupId>com.networknt</groupId>
+			<artifactId>json-schema-validator</artifactId>
+			<version>3.0.0</version>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
@@ -125,6 +131,15 @@
 				<directory>../shared/gameplay</directory>
 				<targetPath>gameplay</targetPath>
 			</resource>
+			<!-- The JSON Schemas shared with the browser and simulation worker. -->
+			<resource>
+				<directory>../shared/schemas</directory>
+				<targetPath>schemas</targetPath>
+			</resource>
+            <resource>
+                <directory>../shared</directory>
+                <includes><include>build-version.txt</include></includes>
+            </resource>
 		</resources>
 		<plugins>
 			<plugin>

@@ -1,0 +1,14 @@
+{
+  "rule": "Editor positions are 0 to 1,000,000.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "nodePositions": {
+      "n": {
+        "x": 2000000,
+        "y": 0
+      }
+    }
+  }
+}

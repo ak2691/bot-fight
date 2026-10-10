@@ -1,5 +1,17 @@
 package com.example.botfight.service;
 
+import com.example.botfight.DTO.match.MatchEventType;
+
+import com.example.botfight.service.matchmaking.QueueJoinRequest;
+
+import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
+
+import com.example.botfight.repository.MatchParticipantRepository;
+import com.example.botfight.repository.PlayerRatingRepository;
+import java.util.stream.Collectors;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,15 +32,15 @@ import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
-import com.example.botfight.service.match.chat.MatchChatService;
+import com.example.botfight.service.match.MatchChatService;
 import com.example.botfight.service.match.connection.MatchConnectionService;
 import com.example.botfight.service.match.event.MatchEventFactory;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
-import com.example.botfight.service.match.lifecycle.MatchLifecycleService;
+import com.example.botfight.service.match.MatchLifecycleService;
 import com.example.botfight.service.match.model.MatchEntrant;
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
+import com.example.botfight.service.match.MatchPersistenceService;
 import com.example.botfight.service.match.state.MatchRuntimeState;
-import com.example.botfight.service.match.submission.MatchSubmissionService;
+import com.example.botfight.service.match.MatchSubmissionService;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.matchmaking.QueuePool;
 import com.example.botfight.service.rating.EloRatingService;
@@ -37,7 +49,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -65,14 +76,15 @@ class MatchmakingServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MatchmakingService(
-                matchService,
+        service = new MatchmakingService(matchService,
                 clock,
                 new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
-                null);
+                new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)),
+                new MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
         when(matchService.activeMatchStatus(any()))
                 .thenReturn(ActiveMatchStatusDTO.none());
-        when(matchService.startMatch(any(), any())).thenReturn(List.of());
+        when(matchService.startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true))).thenReturn(List.of());
     }
 
     @Test
@@ -80,35 +92,43 @@ class MatchmakingServiceTest {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
 
-        var waiting = service.joinQueue(
+        var waiting = service.joinQueue(new QueueJoinRequest(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
-                "socket-first");
-        var found = service.joinQueue(
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
                 secondUserId,
                 "bravo-secret",
                 "second@example.com",
-                "socket-second");
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(waiting).singleElement().satisfies(event -> {
-            assertThat(event.event().type()).isEqualTo("QUEUE_WAITING");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.QUEUE_WAITING);
             assertThat(event.event().serverNow()).isEqualTo(clock.instant());
         });
         assertThat(found).hasSize(2).allSatisfy(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_FOUND");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND);
             assertThat(event.event().status()).isEqualTo("MATCH_ACCEPT");
             assertThat(event.event().matchAcceptanceEndsAt())
                     .isEqualTo(clock.instant().plusSeconds(22));
             assertThat(event.event().simulationSeed()).isNull();
         });
         assertIdentityFreeAcceptanceEvents(found, "alpha-secret", firstUserId, "bravo-secret", secondUserId);
-        verify(matchService, never()).startMatch(any(), any());
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
 
         UUID pendingMatchId = found.getFirst().event().matchId();
         var firstAccepted = service.acceptMatch(pendingMatchId, firstUserId, "socket-first-tab-two");
         assertThat(firstAccepted).hasSize(2).allSatisfy(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_ACCEPTED");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_ACCEPTED);
         });
         assertIdentityFreeAcceptanceEvents(firstAccepted, "alpha-secret", firstUserId, "bravo-secret", secondUserId);
         assertThat(firstAccepted.stream()
@@ -131,16 +151,14 @@ class MatchmakingServiceTest {
         ArgumentCaptor<MatchEntrant> secondCaptor =
                 ArgumentCaptor.forClass(MatchEntrant.class);
         MatchmakingEventDTO started = startedEvent(firstUserId, secondUserId);
-        when(matchService.startMatch(any(), any())).thenReturn(List.of(
+        when(matchService.startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true))).thenReturn(List.of(
                 new OutboundMatchmakingEvent("first@example.com", started)));
         var startedEvents = service.acceptMatch(pendingMatchId, secondUserId, "socket-second-tab-two");
-        verify(matchService).startMatch(
-                firstCaptor.capture(),
-                secondCaptor.capture());
+        verify(matchService).startMatch(firstCaptor.capture(), secondCaptor.capture(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
         assertThat(firstCaptor.getValue().userId()).isEqualTo(firstUserId);
         assertThat(secondCaptor.getValue().userId()).isEqualTo(secondUserId);
         assertThat(startedEvents).singleElement().satisfies(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_STARTED");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_STARTED);
             assertThat(event.event().eventSchemaVersion()).isEqualTo(2);
             assertThat(event.event().viewerUserId()).isEqualTo(firstUserId);
             assertThat(event.event().players()).filteredOn(player -> !player.userId().equals(firstUserId))
@@ -156,13 +174,34 @@ class MatchmakingServiceTest {
         UUID secondUserId = UUID.randomUUID();
         MatchmakingEventDTO twoPlayerEvent = startedEvent(firstUserId, secondUserId);
         List<MatchmakingPlayerDTO> roster = List.of(
-                new MatchmakingPlayerDTO(firstUserId, "alpha-one", 1, 1, false, 0, "melee", true, true),
-                new MatchmakingPlayerDTO(secondUserId, "alpha-two", 2, 1, false, 0, "ranged", true, true),
-                new MatchmakingPlayerDTO(UUID.randomUUID(), "bravo-one", 3, 2, false, 0, "melee", true, true),
-                new MatchmakingPlayerDTO(UUID.randomUUID(), "bravo-two", 4, 2, false, 0, "ranged", true, true));
+                new MatchmakingPlayerDTO(firstUserId, "alpha-one", 1, 1, false, 0, "melee", true, null, null, null),
+                new MatchmakingPlayerDTO(secondUserId, "alpha-two", 2, 1, false, 0, "ranged", true, null, null, null),
+                new MatchmakingPlayerDTO(
+                        UUID.randomUUID(),
+                        "bravo-one",
+                        3,
+                        2,
+                        false,
+                        0,
+                        "melee",
+                        true,
+                        null,
+                        null,
+                        null),
+                new MatchmakingPlayerDTO(
+                        UUID.randomUUID(),
+                        "bravo-two",
+                        4,
+                        2,
+                        false,
+                        0,
+                        "ranged",
+                        true,
+                        null,
+                        null,
+                        null));
         MatchmakingEventDTO event = twoPlayerEvent
-                .withReplayParticipants(roster.getFirst(), roster.get(2), roster)
-                .withViewerUserId(firstUserId);
+                .toBuilder().player(roster.getFirst()).opponent(roster.get(2)).players(roster).viewerUserId(firstUserId).build();
 
         String serialized = jsonMapper.writeValueAsString(event);
         assertThat(event.eventSchemaVersion()).isEqualTo(2);
@@ -187,14 +226,38 @@ class MatchmakingServiceTest {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         UUID unrelatedUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
-        var found = service.joinQueue(secondUserId, "second", "second@example.com", "socket-second");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "second",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         service.acceptMatch(found.getFirst().event().matchId(), firstUserId, "socket-first");
-        service.joinQueue(unrelatedUserId, "waiting", "waiting@example.com", "socket-waiting");
+        service.joinQueue(new QueueJoinRequest(
+                unrelatedUserId,
+                "waiting",
+                "waiting@example.com",
+                "socket-waiting",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         CountDownLatch startEntered = new CountDownLatch(1);
         CountDownLatch releaseStart = new CountDownLatch(1);
-        when(matchService.startMatch(any(), any())).thenAnswer(invocation -> {
+        when(matchService.startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true))).thenAnswer(invocation -> {
             startEntered.countDown();
             if (!releaseStart.await(5, TimeUnit.SECONDS)) {
                 throw new AssertionError("timed out waiting to release match persistence");
@@ -237,31 +300,47 @@ class MatchmakingServiceTest {
                     throw new AssertionError("timed out waiting to release the first rating read");
                 }
             }
-            return userIds.stream().collect(java.util.stream.Collectors.toMap(
+            return userIds.stream().collect(Collectors.toMap(
                     userId -> userId,
                     ignored -> EloRatingService.DEFAULT_RATING));
         });
-        service = new MatchmakingService(
-                matchService,
+        service = new MatchmakingService(matchService,
                 clock,
                 new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
-                ratingService);
+                ratingService,
+                new MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Future<List<OutboundMatchmakingEvent>> firstJoin = executor.submit(() ->
-                    service.joinQueue(firstUserId, "first", "first@example.com", "socket-first"));
+                    service.joinQueue(new QueueJoinRequest(
+                            firstUserId,
+                            "first",
+                            "first@example.com",
+                            "socket-first",
+                            MatchMode.ONES,
+                            null,
+                            null,
+                            QueuePool.REGISTERED)));
             assertThat(firstRatingReadEntered.await(2, TimeUnit.SECONDS)).isTrue();
 
-            var secondJoin = service.joinQueue(
-                    secondUserId, "second", "second@example.com", "socket-second");
+            var secondJoin = service.joinQueue(new QueueJoinRequest(
+                    secondUserId,
+                    "second",
+                    "second@example.com",
+                    "socket-second",
+                    MatchMode.ONES,
+                    null,
+                    null,
+                    QueuePool.REGISTERED));
             assertThat(secondJoin).singleElement()
-                    .extracting(event -> event.event().type())
+                    .extracting(event -> event.event().type().name())
                     .isEqualTo("QUEUE_WAITING");
 
             releaseFirstRatingRead.countDown();
             assertThat(firstJoin.get(2, TimeUnit.SECONDS)).hasSize(2)
-                    .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                    .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
         } finally {
             releaseFirstRatingRead.countDown();
             executor.shutdownNow();
@@ -272,7 +351,7 @@ class MatchmakingServiceTest {
     void finalQueueAcceptanceAndCustomStartCannotPersistOverlappingMatches() throws Exception {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        MatchRuntimeState runtimeState = new MatchRuntimeState();
+        MatchRuntimeState runtimeState = new MatchRuntimeState(new com.example.botfight.service.match.MatchPhaseService());
         MatchPersistenceService persistence = mock(MatchPersistenceService.class);
         CountDownLatch persistenceEntered = new CountDownLatch(1);
         CountDownLatch releasePersistence = new CountDownLatch(1);
@@ -290,25 +369,44 @@ class MatchmakingServiceTest {
             }
             return match;
         });
-        MatchLifecycleService lifecycle = new MatchLifecycleService(
-                runtimeState,
+        MatchLifecycleService lifecycle = new MatchLifecycleService(runtimeState,
+                new com.example.botfight.service.match.MatchLockService(),
                 persistence,
                 mock(MatchConnectionService.class),
                 mock(MatchEventFactory.class),
                 mock(MatchSubmissionService.class),
                 mock(MatchChatService.class),
-                clock);
+                clock,
+                new com.example.botfight.service.matchmaking.MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
         when(matchService.isMatchStartReserved(any(UUID.class))).thenAnswer(invocation ->
                 runtimeState.isMatchStartReserved(invocation.getArgument(0)));
-        when(matchService.startMatch(any(), any())).thenAnswer(invocation -> lifecycle.startMatch(
-                invocation.getArgument(0), invocation.getArgument(1)));
+        when(matchService.startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true))).thenAnswer(invocation -> lifecycle.startMatch(invocation.getArgument(0), invocation.getArgument(1), MatchMode.ONES, true));
 
-        MatchmakingService queue = new MatchmakingService(
-                matchService,
+        MatchmakingService queue = new MatchmakingService(matchService,
                 clock,
-                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)));
-        queue.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
-        var found = queue.joinQueue(secondUserId, "second", "second@example.com", "socket-second");
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
+                new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)),
+                new MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
+        queue.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = queue.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "second",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         UUID pendingMatchId = found.getFirst().event().matchId();
         queue.acceptMatch(pendingMatchId, firstUserId, "socket-first");
 
@@ -321,7 +419,7 @@ class MatchmakingServiceTest {
             List<MatchEntrant> customRoster = List.of(
                     new MatchEntrant(firstUserId, "first", "first@example.com", null, 1),
                     new MatchEntrant(secondUserId, "second", "second@example.com", null, 2));
-            assertThatThrownBy(() -> lifecycle.startTeamMatch(customRoster, MatchMode.CUSTOM, false))
+            assertThatThrownBy(() -> lifecycle.startTeamMatch(customRoster, MatchMode.CUSTOM, false, null, null))
                     .isInstanceOf(AuthException.class)
                     .hasMessageContaining("already in a match or starting a match");
             assertThatThrownBy(() -> queue.cancelConflictingQueueState(List.of(firstUserId, secondUserId)))
@@ -347,10 +445,17 @@ class MatchmakingServiceTest {
     @Test
     void externalStartPreparationRejectsQueuedUsersAndFencesNewJoinsUntilReleased() {
         UUID userId = UUID.randomUUID();
-        var waiting = service.joinQueue(
-                userId, "queued", "queued@example.com", "queued-socket");
+        var waiting = service.joinQueue(new QueueJoinRequest(
+                userId,
+                "queued",
+                "queued@example.com",
+                "queued-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         assertThat(waiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
 
         assertThatThrownBy(() -> service.prepareExternalMatchStart(List.of(userId)))
@@ -365,16 +470,30 @@ class MatchmakingServiceTest {
         assertThat(preparation.reservationId()).isNotNull();
         assertThat(preparation.cancellationEvents()).isEmpty();
         assertThat(service.hasTransientActivity(userId)).isFalse();
-        assertThatThrownBy(() -> service.joinQueue(
-                userId, "queued", "queued@example.com", "queued-socket"))
+        assertThatThrownBy(() -> service.joinQueue(new QueueJoinRequest(
+                userId,
+                "queued",
+                "queued@example.com",
+                "queued-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED)))
                 .isInstanceOf(AuthException.class)
                 .hasMessageContaining("already starting another match");
 
         service.releaseExternalMatchStart(preparation.reservationId());
-        assertThat(service.joinQueue(
-                userId, "queued", "queued@example.com", "queued-socket"))
+        assertThat(service.joinQueue(new QueueJoinRequest(
+                userId,
+                "queued",
+                "queued@example.com",
+                "queued-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED)))
                 .singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
     }
 
@@ -384,22 +503,23 @@ class MatchmakingServiceTest {
         EloRatingService ratingService = mock(EloRatingService.class);
         when(ratingService.ratingsFor(any(), eq(MatchMode.TWOS))).thenAnswer(invocation -> {
             List<UUID> userIds = invocation.getArgument(0);
-            return userIds.stream().collect(java.util.stream.Collectors.toMap(
+            return userIds.stream().collect(Collectors.toMap(
                     userId -> userId,
                     userId -> ratingsByUserId.get(userId)));
         });
-        service = new MatchmakingService(
-                matchService,
+        service = new MatchmakingService(matchService,
                 clock,
                 new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
-                ratingService);
+                ratingService,
+                new MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
 
         for (int index = 0; index < 36; index++) {
             UUID ownerId = new UUID(1, index * 2L + 1);
             UUID teammateId = new UUID(1, index * 2L + 2);
             ratingsByUserId.put(ownerId, index * 1000);
             ratingsByUserId.put(teammateId, index * 1000);
-            var waiting = service.joinQueue(
+            var waiting = service.joinQueue(new QueueJoinRequest(
                     ownerId,
                     "owner-" + index,
                     "owner-" + index + "@example.com",
@@ -408,9 +528,10 @@ class MatchmakingServiceTest {
                     List.of(
                             entrant(ownerId, "owner-" + index, "owner-" + index + "@example.com", "owner-socket-" + index),
                             entrant(teammateId, "teammate-" + index, "teammate-" + index + "@example.com", "teammate-socket-" + index)),
-                    UUID.randomUUID());
+                    UUID.randomUUID(),
+                    QueuePool.REGISTERED));
             assertThat(waiting).hasSize(2).allSatisfy(event ->
-                    assertThat(event.event().type()).isEqualTo("QUEUE_WAITING"));
+                    assertThat(event.event().type()).isEqualTo(MatchEventType.QUEUE_WAITING));
         }
 
         UUID highOwnerOne = new UUID(2, 1);
@@ -420,7 +541,7 @@ class MatchmakingServiceTest {
         for (UUID userId : List.of(highOwnerOne, highTeammateOne, highOwnerTwo, highTeammateTwo)) {
             ratingsByUserId.put(userId, 100_000);
         }
-        service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
                 highOwnerOne,
                 "high-owner-one",
                 "high-owner-one@example.com",
@@ -429,8 +550,9 @@ class MatchmakingServiceTest {
                 List.of(
                         entrant(highOwnerOne, "high-owner-one", "high-owner-one@example.com", "high-owner-one-socket"),
                         entrant(highTeammateOne, "high-teammate-one", "high-teammate-one@example.com", "high-teammate-one-socket")),
-                UUID.randomUUID());
-        var found = service.joinQueue(
+                UUID.randomUUID(),
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
                 highOwnerTwo,
                 "high-owner-two",
                 "high-owner-two@example.com",
@@ -439,10 +561,11 @@ class MatchmakingServiceTest {
                 List.of(
                         entrant(highOwnerTwo, "high-owner-two", "high-owner-two@example.com", "high-owner-two-socket"),
                         entrant(highTeammateTwo, "high-teammate-two", "high-teammate-two@example.com", "high-teammate-two-socket")),
-                UUID.randomUUID());
+                UUID.randomUUID(),
+                QueuePool.REGISTERED));
 
         assertThat(found).hasSize(4).allSatisfy(event ->
-                assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
         assertThat(found).extracting(OutboundMatchmakingEvent::principalName)
                 .containsExactlyInAnyOrder(
                         "high-owner-one@example.com",
@@ -462,49 +585,46 @@ class MatchmakingServiceTest {
         UUID registered = UUID.randomUUID();
         UUID guestTwo = UUID.randomUUID();
 
-        var guestWaiting = service.joinQueue(
+        var guestWaiting = service.joinQueue(new QueueJoinRequest(
                 guestOne,
                 "Guest-ONE",
                 "guest-one@example.invalid",
                 "guest-socket-one",
                 MatchMode.ONES,
-                List.of(new MatchEntrant(
-                        guestOne, "Guest-ONE", "guest-one@example.invalid", "guest-socket-one")),
                 null,
-                QueuePool.GUEST);
-        var registeredWaiting = service.joinQueue(
+                null,
+                QueuePool.GUEST));
+        var registeredWaiting = service.joinQueue(new QueueJoinRequest(
                 registered,
                 "registered",
                 "registered@example.com",
                 "registered-socket",
                 MatchMode.ONES,
-                List.of(new MatchEntrant(
-                        registered, "registered", "registered@example.com", "registered-socket")),
                 null,
-                QueuePool.REGISTERED);
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(guestWaiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
         assertThat(registeredWaiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
 
         when(matchService.startMatch(any(), any(), eq(MatchMode.ONES), eq(false)))
                 .thenReturn(List.of());
-        var guestMatchFound = service.joinQueue(
+        var guestMatchFound = service.joinQueue(new QueueJoinRequest(
                 guestTwo,
                 "Guest-TWO",
                 "guest-two@example.invalid",
                 "guest-socket-two",
                 MatchMode.ONES,
-                List.of(new MatchEntrant(
-                        guestTwo, "Guest-TWO", "guest-two@example.invalid", "guest-socket-two")),
                 null,
-                QueuePool.GUEST);
+                null,
+                QueuePool.GUEST));
 
         assertThat(guestMatchFound).hasSize(2)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
         UUID pendingMatchId = guestMatchFound.getFirst().event().matchId();
         service.acceptMatch(pendingMatchId, guestOne, "guest-socket-one");
         service.acceptMatch(pendingMatchId, guestTwo, "guest-socket-two");
@@ -517,8 +637,24 @@ class MatchmakingServiceTest {
     void acceptanceStatusIsRecipientRelativeWhenTheOtherPlayerAcceptsFirst() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "alpha-secret", "first@example.com", "socket-first");
-        var found = service.joinQueue(secondUserId, "bravo-secret", "second@example.com", "socket-second");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "alpha-secret",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "bravo-secret",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         var accepted = service.acceptMatch(
                 found.getFirst().event().matchId(), secondUserId, "socket-second");
@@ -543,41 +679,61 @@ class MatchmakingServiceTest {
     @Test
     void finalDisconnectFromAnotherTabRemovesTheUserQueueEntry() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
-                "socket-queue-tab");
+                "socket-queue-tab",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(service.markDisconnected("first@example.com", "socket-final-tab")).isTrue();
-        var found = service.joinQueue(
+        var found = service.joinQueue(new QueueJoinRequest(
                 UUID.randomUUID(),
                 "bravo-secret",
                 "second@example.com",
-                "socket-second");
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(found).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
-        verify(matchService, never()).startMatch(any(), any());
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
     void disconnectKeepsAQueuedPlayerOutOfMatchingDuringTheReconnectGracePeriod() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(service.markDisconnected("first@example.com", "socket-first")).isTrue();
-        var waiting = service.joinQueue(
+        var waiting = service.joinQueue(new QueueJoinRequest(
                 UUID.randomUUID(),
                 "second",
                 "second@example.com",
-                "socket-second");
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(waiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
-        verify(matchService, never()).startMatch(any(), any());
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
@@ -587,26 +743,42 @@ class MatchmakingServiceTest {
         EloRatingService ratingService = mock(EloRatingService.class);
         when(ratingService.ratingsFor(any(), eq(MatchMode.ONES)))
                 .thenReturn(Map.of(olderUserId, 1100, newerUserId, 1290));
-        service = new MatchmakingService(
-                matchService,
+        service = new MatchmakingService(matchService,
                 clock,
                 new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
-                ratingService);
+                ratingService,
+                new MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
 
-        service.joinQueue(olderUserId, "older", "older@example.com", "older-socket");
+        service.joinQueue(new QueueJoinRequest(
+                olderUserId,
+                "older",
+                "older@example.com",
+                "older-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         clock.advance(Duration.ofSeconds(45));
-        var waiting = service.joinQueue(
-                newerUserId, "newer", "newer@example.com", "newer-socket");
+        var waiting = service.joinQueue(new QueueJoinRequest(
+                newerUserId,
+                "newer",
+                "newer@example.com",
+                "newer-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(waiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
         clock.advance(Duration.ofSeconds(44));
         assertThat(service.sweepQueues()).isEmpty();
         clock.advance(Duration.ofSeconds(1));
 
         assertThat(service.sweepQueues()).hasSize(2)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
     }
 
     @Test
@@ -616,23 +788,39 @@ class MatchmakingServiceTest {
         EloRatingService ratingService = mock(EloRatingService.class);
         when(ratingService.ratingsFor(any(), eq(MatchMode.ONES)))
                 .thenReturn(Map.of(firstUserId, 1100, secondUserId, 1490));
-        service = new MatchmakingService(
-                matchService,
+        service = new MatchmakingService(matchService,
                 clock,
                 new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
-                ratingService);
+                ratingService,
+                new MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
 
-        service.joinQueue(firstUserId, "first", "first@example.com", "first-socket");
-        var waiting = service.joinQueue(
-                secondUserId, "second", "second@example.com", "second-socket");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "first-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var waiting = service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "second",
+                "second@example.com",
+                "second-socket",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(waiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
         clock.advance(Duration.ofSeconds(105));
 
         assertThat(service.sweepQueues()).hasSize(2)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
     }
 
     @Test
@@ -640,22 +828,38 @@ class MatchmakingServiceTest {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         Instant queuedAt = clock.instant();
-        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         service.markDisconnected("first@example.com", "socket-first");
-        service.joinQueue(secondUserId, "second", "second@example.com", "socket-second");
+        service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "second",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         clock.advance(Duration.ofSeconds(9));
         var resumed = service.resumeQueuedPlayer(firstUserId, "socket-replacement");
 
         assertThat(resumed).singleElement()
                 .satisfies(event -> {
-                    assertThat(event.event().type()).isEqualTo("QUEUE_WAITING");
+                    assertThat(event.event().type()).isEqualTo(MatchEventType.QUEUE_WAITING);
                     assertThat(event.event().queueStartedAt()).isEqualTo(queuedAt);
                 });
         var found = service.sweepQueues();
         assertThat(found).hasSize(2)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
-        verify(matchService, never()).startMatch(any(), any());
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
@@ -665,7 +869,7 @@ class MatchmakingServiceTest {
         UUID firstSoloId = UUID.randomUUID();
         UUID secondSoloId = UUID.randomUUID();
 
-        service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
                 partyOwnerId,
                 "party-owner",
                 "party-owner@example.com",
@@ -674,38 +878,58 @@ class MatchmakingServiceTest {
                 List.of(
                         entrant(partyOwnerId, "party-owner", "party-owner@example.com", "party-owner-socket"),
                         entrant(teammateId, "teammate", "teammate@example.com", "teammate-socket")),
-                UUID.randomUUID());
+                UUID.randomUUID(),
+                QueuePool.REGISTERED));
         service.markDisconnected("teammate@example.com", "teammate-socket");
-        service.joinQueue(firstSoloId, "solo-one", "solo-one@example.com", "solo-one-socket", MatchMode.TWOS);
-        var waiting = service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
+                firstSoloId,
+                "solo-one",
+                "solo-one@example.com",
+                "solo-one-socket",
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var waiting = service.joinQueue(new QueueJoinRequest(
                 secondSoloId,
                 "solo-two",
                 "solo-two@example.com",
                 "solo-two-socket",
-                MatchMode.TWOS);
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(waiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
 
         service.resumeQueuedPlayer(teammateId, "teammate-replacement-socket");
         var found = service.sweepQueues();
 
         assertThat(found).hasSize(4)
-                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND));
     }
 
     @Test
     void expiredDisconnectedQueueEntryIsRemovedAfterTheGracePeriod() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         service.markDisconnected("first@example.com", "socket-first");
 
         clock.advance(Duration.ofSeconds(10));
         var expired = service.sweepQueues();
 
         assertThat(expired).singleElement().satisfies(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_ERROR");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_ERROR);
             assertThat(event.event().message()).contains("10 seconds");
         });
         assertThat(service.resumeQueuedPlayer(firstUserId, "socket-too-late")).isEmpty();
@@ -714,13 +938,21 @@ class MatchmakingServiceTest {
     @Test
     void reconnectDoesNotConsumeTheNormalQueueJoinRateLimit() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         service.markDisconnected("first@example.com", "socket-first");
 
         for (int attempt = 0; attempt < 5; attempt++) {
             assertThat(service.resumeQueuedPlayer(firstUserId, "socket-replacement-" + attempt))
                     .singleElement()
-                    .extracting(event -> event.event().type())
+                    .extracting(event -> event.event().type().name())
                     .isEqualTo("QUEUE_WAITING");
         }
     }
@@ -729,41 +961,89 @@ class MatchmakingServiceTest {
     void provisionalMatchSurvivesSocketReplacementBeforeAcceptance() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "alpha-secret", "first@example.com", "socket-first");
-        var found = service.joinQueue(secondUserId, "bravo-secret", "second@example.com", "socket-second");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "alpha-secret",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "bravo-secret",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         service.markDisconnected("first@example.com", "socket-first");
         var resumed = service.resumePendingMatch(firstUserId, "socket-replacement");
 
         assertThat(resumed).hasSize(2).allSatisfy(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_FOUND");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND);
             assertThat(event.event().status()).isEqualTo("MATCH_ACCEPT");
             assertThat(event.event().matchId()).isEqualTo(found.getFirst().event().matchId());
         });
         assertIdentityFreeAcceptanceEvents(resumed, "alpha-secret", firstUserId, "bravo-secret", secondUserId);
-        verify(matchService, never()).startMatch(any(), any());
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
     void acceptsDuringTheTwoSecondHiddenGraceAfterTheVisibleWindow() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "alpha-secret", "first@example.com", "socket-first");
-        var found = service.joinQueue(secondUserId, "bravo-secret", "second@example.com", "socket-second");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "alpha-secret",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "bravo-secret",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         service.acceptMatch(found.getFirst().event().matchId(), firstUserId, "socket-first");
         clock.advance(Duration.ofSeconds(21));
         service.acceptMatch(found.getFirst().event().matchId(), secondUserId, "socket-second");
 
-        verify(matchService).startMatch(any(), any());
+        verify(matchService).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
     void expiresAnUnacceptedMatchAfterTheAcceptanceWindowAndGracePeriod() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "alpha-secret", "first@example.com", "socket-first");
-        var found = service.joinQueue(secondUserId, "bravo-secret", "second@example.com", "socket-second");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "alpha-secret",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "bravo-secret",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         UUID pendingMatchId = found.getFirst().event().matchId();
         Instant expectedDeadline = found.getFirst().event().matchAcceptanceEndsAt();
 
@@ -771,45 +1051,77 @@ class MatchmakingServiceTest {
         var expired = service.resolvePendingMatchTimeout(pendingMatchId, expectedDeadline);
 
         assertThat(expired).hasSize(2).allSatisfy(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_ACCEPTANCE_EXPIRED");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_ACCEPTANCE_EXPIRED);
             assertThat(event.event().status()).isEqualTo("MATCH_ACCEPT");
         });
         assertIdentityFreeAcceptanceEvents(expired, "alpha-secret", firstUserId, "bravo-secret", secondUserId);
         assertThat(service.resolvePendingMatchTimeout(pendingMatchId, expectedDeadline)).isEmpty();
-        verify(matchService, never()).startMatch(any(), any());
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
     void aLateAcceptanceRequestReturnsExpiredEventsAndCannotStartTheMatch() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "alpha-secret", "first@example.com", "socket-first");
-        var found = service.joinQueue(secondUserId, "bravo-secret", "second@example.com", "socket-second");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "alpha-secret",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "bravo-secret",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
         UUID pendingMatchId = found.getFirst().event().matchId();
 
         clock.advance(Duration.ofSeconds(22));
         var expired = service.acceptMatch(pendingMatchId, firstUserId, "socket-first");
 
         assertThat(expired).hasSize(2).allSatisfy(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_ACCEPTANCE_EXPIRED");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_ACCEPTANCE_EXPIRED);
             assertThat(event.event().status()).isEqualTo("MATCH_ACCEPT");
         });
         assertIdentityFreeAcceptanceEvents(expired, "alpha-secret", firstUserId, "bravo-secret", secondUserId);
-        verify(matchService, never()).startMatch(any(), any());
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
     void cancellationNotifiesBothPlayersWithoutParticipantData() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "alpha-secret", "first@example.com", "socket-first");
-        var found = service.joinQueue(secondUserId, "bravo-secret", "second@example.com", "socket-second");
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "alpha-secret",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "bravo-secret",
+                "second@example.com",
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         var cancelled = service.cancelPendingMatch(
                 found.getFirst().event().matchId(), firstUserId, "socket-first-tab-two");
 
         assertThat(cancelled).hasSize(2).allSatisfy(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_ACCEPTANCE_CANCELLED");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_ACCEPTANCE_CANCELLED);
             assertThat(event.event().status()).isEqualTo("MATCH_ACCEPT");
         });
         assertIdentityFreeAcceptanceEvents(cancelled, "alpha-secret", firstUserId, "bravo-secret", secondUserId);
@@ -819,23 +1131,31 @@ class MatchmakingServiceTest {
     @Test
     void leavingQueueRemovesThePlayerBeforePairing() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
                 firstUserId,
                 "first",
                 "first@example.com",
-                "socket-first");
+                "socket-first",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         service.leaveQueue(firstUserId);
-        var waiting = service.joinQueue(
+        var waiting = service.joinQueue(new QueueJoinRequest(
                 UUID.randomUUID(),
                 "second",
                 "second@example.com",
-                "socket-second");
+                "socket-second",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(waiting).singleElement()
-                .extracting(event -> event.event().type())
+                .extracting(event -> event.event().type().name())
                 .isEqualTo("QUEUE_WAITING");
-        verify(matchService, never()).startMatch(any(), any());
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
@@ -848,35 +1168,75 @@ class MatchmakingServiceTest {
                         UUID.randomUUID(),
                         null));
 
-        assertThatThrownBy(() -> service.joinQueue(
+        assertThatThrownBy(() -> service.joinQueue(new QueueJoinRequest(
                 userId,
                 "pilot",
                 "pilot@example.com",
-                "socket-one"))
+                "socket-one",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED)))
                 .isInstanceOf(AuthException.class)
                 .hasMessageContaining("active match");
 
-        verify(matchService, never()).startMatch(any(), any());
+        verify(matchService, never()).startMatch(any(), any(), ArgumentMatchers.eq(MatchMode.ONES), ArgumentMatchers.eq(true));
     }
 
     @Test
     void repeatedQueueAttemptsAreRateLimitedPerUser() {
         UUID userId = UUID.randomUUID();
 
-        service.joinQueue(userId, "pilot", "pilot@example.com", "socket-one");
-        service.joinQueue(userId, "pilot", "pilot@example.com", "socket-two");
-        service.joinQueue(userId, "pilot", "pilot@example.com", "socket-three");
-
-        assertThatThrownBy(() -> service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
                 userId,
                 "pilot",
                 "pilot@example.com",
-                "socket-four"))
+                "socket-one",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
+                userId,
+                "pilot",
+                "pilot@example.com",
+                "socket-two",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
+                userId,
+                "pilot",
+                "pilot@example.com",
+                "socket-three",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
+
+        assertThatThrownBy(() -> service.joinQueue(new QueueJoinRequest(
+                userId,
+                "pilot",
+                "pilot@example.com",
+                "socket-four",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED)))
                 .isInstanceOf(RateLimitExceededException.class)
                 .hasMessage(RateLimitExceededException.GENERIC_MESSAGE);
 
         clock.advance(Duration.ofSeconds(3));
-        service.joinQueue(userId, "pilot", "pilot@example.com", "socket-four");
+        service.joinQueue(new QueueJoinRequest(
+                userId,
+                "pilot",
+                "pilot@example.com",
+                "socket-four",
+                MatchMode.ONES,
+                null,
+                null,
+                QueuePool.REGISTERED));
     }
 
     @Test
@@ -890,31 +1250,38 @@ class MatchmakingServiceTest {
                 entrant(partyOwnerId, "party-owner", "party-owner@example.com", "party-owner-socket"),
                 entrant(teammateId, "teammate", "teammate@example.com", null));
 
-        var partyWaiting = service.joinQueue(
+        var partyWaiting = service.joinQueue(new QueueJoinRequest(
                 partyOwnerId,
                 "party-owner",
                 "party-owner@example.com",
                 "party-owner-socket",
                 MatchMode.TWOS,
                 party,
-                partyId);
-        service.joinQueue(
+                partyId,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
                 firstSoloId,
                 "solo-one",
                 "solo-one@example.com",
                 "solo-one-socket",
-                MatchMode.TWOS);
-        var found = service.joinQueue(
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
                 secondSoloId,
                 "solo-two",
                 "solo-two@example.com",
                 "solo-two-socket",
-                MatchMode.TWOS);
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
         assertThat(partyWaiting).hasSize(2).allSatisfy(event ->
-                assertThat(event.event().type()).isEqualTo("QUEUE_WAITING"));
+                assertThat(event.event().type()).isEqualTo(MatchEventType.QUEUE_WAITING));
         assertThat(found).hasSize(4).allSatisfy(event -> {
-            assertThat(event.event().type()).isEqualTo("MATCH_FOUND");
+            assertThat(event.event().type()).isEqualTo(MatchEventType.MATCH_FOUND);
             assertThat(event.event().status()).isEqualTo("MATCH_ACCEPT");
         });
 
@@ -925,7 +1292,7 @@ class MatchmakingServiceTest {
         service.acceptMatch(matchId, secondSoloId, "solo-two-socket");
 
         ArgumentCaptor<List> entrantsCaptor = ArgumentCaptor.forClass(List.class);
-        verify(matchService).startTeamMatch(entrantsCaptor.capture(), eq(MatchMode.TWOS));
+        verify(matchService).startTeamMatch(entrantsCaptor.capture(), eq(MatchMode.TWOS), ArgumentMatchers.anyBoolean(), ArgumentMatchers.eq(null), ArgumentMatchers.eq(null));
         List<?> startedEntrants = entrantsCaptor.getValue();
         assertThat(startedEntrants).hasSize(4);
         assertThat(startedEntrants).extracting(entry -> ((MatchEntrant) entry).teamNumber())
@@ -945,17 +1312,44 @@ class MatchmakingServiceTest {
         UUID secondUserId = UUID.randomUUID();
         UUID thirdUserId = UUID.randomUUID();
         UUID fourthUserId = UUID.randomUUID();
-        service.joinQueue(firstUserId, "one", "one@example.com", "socket-one", MatchMode.TWOS);
-        service.joinQueue(secondUserId, "two", "two@example.com", "socket-two", MatchMode.TWOS);
-        service.joinQueue(thirdUserId, "three", "three@example.com", "socket-three", MatchMode.TWOS);
-        var found = service.joinQueue(
+        service.joinQueue(new QueueJoinRequest(
+                firstUserId,
+                "one",
+                "one@example.com",
+                "socket-one",
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
+                secondUserId,
+                "two",
+                "two@example.com",
+                "socket-two",
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        service.joinQueue(new QueueJoinRequest(
+                thirdUserId,
+                "three",
+                "three@example.com",
+                "socket-three",
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
+        var found = service.joinQueue(new QueueJoinRequest(
                 fourthUserId,
                 "four",
                 "four@example.com",
                 "socket-four",
-                MatchMode.TWOS);
+                MatchMode.TWOS,
+                null,
+                null,
+                QueuePool.REGISTERED));
 
-        assertThat(found).hasSize(4).extracting(event -> event.event().type())
+        assertThat(found).hasSize(4).extracting(event -> event.event().type().name())
                 .containsOnly("MATCH_FOUND");
         UUID matchId = found.getFirst().event().matchId();
         service.acceptMatch(matchId, firstUserId, "socket-one");
@@ -963,18 +1357,20 @@ class MatchmakingServiceTest {
         service.acceptMatch(matchId, thirdUserId, "socket-three");
         service.acceptMatch(matchId, fourthUserId, "socket-four");
 
-        verify(matchService).startTeamMatch(any(), eq(MatchMode.TWOS));
+        verify(matchService).startTeamMatch(any(), eq(MatchMode.TWOS), ArgumentMatchers.anyBoolean(), ArgumentMatchers.eq(null), ArgumentMatchers.eq(null));
     }
 
     private List<String> runEqualRatingTwosSelection() {
         MatchService isolatedMatchService = mock(MatchService.class);
         when(isolatedMatchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
         when(isolatedMatchService.isMatchStartReserved(any(UUID.class))).thenReturn(false);
-        when(isolatedMatchService.startTeamMatch(any(), eq(MatchMode.TWOS))).thenReturn(List.of());
-        MatchmakingService isolatedQueue = new MatchmakingService(
-                isolatedMatchService,
+        when(isolatedMatchService.startTeamMatch(any(), eq(MatchMode.TWOS), ArgumentMatchers.anyBoolean(), ArgumentMatchers.eq(null), ArgumentMatchers.eq(null))).thenReturn(List.of());
+        MatchmakingService isolatedQueue = new MatchmakingService(isolatedMatchService,
                 clock,
-                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)));
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
+                new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)),
+                new MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
 
         List<UUID> userIds = List.of(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
@@ -984,12 +1380,15 @@ class MatchmakingServiceTest {
         List<String> sockets = List.of("socket-1", "socket-2", "socket-3", "socket-4");
         List<OutboundMatchmakingEvent> found = List.of();
         for (int index = 0; index < userIds.size(); index++) {
-            found = isolatedQueue.joinQueue(
+            found = isolatedQueue.joinQueue(new QueueJoinRequest(
                     userIds.get(index),
                     "player-" + index,
                     "player-" + index + "@example.com",
                     sockets.get(index),
-                    MatchMode.TWOS);
+                    MatchMode.TWOS,
+                    null,
+                    null,
+                    QueuePool.REGISTERED));
         }
         UUID pendingMatchId = found.getFirst().event().matchId();
         for (int index = 0; index < userIds.size(); index++) {
@@ -999,8 +1398,7 @@ class MatchmakingServiceTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<MatchEntrant>> entrantsCaptor =
                 (ArgumentCaptor<List<MatchEntrant>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
-        verify(isolatedMatchService, times(1)).startTeamMatch(
-                entrantsCaptor.capture(), eq(MatchMode.TWOS));
+        verify(isolatedMatchService, times(1)).startTeamMatch(entrantsCaptor.capture(), eq(MatchMode.TWOS), ArgumentMatchers.anyBoolean(), ArgumentMatchers.eq(null), ArgumentMatchers.eq(null));
         return entrantsCaptor.getValue().stream()
                 .map(entrant -> entrant.userId() + ":" + entrant.teamNumber())
                 .sorted()
@@ -1067,34 +1465,21 @@ class MatchmakingServiceTest {
     }
 
     private MatchmakingEventDTO startedEvent(UUID firstUserId, UUID secondUserId) {
-        return new MatchmakingEventDTO(
-                "MATCH_STARTED",
-                UUID.randomUUID(),
-                null,
-                "LOADOUT_SELECT",
-                new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, false, 0, "melee", false),
-                new MatchmakingPlayerDTO(secondUserId, "bravo-secret", 2, false, 0, "melee", false),
-                List.of(
-                        new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, false, 0, "melee", false),
-                        new MatchmakingPlayerDTO(secondUserId, "bravo-secret", 2, false, 0, "melee", false)),
-                clock.instant(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                "duel-v1",
-                null,
-                1,
-                2,
-                "Match accepted.",
-                null,
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                List.of(),
-                100);
+        return MatchmakingEventDTO.builder()
+                        .type(MatchEventType.MATCH_STARTED)
+                        .matchId(UUID.randomUUID())
+                        .status("LOADOUT_SELECT")
+                        .player(new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, 1 <= 2 ? 1 : 1, false, 0, "melee", false, null, null, null))
+                        .opponent(new MatchmakingPlayerDTO(secondUserId, "bravo-secret", 2, 2 <= 2 ? 2 : 1, false, 0, "melee", false, null, null, null))
+                        .players(List.of(
+                        new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, 1 <= 2 ? 1 : 1, false, 0, "melee", false, null, null, null),
+                        new MatchmakingPlayerDTO(secondUserId, "bravo-secret", 2, 2 <= 2 ? 2 : 1, false, 0, "melee", false, null, null, null)))
+                        .serverNow(clock.instant())
+                        .rulesetVersion("duel-v1")
+                        .roundNumber(1)
+                        .message("Match accepted.")
+                        .roundBrains(List.of())
+                        .abilityOffers(List.of())
+                        .viewerUserId(new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, 1 <= 2 ? 1 : 1, false, 0, "melee", false, null, null, null) == null ? null : new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, 1 <= 2 ? 1 : 1, false, 0, "melee", false, null, null, null).userId()).build();
     }
 }

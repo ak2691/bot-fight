@@ -1,5 +1,10 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.submission.BrainSchemaValidator;
+
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -17,7 +22,7 @@ import com.example.botfight.service.match.model.MatchSubmissionResult;
 import com.example.botfight.service.matchmaking.MatchmakingEventsReady;
 import com.example.botfight.service.submission.BotSubmissionService;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
-import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
+import com.example.botfight.support.WorkerStub;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -30,12 +35,12 @@ import tools.jackson.databind.json.JsonMapper;
 class BotSubmissionServiceTest {
 
     private final JsonMapper jsonMapper = new JsonMapper();
-    private final CurrentUserService currentUserService = org.mockito.Mockito.mock(CurrentUserService.class);
-    private final SlidingWindowRateLimiter<UUID> rateLimiter = org.mockito.Mockito.mock(SlidingWindowRateLimiter.class);
-    private final MatchService matchService = org.mockito.Mockito.mock(MatchService.class);
-    private final ApplicationEventPublisher eventPublisher = org.mockito.Mockito.mock(ApplicationEventPublisher.class);
+    private final CurrentUserService currentUserService = Mockito.mock(CurrentUserService.class);
+    private final SlidingWindowRateLimiter<UUID> rateLimiter = Mockito.mock(SlidingWindowRateLimiter.class);
+    private final MatchService matchService = Mockito.mock(MatchService.class);
+    private final ApplicationEventPublisher eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
     private final BotSubmissionService service = new BotSubmissionService(
-            new BotSubmissionValidationService(jsonMapper, new GameConfigCatalog()),
+            new BotSubmissionValidationService(new BrainSchemaValidator(), WorkerStub.validating()),
             currentUserService,
             rateLimiter,
             matchService,
@@ -94,7 +99,7 @@ class BotSubmissionServiceTest {
 
         service.submit(payload, authentication);
 
-        var captor = org.mockito.ArgumentCaptor.forClass(BotSubmission.class);
+        var captor = ArgumentCaptor.forClass(BotSubmission.class);
         verify(matchService).acceptMatchSubmission(
                 eq(user.getId()), eq(matchId), eq(1), eq("BUILDING"), captor.capture());
         JsonNode storedBrain = jsonMapper.readTree(captor.getValue().getBrainPayload());
@@ -143,7 +148,7 @@ class BotSubmissionServiceTest {
         UUID matchId = UUID.randomUUID();
         AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
-        BotSubmissionValidationService failingValidator = org.mockito.Mockito.mock(BotSubmissionValidationService.class);
+        BotSubmissionValidationService failingValidator = Mockito.mock(BotSubmissionValidationService.class);
         when(matchService.isCurrentMatchSubmission(user.getId(), matchId, 1, "BUILDING"))
                 .thenReturn(true);
         when(failingValidator.validate(any(BotSubmissionPayloadDTO.class)))
@@ -172,7 +177,7 @@ class BotSubmissionServiceTest {
         payload.setClientBuildVersion("test");
         JsonNode brain = jsonMapper.readTree("""
                 {
-                  "version": "bot-logic-tree-v1",
+                  "version": "bot-logic-tree-v2",
                   "roots": [{"priority":1,"branches":[
                     {"id":"node-1","priority":1,"branchType":"if","actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"conditions":[],"children":[]}
                   ]}]

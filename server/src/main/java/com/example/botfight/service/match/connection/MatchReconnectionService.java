@@ -1,16 +1,24 @@
 package com.example.botfight.service.match.connection;
 
+import com.example.botfight.service.match.MatchLifecycleService;
+
+import com.example.botfight.service.match.MatchLockService;
+
+import org.springframework.stereotype.Component;
+
+import com.example.botfight.service.match.MatchScheduler;
+import com.example.botfight.DTO.match.MatchEventType;
+
 import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.match.MatchPlaybackDTO;
-import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.match.event.MatchEventFactory;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
-import com.example.botfight.service.match.replay.MatchReplayService;
-import com.example.botfight.service.match.simulation.MatchSimulationService;
+import com.example.botfight.service.match.MatchPersistenceService;
+import com.example.botfight.service.match.MatchReplayService;
+import com.example.botfight.service.match.MatchSimulationService;
 import com.example.botfight.service.match.state.MatchRuntimeState;
 import java.time.Clock;
 import java.time.Duration;
@@ -18,54 +26,76 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Consumer;
 
 /** Resumes the active session and owns disconnect grace-period outcomes. */
+@Component
 public final class MatchReconnectionService {
+    private final MatchScheduler matchScheduler;
     private static final String COMPLETION_REASON_DISCONNECTION = "DISCONNECTION";
     private static final String COMPLETION_REASON_MUTUAL_DISCONNECTION = "MUTUAL_DISCONNECTION";
     private static final String COMPLETION_REASON_INITIAL_DISCONNECTION = "INITIAL_DISCONNECTION";
 
+    private final MatchLockService lockService;
     private final MatchRuntimeState state;
     private final Clock clock;
     private final MatchConnectionService connectionService;
     private final MatchPersistenceService persistenceService;
     private final MatchEventFactory eventFactory;
     private final MatchReplayService replayService;
-    private final Consumer<MatchSession> clearSession;
+    private final MatchLifecycleService lifecycleService;
 
     public MatchReconnectionService(
             MatchRuntimeState state,
+            MatchLockService lockService,
             Clock clock,
             MatchConnectionService connectionService,
             MatchPersistenceService persistenceService,
             MatchEventFactory eventFactory,
             MatchReplayService replayService,
-            Consumer<MatchSession> clearSession) {
+            MatchLifecycleService lifecycleService,
+            MatchScheduler matchScheduler) {
+        this.matchScheduler = matchScheduler;
         this.state = state;
+        this.lockService = lockService;
         this.clock = clock;
         this.connectionService = connectionService;
         this.persistenceService = persistenceService;
         this.eventFactory = eventFactory;
         this.replayService = replayService;
-        this.clearSession = clearSession;
+        this.lifecycleService = lifecycleService;
     }
 
     public UUID matchIdForUser(UUID userId) {
-        MatchSession activeSession = state.activeSessionsByUserId().get(userId);
+        MatchSession activeSession = state.activeSessionForUser(userId);
         return activeSession == null ? null : activeSession.matchId();
     }
 
+    /** Adds an authenticated tab while coordinating against session cleanup. */
     public void registerSocketSession(UUID userId, String socketSessionId) {
-        connectionService.registerSocket(userId, socketSessionId);
+        MatchSession session = state.activeSessionForUser(userId);
+        if (session == null || socketSessionId == null || socketSessionId.isBlank()) return;
+        lockService.withLock(session.matchId(), () -> {
+            MatchSession current = state.activeSessionForUser(userId);
+            if (current != null && current.matchId().equals(session.matchId())) {
+                connectionService.registerSocket(userId, socketSessionId);
+            }
+            return null;
+        });
     }
 
-    public boolean unregisterSocketSession(UUID userId, String socketSessionId) {
-        return connectionService.unregisterSocket(userId, socketSessionId);
+    /** Removes one tab; the user remains present through any other live tabs. */
+    public void unregisterSocketSession(String principalName, String socketSessionId) {
+        MatchSession session = findSessionForPrincipal(principalName);
+        if (session == null) return;
+        lockService.withLock(session.matchId(), () -> {
+            session.players().stream().filter(player -> principalName.equals(player.principalName()))
+                    .findFirst().ifPresent(player -> connectionService.unregisterSocket(player.userId(), socketSessionId));
+            return null;
+        });
     }
 
     public ActiveMatchStatusDTO activeMatchStatus(UUID userId) {
-        MatchSession session = state.activeSessionsByUserId().get(userId);
+        MatchSession session = state.activeSessionForUser(userId);
         if (session == null) return ActiveMatchStatusDTO.none();
         if (terminalResultIsVisible(session)) {
             expireTerminalSession(session);
@@ -81,8 +111,8 @@ public final class MatchReconnectionService {
     }
 
     public boolean leaveCompletedMatch(UUID userId) {
-        MatchSession session = state.activeSessionsByUserId().get(userId);
-        if (session == null || !session.seriesComplete()
+        MatchSession session = state.activeSessionForUser(userId);
+        if (session == null || !session.ended()
                 || session.resultRevealsAt() == null
                 || Instant.now(clock).isBefore(session.resultRevealsAt())) {
             return false;
@@ -106,7 +136,7 @@ public final class MatchReconnectionService {
             String username,
             String principalName,
             String socketSessionId) {
-        MatchSession session = state.activeSessionsByUserId().get(userId);
+        MatchSession session = state.activeSessionForUser(userId);
         if (session == null) {
             return List.of(eventFactory.noActiveMatchEvent(userId, username, principalName));
         }
@@ -137,7 +167,7 @@ public final class MatchReconnectionService {
         if (session == null) return List.of();
         Instant now = Instant.now(clock);
         MatchPlayer disconnectedPlayer = playerForPrincipal(session, principalName);
-        if (session.seriesComplete()) {
+        if (session.ended()) {
             // The terminal replay still gets heartbeat-loss detection for
             // consistency, but it never creates a disconnect penalty.
             if (session.roundReadyAt() == null || !now.isBefore(session.roundReadyAt())) {
@@ -162,15 +192,16 @@ public final class MatchReconnectionService {
                 disconnectedPlayer.userId(),
                 socketSessionId);
         if (deadline == null) return List.of();
+        matchScheduler.disconnect(session.matchId(), principalName, deadline);
         return session.players().stream()
-                .map(player -> eventFactory.disconnectEventForPlayer(
-                        session,
-                        player,
-                        disconnectedPlayer,
-                        "PLAYER_DISCONNECTED",
-                        deadline,
-                        disconnectedPlayer.username()
-                                + " disconnected. The match ends in 30 seconds unless they return."))
+                .map(player -> eventFactory.disconnectEventForPlayer(session,
+                player,
+                disconnectedPlayer,
+                MatchEventType.PLAYER_DISCONNECTED,
+                deadline,
+                disconnectedPlayer.username()
+                                + " disconnected. The match ends in 30 seconds unless they return.",
+                null))
                 .toList();
     }
 
@@ -186,19 +217,20 @@ public final class MatchReconnectionService {
             deadline = connectionService.startDeferredDisconnect(disconnectedPlayer.userId());
         }
         if (deadline == null) return List.of();
+        matchScheduler.disconnect(session.matchId(), principalName, deadline);
         Instant activeDeadline = deadline;
         String disconnectMessage = disconnectedPlayer.username()
                 + " disconnected. The match ends in "
                 + disconnectGraceSecondsRemaining(activeDeadline)
                 + " seconds unless they return.";
         return session.players().stream()
-                .map(player -> eventFactory.disconnectEventForPlayer(
-                        session,
-                        player,
-                        disconnectedPlayer,
-                        "PLAYER_DISCONNECTED",
-                        activeDeadline,
-                        disconnectMessage))
+                .map(player -> eventFactory.disconnectEventForPlayer(session,
+                player,
+                disconnectedPlayer,
+                MatchEventType.PLAYER_DISCONNECTED,
+                activeDeadline,
+                disconnectMessage,
+                null))
                 .toList();
     }
 
@@ -240,7 +272,7 @@ public final class MatchReconnectionService {
         if (disconnectExpiredDuringInitialSelection(session)) {
             persistenceService.completeMatchAsDraw(
                     session.matchId(), COMPLETION_REASON_INITIAL_DISCONNECTION);
-            clearSession.accept(session);
+            lifecycleService.clearSession(session);
             return resultEvents(
                     session,
                     "DRAW",
@@ -253,7 +285,7 @@ public final class MatchReconnectionService {
         if (everyOpponentDisconnected) {
             persistenceService.completeMatchAsDraw(
                     session.matchId(), COMPLETION_REASON_MUTUAL_DISCONNECTION);
-            clearSession.accept(session);
+            lifecycleService.clearSession(session);
             return resultEvents(
                     session,
                     "DRAW",
@@ -266,7 +298,7 @@ public final class MatchReconnectionService {
                 disconnectedPlayer,
                 winner,
                 COMPLETION_REASON_DISCONNECTION);
-        clearSession.accept(session);
+        lifecycleService.clearSession(session);
         return resultEvents(
                 session,
                 "DISCONNECTION_WIN",
@@ -291,36 +323,33 @@ public final class MatchReconnectionService {
             return List.of();
         }
         if (session.resultRevealsAt() != null && now.isBefore(session.resultRevealsAt())) {
-            return List.of(eventFactory.forCompactReplay(
-                    session,
-                    replayPlayer,
-                    "SIMULATION_PREPARING",
-                    "SIMULATION_PREPARING",
-                    replayService.authorizedReplayForReconnect(
-                            session.replayPlayback(), session.playbackStartsAt(), now),
-                    "Replay ready.",
-                    0,
-                    session.playbackStartsAt(),
-                    session.resultRevealsAt(),
-                    session.roundReadyAt()));
-        }
-        if (session.seriesComplete()) {
-            return List.of(eventFactory.forCompactReplay(
-                    session,
-                    replayPlayer,
-                    "MATCH_RESULT_READY",
-                    "RESULT_READY",
-                    replayService.resultPayload(session.replayPlayback()),
-                    session.replayPlayback().message(),
-                    0,
-                    session.playbackStartsAt(),
-                    session.resultRevealsAt(),
-                    session.roundReadyAt()));
-        }
-        return List.of(eventFactory.forCompactReplay(
-                session,
+            return List.of(eventFactory.forCompactReplay(session,
                 replayPlayer,
+                MatchEventType.SIMULATION_PREPARING,
                 "SIMULATION_PREPARING",
+                replayService.authorizedReplayForReconnect(
+                            session.replayPlayback(), session.playbackStartsAt(), now),
+                "Replay ready.",
+                0,
+                session.playbackStartsAt(),
+                session.resultRevealsAt(),
+                session.roundReadyAt()));
+        }
+        if (session.ended()) {
+            return List.of(eventFactory.forCompactReplay(session,
+                replayPlayer,
+                MatchEventType.MATCH_RESULT_READY,
+                "RESULT_READY",
+                replayService.resultPayload(session.replayPlayback()),
+                session.replayPlayback().message(),
+                0,
+                session.playbackStartsAt(),
+                session.resultRevealsAt(),
+                session.roundReadyAt()));
+        }
+        return List.of(eventFactory.forCompactReplay(session,
+                replayPlayer,
+                MatchEventType.SIMULATION_PREPARING,
                 "SIMULATION_PREPARING",
                 session.replayPlayback(),
                 "Replay ready.",
@@ -339,24 +368,23 @@ public final class MatchReconnectionService {
                 session.matchId(),
                 MatchSimulationService.DUEL_RULESET_VERSION,
                 "COMPLETED",
-                null,
-                List.of(),
                 resultType,
                 winnerUserId,
                 message);
         Instant now = Instant.now(clock);
-        MatchSession resultSession = session.withoutReplay();
+        MatchSession resultSession = session.withoutReplay().resultReady();
         return resultSession.players().stream()
-                .map(player -> eventFactory.forPlayer(
-                        resultSession,
-                        player,
-                        "MATCH_RESULT_READY",
-                        "RESULT_READY",
-                        result,
-                        result.message(),
-                        0,
-                        now,
-                        now))
+                .map(player -> eventFactory.forPlayer(resultSession,
+                player,
+                MatchEventType.MATCH_RESULT_READY,
+                "RESULT_READY",
+                result,
+                result.message(),
+                0,
+                now,
+                now,
+                null,
+                null))
                 .toList();
     }
 
@@ -367,7 +395,7 @@ public final class MatchReconnectionService {
     }
 
     private void removePlayer(MatchPlayer player) {
-        state.activeSessionsByUserId().remove(player.userId());
+        state.removeUser(player.userId());
         connectionService.clear(player.userId());
     }
 
@@ -377,7 +405,7 @@ public final class MatchReconnectionService {
     }
 
     private boolean terminalResultIsVisible(MatchSession session) {
-        return session.seriesComplete()
+        return session.ended()
                 && session.resultRevealsAt() != null
                 && !Instant.now(clock).isBefore(session.resultRevealsAt());
     }

@@ -11,9 +11,6 @@ import static org.mockito.Mockito.when;
 import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.party.PartyMemberDTO;
 import com.example.botfight.domain.auth.AppUser;
-import com.example.botfight.repository.PartyInviteRepository;
-import com.example.botfight.repository.PartyMemberRepository;
-import com.example.botfight.repository.PartyRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
@@ -43,9 +40,6 @@ class PartyServiceTest {
     private final MutableClock clock = new MutableClock(now);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final UserRepository userRepository = mock(UserRepository.class);
-    private final PartyRepository partyRepository = mock(PartyRepository.class);
-    private final PartyMemberRepository partyMemberRepository = mock(PartyMemberRepository.class);
-    private final PartyInviteRepository partyInviteRepository = mock(PartyInviteRepository.class);
     private final MatchService matchService = mock(MatchService.class);
     private final SingleUserWebSocketSessionRegistry socketRegistry = mock(SingleUserWebSocketSessionRegistry.class);
     private final Authentication authentication = mock(Authentication.class);
@@ -54,9 +48,6 @@ class PartyServiceTest {
     private final PartyService service = new PartyService(
             currentUserService,
             userRepository,
-            partyRepository,
-            partyMemberRepository,
-            partyInviteRepository,
             matchService,
             new TokenBucketRateLimiter<>(
                     clock, PartyService.MAX_PENDING_INVITES_PER_PARTY + 2, Duration.ofSeconds(10)),
@@ -87,9 +78,6 @@ class PartyServiceTest {
             assertThat(member.slot()).isEqualTo(1);
             assertThat(member.leader()).isTrue();
         });
-        verify(partyRepository, never()).save(any());
-        verify(partyMemberRepository, never()).save(any());
-        verify(partyInviteRepository, never()).save(any());
     }
 
     @Test
@@ -421,9 +409,6 @@ class PartyServiceTest {
         PartyService restartedService = new PartyService(
                 currentUserService,
                 userRepository,
-                partyRepository,
-                partyMemberRepository,
-                partyInviteRepository,
                 matchService,
                 new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(10)),
                 clock,

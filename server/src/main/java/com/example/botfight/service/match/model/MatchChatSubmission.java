@@ -21,30 +21,6 @@ public record MatchChatSubmission(
         recipientUserIds = recipientUserIds == null ? List.of() : List.copyOf(recipientUserIds);
     }
 
-    /** Backward-compatible constructor for callers that predate chat channels. */
-    public MatchChatSubmission(
-            MatchChatSubmissionStatus status,
-            UUID messageId,
-            UUID matchId,
-            String username,
-            String message,
-            Instant sentAt,
-            List<String> recipientPrincipalNames) {
-        this(status, messageId, matchId, username, message, sentAt, recipientPrincipalNames, "ALL", List.of());
-    }
-
-    public MatchChatSubmission(
-            MatchChatSubmissionStatus status,
-            UUID messageId,
-            UUID matchId,
-            String username,
-            String message,
-            Instant sentAt,
-            List<String> recipientPrincipalNames,
-            String channel) {
-        this(status, messageId, matchId, username, message, sentAt, recipientPrincipalNames, channel, List.of());
-    }
-
     public static MatchChatSubmission rateLimited(UUID matchId) {
         return rateLimited(matchId, "ALL");
     }

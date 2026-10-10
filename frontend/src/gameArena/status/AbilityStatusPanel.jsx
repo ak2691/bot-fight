@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
 import { AbilityModal } from "../../pages/catalogue/AbilityCataloguePage.jsx";
-import { STANDARD_ABILITY_IDS, abilityDefinition } from "../loadout/BotLoadout.js";
-import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
-import { MOVEMENT_CONFIG } from "../gameconfig/MovementConfig.js";
-import { botStamina } from "../gameconfig/StaminaSystem.js";
-import { formatHp } from "../gameconfig/visualState.js";
+import { STANDARD_ABILITY_IDS, abilityDefinition } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { BASE_BOT_HP } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { MOVEMENT_CONFIG } from "../../../../shared/engine/gameconfig/MovementConfig.js";
+import { botStamina } from "../../../../shared/engine/gameconfig/StaminaSystem.js";
+import { formatHp } from "../../../../shared/engine/gameconfig/visualState.js";
 import { botColorRole } from "../pixi/pixiVisualState.js";
 import { abilityChargeCountFor, abilityRingColorFor, abilityStatusFor, fallbackAbilityText, formatAbilityTimer, statusParticipantNumber } from "./abilityStatusPresentation.js";
 

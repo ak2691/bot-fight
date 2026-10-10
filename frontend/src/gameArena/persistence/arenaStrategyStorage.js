@@ -1,8 +1,6 @@
-import { BOT_CODE_SELECTABLES, createDefaultAbilityStrategyConfiguration, normalizeAbilityStrategyConfiguration } from "../botlogic/code/BotCode.js";
-import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION, coordinateVersionFor } from "../botlogic/code/configuration/constants.js";
-import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "../botlogic/graph/CodeEditorGraph.js";
+import { BOT_CODE_SELECTABLES, createDefaultAbilityStrategyConfiguration, normalizeAbilityStrategyConfiguration } from "../../../../shared/engine/botlogic/code/BotCode.js";
 import { actionIdsForLoadoutConfiguration } from "../gameconfig/CombatLoadouts.js";
-import { CHAIN_ACTION_TYPES } from "../botlogic/code/contracts/BotLogicContracts.js";
+import { CHAIN_ACTION_TYPES } from "../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 
 const STRATEGY_STORAGE_PREFIXES = Object.freeze([
     "arena-testing-strategy-v1-",
@@ -29,29 +27,10 @@ export function loadStoredStrategyConfiguration(key) {
     try {
         const stored = localStorage.getItem(key);
         if (!stored) return createDefaultAbilityStrategyConfiguration();
-        const parsed = upgradeStoredStrategyCoordinates(JSON.parse(stored));
-        const normalized = normalizeAbilityStrategyConfiguration(parsed);
-        return parsed?.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION
-            ? { ...normalized, editorGraph: sanitizeCodeEditorGraph(parsed.editorGraph) }
-            : normalized;
+        return normalizeAbilityStrategyConfiguration(JSON.parse(stored));
     } catch {
         return createDefaultAbilityStrategyConfiguration();
     }
-}
-
-export function upgradeStoredStrategyCoordinates(configuration) {
-    if (!configuration || typeof configuration !== "object" || coordinateVersionFor(configuration) !== BOT_LOGIC_TREE_V1) return configuration;
-    const convert = (value) => {
-        if (Array.isArray(value)) return value.map(convert);
-        if (!value || typeof value !== "object") return value;
-        const next = Object.fromEntries(Object.entries(value).map(([key, child]) => [key, convert(child)]));
-        if (Object.prototype.hasOwnProperty.call(value, "targetX")) next.targetX = Number(value.targetX ?? 600) - 600;
-        if (Object.prototype.hasOwnProperty.call(value, "targetY")) next.targetY = 600 - Number(value.targetY ?? 600);
-        if (Object.prototype.hasOwnProperty.call(value, "targetOffsetX")) next.targetOffsetX = Number(value.targetOffsetX ?? 0);
-        if (Object.prototype.hasOwnProperty.call(value, "targetOffsetY")) next.targetOffsetY = -Number(value.targetOffsetY ?? 0);
-        return next;
-    };
-    return { ...convert(configuration), version: BOT_LOGIC_TREE_VERSION };
 }
 
 export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId) {
@@ -82,9 +61,6 @@ export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId
             ...(Array.isArray(block.children) ? { children: block.children.map(sanitizeBlock) } : {}),
         };
     };
-    const editorGraph = sourceConfiguration.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION
-        ? sanitizeCodeEditorGraph(sourceConfiguration.editorGraph)
-        : null;
     return {
         ...source,
         roots: Array.isArray(source.roots) ? source.roots.map((root) => ({
@@ -93,7 +69,6 @@ export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId
             branches: Array.isArray(root?.branches) ? root.branches.map(sanitizeBlock) : [],
         })) : [],
         ...(Array.isArray(source.orphans) ? { orphans: source.orphans.map((node) => node.kind === "action" ? sanitizeAction(node) : sanitizeBlock(node)) } : {}),
-        ...(editorGraph ? { editorGraph } : {}),
     };
 }
 

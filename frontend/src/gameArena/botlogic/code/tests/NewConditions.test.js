@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateCondition, normalizeAbilityStrategyConfiguration } from "../BotCode.js";
-import { stateFromPayload } from "../runtime/runtimeState.js";
-import { buildStatePayload } from "../../../modelPayloads/strategyStatePayload.js";
-import { STATE_VARIABLES, STATE_VARIABLE_BY_ID, VISIBLE_STATE_VARIABLES } from "../contracts/BotLogicContracts.js";
+import { evaluateCondition, normalizeAbilityStrategyConfiguration } from "../../../../../../shared/engine/botlogic/code/BotCode.js";
+import { stateFromPayload } from "../../../../../../shared/engine/botlogic/code/runtime/runtimeState.js";
+import { buildStatePayload } from "../../../../../../shared/engine/modelPayloads/strategyStatePayload.js";
+import { STATE_VARIABLES, STATE_VARIABLE_BY_ID, VISIBLE_STATE_VARIABLES } from "../../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 
 // Mirrors server NewConditionsParityTest; keep the cases in step.
 const main = (extra = {}) => ({ id: "main", type: "circle", slot: 1, x: 400, y: 400, size: 60, hp: 100, rotation: 90, ...extra });

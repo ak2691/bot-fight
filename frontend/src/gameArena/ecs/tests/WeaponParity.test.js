@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
-import { ABILITY_STATS, abilityDefinition, decodeBotLoadout, encodeBotLoadout } from "../../loadout/BotLoadout.js";
-import { EFFECT_TYPES, TARGET_KINDS, triggerView } from "../contracts/AbilityContracts.js";
-import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
+import { abilityHitsTarget } from "../../../../../shared/engine/ecs/abilities/AbilityHitDetectionSystem.js";
+import { ABILITY_STATS, abilityDefinition, decodeBotLoadout, encodeBotLoadout } from "../../../../../shared/engine/loadout/BotLoadout.js";
+import { EFFECT_TYPES, TARGET_KINDS, triggerView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { compassDirection } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
 import { applyBotAction, resolveTriggeredAbilityCombat as resolveAbilityCombat } from "../../testing/pureTicks.js";
-import { preparingAbilityId, activeRemainingMs, pendingCooldownMs } from "../../gameconfig/AbilityState.js";
+import { preparingAbilityId, activeRemainingMs, pendingCooldownMs } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 
 // Mirrors server WeaponParityTest; keep both tables identical.
 const TARGET_RADIUS = 30;
@@ -150,5 +150,4 @@ test("weapons are category weapon with Weapon: labels and compact codes", () => 
 test("weapons stay out of every ability draft pool: they are the round 1 weapon pick", () => {
     for (const id of [1, 35, 36, 37]) assert.equal(abilityDefinition(id).round, 0);
     for (const id of [1, 35, 36, 37]) assert.equal(abilityDefinition(id).category, "weapon");
-    assert.equal(abilityDefinition(34).standard, true, "Basic Strike is unchanged");
 });

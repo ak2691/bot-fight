@@ -1,5 +1,7 @@
 package com.example.botfight.domain.match;
 
+import java.util.Locale;
+
 /**
  * The rules/matchmaking shape of a match. This is deliberately separate from
  * the simulation ruleset version: a ruleset describes combat, while a mode
@@ -34,7 +36,7 @@ public enum MatchMode {
 
     public static MatchMode fromWire(String value) {
         if (value == null || value.isBlank()) return ONES;
-        return switch (value.trim().toUpperCase(java.util.Locale.ROOT)) {
+        return switch (value.trim().toUpperCase(Locale.ROOT)) {
             case "ONES", "1V1", "1S" -> ONES;
             case "TWOS", "2V2", "2S" -> TWOS;
             case "CUSTOM", "CUSTOM_MATCH" -> CUSTOM;

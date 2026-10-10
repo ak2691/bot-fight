@@ -1,0 +1,30 @@
+{
+  "rule": "Chains cannot call each other in a cycle.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "chains": [
+      {
+        "id": "chain.a",
+        "name": "A",
+        "steps": [
+          {
+            "type": "runChain",
+            "chainId": "chain.b"
+          }
+        ]
+      },
+      {
+        "id": "chain.b",
+        "name": "A",
+        "steps": [
+          {
+            "type": "runChain",
+            "chainId": "chain.a"
+          }
+        ]
+      }
+    ]
+  }
+}

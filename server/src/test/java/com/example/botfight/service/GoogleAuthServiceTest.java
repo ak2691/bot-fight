@@ -1,5 +1,8 @@
 package com.example.botfight.service;
 
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
 import com.example.botfight.service.auth.AuthService;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
@@ -38,11 +41,11 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 
 class GoogleAuthServiceTest {
 
-    private final UserRepository userRepository = org.mockito.Mockito.mock(UserRepository.class);
-    private final UserAuthIdentityRepository identityRepository = org.mockito.Mockito.mock(UserAuthIdentityRepository.class);
-    private final UserAuthIdentityService identityService = org.mockito.Mockito.mock(UserAuthIdentityService.class);
-    private final CurrentUserService currentUserService = org.mockito.Mockito.mock(CurrentUserService.class);
-    private final AuthService authService = org.mockito.Mockito.mock(AuthService.class);
+    private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final UserAuthIdentityRepository identityRepository = Mockito.mock(UserAuthIdentityRepository.class);
+    private final UserAuthIdentityService identityService = Mockito.mock(UserAuthIdentityService.class);
+    private final CurrentUserService currentUserService = Mockito.mock(CurrentUserService.class);
+    private final AuthService authService = Mockito.mock(AuthService.class);
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final BotFightSecurityProperties securityProperties = new BotFightSecurityProperties();
     private final GoogleAuthService service = new GoogleAuthService(
@@ -54,9 +57,9 @@ class GoogleAuthServiceTest {
             passwordEncoder,
             Clock.fixed(Instant.parse("2026-08-01T12:00:00Z"), ZoneOffset.UTC),
             securityProperties);
-    private final HttpServletRequest request = org.mockito.Mockito.mock(HttpServletRequest.class);
+    private final HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
     private final HttpSession session = new MockHttpSession();
-    private final OAuth2User googleUser = org.mockito.Mockito.mock(OAuth2User.class);
+    private final OAuth2User googleUser = Mockito.mock(OAuth2User.class);
 
     @BeforeEach
     void setUp() {
@@ -83,17 +86,17 @@ class GoogleAuthServiceTest {
         assertThat(result.authenticated()).isFalse();
         assertThat(result.linkRequired()).isFalse();
         assertThat(result.profileLink()).isFalse();
-        verify(userRepository).save(org.mockito.ArgumentMatchers.argThat(user -> user.getUsername() == null));
+        verify(userRepository).save(ArgumentMatchers.argThat(user -> user.getUsername() == null));
         assertThat(session.getAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_SESSION_KEY)).isNotNull();
         assertThat(session.getAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY))
                 .isEqualTo(Instant.parse("2026-08-01T12:00:00Z").plus(Duration.ofMinutes(15)));
         verify(identityService).linkIdentity(
                 any(AppUser.class),
-                org.mockito.ArgumentMatchers.eq("google"),
-                org.mockito.ArgumentMatchers.eq("google-sub-123"),
-                org.mockito.ArgumentMatchers.eq("pilot@example.com"),
-                org.mockito.ArgumentMatchers.eq(true));
-        verify(authService, never()).authenticateSession(any(AppUser.class), org.mockito.ArgumentMatchers.same(request));
+                ArgumentMatchers.eq("google"),
+                ArgumentMatchers.eq("google-sub-123"),
+                ArgumentMatchers.eq("pilot@example.com"),
+                ArgumentMatchers.eq(true));
+        verify(authService, never()).authenticateSession(any(AppUser.class), ArgumentMatchers.same(request));
     }
 
     @Test
@@ -175,7 +178,7 @@ class GoogleAuthServiceTest {
         AuthUserDTO result = service.completePendingUsername(usernameRequest, request);
 
         assertThat(result).isSameAs(authenticatedUser);
-        verify(authService).authenticateSession(any(AppUser.class), org.mockito.ArgumentMatchers.same(request));
+        verify(authService).authenticateSession(any(AppUser.class), ArgumentMatchers.same(request));
     }
 
     @Test

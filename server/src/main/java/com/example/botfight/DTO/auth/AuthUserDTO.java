@@ -1,5 +1,7 @@
 package com.example.botfight.DTO.auth;
 
+import com.example.botfight.domain.auth.AppUser;
+
 import java.util.UUID;
 
 public class AuthUserDTO {
@@ -75,7 +77,7 @@ public class AuthUserDTO {
         return user;
     }
 
-    public static AuthUserDTO temporaryGuest(com.example.botfight.domain.auth.AppUser guestUser) {
+    public static AuthUserDTO temporaryGuest(AppUser guestUser) {
         AuthUserDTO user = new AuthUserDTO();
         user.setAuthenticated(false);
         user.setGuest(true);

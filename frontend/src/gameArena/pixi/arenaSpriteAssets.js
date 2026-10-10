@@ -1,10 +1,5 @@
 import { Texture } from "pixi.js";
 import { animationFrameAt } from "./abilityAnimationFrames.js";
-import { preloadArenaPresentationAssets } from "./arenaPresentationAssets.js";
-
-export function preloadArenaSprites() {
-    return preloadArenaPresentationAssets();
-}
 
 export function spriteFrame(frames, elapsedMs, frameMs = 100, loop = true) {
     return animationFrameAt(frames, elapsedMs, frameMs, loop) ?? Texture.EMPTY;

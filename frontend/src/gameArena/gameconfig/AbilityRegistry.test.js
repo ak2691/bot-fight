@@ -4,12 +4,11 @@ import test from "node:test";
 import {
     ABILITIES,
     abilityId,
-    abilityIdFromLegacyName,
+    abilityIdFromName,
     abilityIdentity,
     abilityName,
-    legacyAbilityNameFromId,
-} from "./AbilityRegistry.js";
-import { ABILITY_STATS, abilityStats } from "./Abilities.js";
+} from "../../../../shared/engine/gameconfig/AbilityRegistry.js";
+import { ABILITY_STATS, abilityStats } from "../../../../shared/engine/gameconfig/Abilities.js";
 import {
     ABILITY_CONTRACTS,
     abilityContract,
@@ -20,7 +19,7 @@ import {
     triggerView,
     triggerVerbs,
     EFFECT_TYPES,
-} from "../ecs/contracts/AbilityContracts.js";
+} from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 
 test("ability identities are stable numeric keys independent of array position", () => {
     assert.equal(ABILITIES[3].id, 3);
@@ -28,7 +27,7 @@ test("ability identities are stable numeric keys independent of array position",
     // Sniper is a display rename: the registry name and ID stay "gun"/3 for saved brains.
     assert.equal(ABILITIES[3].label, "Sniper");
     assert.equal(ABILITIES[3].type, "ability");
-    assert.equal(abilityIdFromLegacyName("gun"), 3);
+    assert.equal(abilityIdFromName("gun"), 3);
     assert.equal(abilityIdentity(3), ABILITIES[3]);
     assert.equal(abilityName(3), "gun");
     assert.equal(ABILITIES[32].name, "vampiric_beam");
@@ -39,11 +38,8 @@ test("ability identities are stable numeric keys independent of array position",
     assert.equal(ABILITIES[21].label, "Rewind");
     assert.equal(ABILITIES[29].name, "snare_bomb");
     assert.equal(ABILITIES[29].label, "Snare Bomb");
-    assert.equal(abilityIdFromLegacyName("repulsor_burst"), 8);
-    assert.equal(abilityIdFromLegacyName("temporal_rewind"), 21);
-    assert.equal(abilityIdFromLegacyName("static_snare"), 29);
     assert.equal(ABILITIES[30].label, "Disruptive Beam");
-    assert.equal(abilityIdFromLegacyName("retired_beam"), null);
+    assert.equal(abilityIdFromName("retired_beam"), null);
 });
 
 test("numeric identity owns tuning and contracts", () => {
@@ -55,9 +51,6 @@ test("numeric identity owns tuning and contracts", () => {
     assert.equal(ABILITY_STATS[3].falloff, undefined);
     assert.equal(ABILITY_STATS[3].damage, 40);
     assert.equal(ABILITY_STATS[3].hitboxWidth, 6);
-    assert.equal(ABILITY_STATS[34].damage, 8);
-    assert.equal(ABILITY_STATS[34].range, 80);
-    assert.equal(ABILITY_STATS[34].arc, 30);
     assert.equal(ABILITY_STATS[19].cooldownMs, 100, "Dash recovers for 100 ms after its 200 ms active stage (a 300 ms gap in all)");
     assert.equal(ABILITY_STATS[25].hitboxWidth, 60);
     assert.equal(ABILITY_STATS[30].hitboxWidth, 8);
@@ -150,13 +143,13 @@ test("Tether Bolt returns on outbound collision and pulls once during the return
     assert.equal(eventVerbs(returning.on.collision)[0].pullDirection, "owner");
 });
 
-test("legacy names convert only through explicit allowlisted compatibility functions", () => {
+test("names convert only through the canonical name lookup", () => {
     assert.equal(abilityId("3"), null);
-    assert.equal(abilityId("fire_gun"), null);
-    assert.equal(abilityIdFromLegacyName("fire_gun"), 3);
-    assert.equal(legacyAbilityNameFromId(3), "gun");
-    assert.equal(abilityIdFromLegacyName("constructor"), null);
-    assert.equal(abilityIdFromLegacyName("unknown"), null);
+    assert.equal(abilityId("gun"), null);
+    assert.equal(abilityIdFromName("fire_gun"), null);
+    assert.equal(abilityName(3), "gun");
+    assert.equal(abilityIdFromName("constructor"), null);
+    assert.equal(abilityIdFromName("unknown"), null);
 });
 
 test("malformed numeric IDs fail closed", () => {
@@ -176,7 +169,7 @@ test("registered IDs are unique positive integers with matching stats and contra
 });
 
 test("one normalized contract registry covers direct and spawned abilities", () => {
-    assert.equal(Object.keys(ABILITY_CONTRACTS).length, 36);
+    assert.equal(Object.keys(ABILITY_CONTRACTS).length, 34);
     assert.equal(Object.keys(ENTITY_CONTRACTS).length, 14);
     assert.equal(Object.values(ABILITY_CONTRACTS).filter((contract) => isEntityAbility(contract.abilityId)).length, 14);
     for (const contract of Object.values(ABILITY_CONTRACTS)) {

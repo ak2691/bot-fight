@@ -1,0 +1,62 @@
+{
+  "description": "Entity selectors with an order and ordinal.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.count",
+                "comparator": "gt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                },
+                "leftSelectable": "opponent_1_grenade"
+              },
+              {
+                "type": "expression",
+                "left": "selectable.age",
+                "comparator": "gt",
+                "right": {
+                  "type": "number",
+                  "value": 1
+                },
+                "leftSelectable": "my_bot_grenade:closest:2"
+              }
+            ],
+            "priority": 1,
+            "action": "move_walk",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "move_walk",
+                "selectable": "opponent_1",
+                "movementMode": "target",
+                "movementDirection": 0,
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0
+              }
+            ],
+            "movementMode": "target",
+            "movementDirection": 0,
+            "targetMode": "target",
+            "targetX": 0,
+            "targetY": 0,
+            "branchType": "if",
+            "children": []
+          }
+        ]
+      }
+    ],
+    "customVariables": []
+  }
+}

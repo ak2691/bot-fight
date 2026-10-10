@@ -1,0 +1,17 @@
+{
+  "rule": "Custom variables no longer carry conditions.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "customVariables": [
+      {
+        "id": "custom.a",
+        "name": "A",
+        "valueType": "number",
+        "initialValue": 0,
+        "conditions": []
+      }
+    ],
+    "roots": []
+  }
+}

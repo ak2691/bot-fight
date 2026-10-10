@@ -1,0 +1,21 @@
+{
+  "rule": "Puzzle brains obey authored budgets and reserve the puzzle namespace for outcome rules.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "customVariables": [
+      {
+        "id": "custom.puzzle.count",
+        "name": "Puzzle count",
+        "valueType": "number",
+        "initialValue": 0
+      }
+    ]
+  },
+  "options": {
+    "puzzleConstraints": {
+      "reservePuzzleNamespace": true
+    }
+  }
+}

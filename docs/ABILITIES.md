@@ -6,10 +6,11 @@ ability entities. It replaces the older `ABILITY_EFFECT_CONTRACT`,
 `ADDING_A_BACKEND_ABILITY_OR_MOVE` and `REQUESTING_NEW_ABILITIES` docs (git
 history has them). Code and tests win when this disagrees with them.
 
-Gameplay runs twice: the browser (`frontend/src/gameArena/`) previews, the
-Spring server (`server/.../simulation/`) decides rated results. Every gameplay
-change goes into both, with the same IDs, milliseconds, arena units, rounding
-and tick order.
+Gameplay has one implementation in `shared/engine/`. The browser imports it
+for previews; the authenticated Node worker runs it for rated matches and puzzles.
+Spring owns submissions, validation, deadlines, persistence, ratings and replay
+authorization. It does not execute combat. Engine paths below are relative to
+`shared/engine/`; Pixi and testing paths are relative to `frontend/src/gameArena/`.
 
 The model in one paragraph: abilities, statuses, channels and movement numbers are
 **data** in `shared/gameplay/*.json`, read by both runtimes. An ability is a list of
@@ -18,38 +19,36 @@ The model in one paragraph: abilities, statuses, channels and movement numbers a
 **ability state** record per ability, and each ability sits in a **channel** that
 decides what can run alongside it. Verbs apply **effects** through one registry,
 statuses are built from **presets**, and a tick is seven named stages. An optional
-**combat log** records what happened per stage so the two runtimes can be diffed.
+**combat log** records what happened per stage for deterministic regression tests and replay diagnostics.
 
 ## 1. Where an ability lives
 
 Ability IDs are permanent positive integers. Never renumber or reuse one.
 
-| What | Browser | Server |
+| What | Shared engine / browser presentation | Spring metadata |
 | --- | --- | --- |
 | ID, name, label | `shared/gameplay/abilities.json` (`abilities[]`) | the same file |
 | Timing and resources (`windupMs`, `activeMs`, `cooldownMs`, `durationMs`, charges/reload) | `shared/gameplay/abilities.json` (`timing`) | the same file |
 | Behavior: trigger verbs, spawned entities, phases, hitboxes, movement, effects, events, visual keys | `shared/gameplay/abilities.json` (`onTrigger`, `entities`) | the same file |
 | Status shapes (burn, slow, ...) | `shared/gameplay/statuses.json` | the same file |
 | Channel and stamina cost (`channel`, `cost`), the channels' blocking statuses | `shared/gameplay/abilities.json` and `channels.json` | the same files |
-| Catalogue text, round/tier, tags, `visualInterpolation`, compact loadout code | `loadout/BotLoadout.js` | `CompactAbilityCode.java`, `service/match/loadout/` pools |
+| One-letter loadout `code`, `standard` (every bot has it: Dash) | `shared/gameplay/abilities.json` | the same file (`AbilityCatalog.java`) |
+| Catalogue text, round/tier, tags, `visualInterpolation` | `loadout/BotLoadout.js` | `service/match/loadout/` pools |
 | How it looks | `pixi/botAbilityPresentationDefinitions.js` (bot visuals), `pixi/PixiCanvas.jsx` | none (replay carries state only) |
 | Movement and stamina numbers | `shared/gameplay/movement.json` | the same file |
 
-Those files are the one source of ability data. The browser loads them in
-`gameconfig/gameplayData.js` (validated by `gameplayValidation.js`, then frozen;
+Those files are the one source of ability data. The engine loads them in
+`gameconfig/gameplayData.js` (checked by `gameplayValidation.js`, then frozen;
 `AbilityRegistry.js`, `Abilities.js`, `MovementConfig.js` and
-`ecs/contracts/AbilityContracts.js` read from it). The
-server loads them in `simulation/gameconfig/GameplayData.java` (Jackson records
-with enums, the same checks; `AbilityRegistry`, `Abilities`, `MovementConfig`
-and `AbilityContracts` read from it). Every value is written in the files; a
-JSON `null` means "does not apply", and neither runtime fills in a default. A
-file that breaks a check stops the browser module from loading and the server
-from starting. Maven copies `../shared/gameplay` onto the classpath as
+`ecs/contracts/AbilityContracts.js` read from it). A field that does not apply is left out;
+nothing fills values in. A file that breaks a check stops the module from loading, so every
+test fails. Spring reads only IDs, `standard` and loadout codes (`simulation/gameconfig/AbilityCatalog.java`).
+After editing a file, run `node tools/format-gameplay-json.mjs` from the repository root: it keeps
+short values on one line and drops nulls. Maven copies `../shared/gameplay` onto the classpath as
 `gameplay/`, and Docker copies it to `/shared` (compose `additional_contexts`).
 
-`Abilities.js`/`.java` also expose a derived `ABILITY_STATS` / `AbilityDefinition`
-projection (damage, range, ...) read from the contracts. It exists for the UI
-and old consumers; never author values there.
+`gameconfig/Abilities.js` exposes derived `ABILITY_STATS` (damage, range, ...)
+for presentation. Never author values there.
 
 ## 2. The ability model: verbs and entities
 
@@ -75,9 +74,8 @@ also report its abilities as not ready (`notReadyWhileStatuses`).
 
 ### Verbs
 
-The same verbs appear in `onTrigger` and in entity event `do` lists. **One executor per
-runtime** runs them: browser `ecs/abilities/verbs.js` (`executeVerb`), server
-`core/combat/AbilityVerbs.java` (`execute`, with a `Host` per place the verbs run).
+The same verbs appear in `onTrigger` and in entity event `do` lists. **One executor** in `ecs/abilities/verbs.js` (`executeVerb`) runs them in
+browser previews and the Node worker.
 
 | Verb | Does | Where |
 | --- | --- | --- |
@@ -85,13 +83,12 @@ runtime** runs them: browser `ecs/abilities/verbs.js` (`executeVerb`), server
 | `applyEffects` | Apply `effects` to the owner (`targets: ["OWNER"]`: heals, buffs, Rewind) or, in an entity event, to the event's targets. `knockbackDirection` / `pullDirection` choose the push origin | trigger (owner only), entity |
 | `spawn` | Create entity `entity` (a key of this ability's `entities`), optionally with a `pattern` | trigger, entity |
 | `move` | Move the owner (a dash): `distance`, `unitsPerTick`, `trailMs`; direction from the action | trigger |
-| `face` | Turn the owner toward the activation target (Lock On) | trigger |
 | `transition` | The entity enters phase `to` | entity |
 | `remove` | Remove the entity | entity |
 | `emitVisual` | Record a semantic visual event (`visualType`, `visibleMs`, `visualSize`) | entity |
 
-A trigger verb runs in the tick stage that owns it: `face` and `move` in act (face, then
-the pose capture, then move), `spawn` at the end of act from the bot's final pose (the
+A trigger verb runs in the tick stage that owns it: `move` in act (after the pose
+capture), `spawn` at the end of act from the bot's final pose (the
 spawn stage then adds the entities to the world), `applyEffects` and `hit` in resolveHits.
 A `hit` that names `HP_ENTITY`/`SUMMON`/`ENTITY` also reaches arena entities when the
 entity ticks, as before.
@@ -107,39 +104,34 @@ the tick.
 land once, on the nearest valid target.
 ## 3. One tick
 
-Both runtimes run the same seven named stages in this order (browser:
-`modelPayloads/arenaPreviewSimulation.js`, `createFight(setup).step()`, one function per
-stage; server: `DuelSimulationService`, one method per stage). The browser fight owns its
+`shared/engine/fight.js` runs seven named stages in this order through
+`createFight(setup).step()`, one function per stage. The fight owns its
 bots and entities and changes them in place during a tick; `fight.frame()` hands callers
 new plain objects. The combat log tags every entry with the stage that produced it.
 
 1. **`decide`.** Entities age and each bot's one-tick outputs clear. Each brain reads
    the start-of-tick snapshot and picks at most one action per category: movement,
    rotation, ability, dash, cancel. A running chain claims its categories first;
-   roots fill the rest by priority (`botlogic/code/runtime/actionSelector.js`, server
-   `ChainRuntime`). The server normalizes a submitted brain once, in
-   `simulation/bots/BrainNormalizer.java`.
-2. **`act`** (`ecs/bots/ActionExecutionSystem.applyBotAction`, server
-   `ActionExecutionService.execute`), per bot:
+   roots fill the rest by priority (`botlogic/code/runtime/actionSelector.js`).
+   The shared engine normalizes each brain once at fight setup or a segment boundary.
+2. **`act`** (`ecs/bots/ActionExecutionSystem.applyBotAction`), per bot:
    1. stamina timers advance (regeneration happens here);
    2. stun: interrupt, stop moving, nothing else happens;
    3. Cancel Wind-up, if chosen and affordable;
    4. movement (walk, sprint, a running dash step) and rotation (fast turn);
    5. the ability: continue or start the wind-up; at the end of the wind-up it
-      triggers (active time, cooldown, charge, `face` and `move` verbs);
+      triggers (active time, cooldown, charge, `move` verbs);
    6. the dash channel, after the ability;
    7. bot timers: resources, statuses, deferred state, lifecycle;
    8. the `spawn` verbs build their entities, in verb and pattern order.
 3. **`resolveHits`.** `applyEffects` (owner) and `hit` of every triggered ability
    resolve against the roster (`ecs/abilities/verbs.js`
-   `resolveTriggerVerbsForRoster`; server `AbilityEffectService` through
-   `AbilityVerbs`). Every effect is applied by the effect registry
-   (`ecs/abilities/effects.js`; server `core/combat/Effects.java`), and every "who does
+   `resolveTriggerVerbsForRoster`). Every effect is applied by the effect registry
+   (`ecs/abilities/effects.js`), and every "who does
    this shape touch" question is answered by `findTargets`
-   (`ecs/abilities/findTargets.js`; server `core/combat/FindTargets.java`).
+   (`ecs/abilities/findTargets.js`).
 4. **`spawn`.** The entities built in `act` join the world.
-5. **`entities`** advance (`ecs/abilities/AbilityEntitySystem.tickAbilityEntityWorld`;
-   server `AbilityEntitySystem.tick`): first bound entities end and following entities
+5. **`entities`** advance (`ecs/abilities/AbilityEntitySystem.tickAbilityEntityWorld`): first bound entities end and following entities
    take their owner's pose. Then every entity runs the same `tickEntity`: its clocks
    advance, impacts from bot hits and other entities land on it (HP entities), it moves by
    its phase's movement mode (`straight`, `static`, `seek`), and its due events run
@@ -151,8 +143,7 @@ new plain objects. The combat log tags every entry with the stage that produced 
    neighbours; the rest settle in order.
 6. **`hazards`.** Closing-zone damage.
 7. **`settle`.** Pending healing, damage-taken counters, Time Since Hit ages, and
-   banked stamina refunds (`gameconfig/AbilityHitRecord.settleAbilityHits`;
-   server `BotStateService.settleTick`).
+   banked stamina refunds (`gameconfig/AbilityHitRecord.settleAbilityHits`).
 
 Each source reads the latest accumulated bot state of the tick; damage,
 healing, DOT and reflection settle as one net HP change.
@@ -162,44 +153,30 @@ healing, DOT and reflection settle as one net HP change.
 The combat log is an optional list of entries `{ tick, stage, kind, source, target,
 abilityId, effect, amount }`. `kind` is `trigger`, `effect` (the final amount applied),
 `status`, `spawn`, `phase`, `removal` or `stamina` (spend or refund). `source` and `target`
-are `bot<slot>` or `<entityType>:<ownerSlot>:<serial>`, so the same fight reads the same
-in both runtimes. It is **off unless asked for** and never changes a result. The browser
-takes `createFight(setup, { combatLog })` (`ecs/combatLog.js`); the server takes
-`DuelSimulationService.simulateLogged(request, log, observer)` (`core/orchestration/CombatLog.java`,
-bound per thread). Rated runs never pass one. A new effect, status, spawn, transition,
-removal or stamina path must append through the existing `logCombat` / `CombatLog.record`
-funnels so it shows up.
+are `bot<slot>` or `<entityType>:<ownerSlot>:<serial>`. Logging is optional and
+does not change results. Use `createFight(setup, { combatLog })` or the
+`simulateFight` combat-log hook; append effects through the existing `logCombat` funnel.
 
-`shared/gameplay-tests/` is the regression net built on it:
+`shared/gameplay-tests/` is the regression net:
 
-- `goldenScenarios.json`: about 20 small fights (two bots, loadouts, `ALWAYS` brains, a
-  tick count) covering every ability, Dash, sprint, Cancel, a trap, a summon, reflection
-  and DOT.
-- `golden.browser.json` and `golden.server.json`: per scenario, the combat log plus a
-  state hash for every tick, one file per runtime.
-- A browser test (`testing/goldenScenarios.test.js`) and a server test
-  (`GoldenScenariosTest`) run every scenario and compare with their own golden, so a
-  behavior change shows up as a golden diff. After an **intended** change, regenerate with
-  `npm run golden:update` (in `frontend/`) and
-  `.\mvnw.cmd test -Dtest=GoldenScenariosTest -Dgolden.update=true` (in `server/`), review
-  the diff, and say which lines changed and why.
-- `testing/parityReport.test.js` diffs the two goldens per tick and stage and **fails
-  when the runtimes disagree**. Server behavior wins: fix the browser mirror, regenerate
-  its golden, and never edit a golden by hand. `PARITY_VERBOSE=1` lists every mismatch.
+- `goldenScenarios.json` contains small fights covering every ability, Dash,
+  sprint, Cancel, traps, summons, reflection and DOT.
+- `golden.browser.json` is the single committed combat-log and per-tick state-hash golden.
+  Frontend tests exercise `createFight` and `simulateFight`; worker HTTP tests
+  run the same scenarios through the deployed transport.
+- After an intended behavior change, run `npm run golden:update` in `frontend/`,
+  review the diff and explain it. Never edit a golden by hand.
 
 ## 4. Ability lifecycle on the bot
 
 The bot holds one record per ability, `abilityState[abilityId] = { stage,
-remainingMs, charges, reloadMs, target }` (browser `gameconfig/AbilityState.js`,
-server `core/state/AbilityState.java`). `stage` is `windup`, `active`,
+remainingMs, charges, reloadMs, target }` in `gameconfig/AbilityState.js`. `stage` is `windup`, `active`,
 `cooldown` or `ready`, and `remainingMs` is the time left in it. While active,
 the record also reserves the cooldown that starts when the active stage ends
 (`cooldownMs`). A missing record is a ready ability. The old loose fields
-(`preparingAbility`, `preparingMs`, `abilityActiveMs`, `abilityCooldowns`,
-`abilityCharges`, ...) no longer exist on a bot: replay DTOs carry them
-(the browser reads a replay frame back into records with `abilityStateFromLegacy`,
-the server writes them with `AbilityState.legacy*`), and the bot-logic conditions
-read the records through the `AbilityState` helpers.
+(`preparingAbility`, `abilityCooldowns`, ...) are gone. Worker render frames
+carry the engine's native `abilityState` records; Spring passes their raw JSON
+through without rebuilding ability visuals or mapping legacy fields.
 
 ```text
 ready -> windup -> trigger -> active -> cooldown -> ready
@@ -232,8 +209,8 @@ ready -> windup -> trigger -> active -> cooldown -> ready
 
 ## 5. Movement, Dash and stamina
 
-Numbers are in `MovementConfig.js`/`.java`; logic in `gameconfig/StaminaSystem.js`
-and `simulation/core/state/StaminaSystem.java`. Every value is per 100 ms tick.
+Numbers come from `shared/gameplay/movement.json`; execution is in
+`gameconfig/StaminaSystem.js`. Every value is per 100 ms tick.
 
 | Rule | Value |
 | --- | --- |
@@ -265,7 +242,7 @@ chain reach and which bots a `trigger` event's `do` list reaches. `hitbox.radius
 `radiusMultiplier`) is the entity's body and never widens, narrows or stands in for it. A phase
 with a `trigger` or a `trigger` event must set `trigger.radius`, and must not also set
 `hitbox.radius` unless a `collision`, `hit` or `killed` event (or `health`) uses the hitbox.
-Both validators reject the rest, so a phase that wants a different body keeps its own hitbox.
+Engine and Java data validators reject the rest, so a phase that wants a different body keeps its own hitbox.
 
 **Hitboxes** (arena units, origin at the bot or entity center):
 `circle { radius }`, `rectangle { length, width }` (extends forward),
@@ -322,7 +299,7 @@ range; distance is center to center.
 `silence`, `movement_lock`, `cooldown_modifier`. The subtypes an ability can
 apply (`burn`, `bleed`, `shock`, `slow`, `stun`, `silence`) are presets in
 `shared/gameplay/statuses.json`, built for bots and summons alike by the effect
-registry (`effects.js` `applyStatus`; server `Effects.buildStatus`). A new
+registry (`effects.js` `applyStatus`). A new
 subtype is a new preset there; nothing else needs a branch.
 
 **Hit stagger:** any hostile damage above zero gives the bot 300 ms of x0.85
@@ -395,48 +372,40 @@ golden diff.
 1. **Write the data.** Take the next free ID (never reuse or renumber) and add the entry to
    `shared/gameplay/abilities.json`. Copy a neighbour of the same shape instead of writing
    from scratch: Slash `1` for a melee `hit`, Fireball `5` for a projectile entity, Dash
-   `19` for `move`. Every field is written out and `null` means "does not apply"; the
-   validators name anything missing. A minimal instant melee ability (this one passes
-   `validateGameplayData`):
+   `19` for `move`. Leave out any field that does not apply. A minimal instant melee ability
+   (this one passes `validateGameplayData`):
 
    ```json
-   { "id": 38, "name": "jab", "label": "Jab", "type": "ability", "channel": "ability", "cost": null,
-     "timing": { "cooldownMs": 600, "windupMs": 100, "activeMs": 200, "durationMs": null,
-                 "maxCharges": null, "resourceModel": null, "chargeType": null, "reloadMs": null },
-     "activation": { "targetMode": null, "capture": null, "phaseFacingDefault": null,
-                     "teleportOncePerActivation": null },
+   { "id": 38, "name": "jab", "label": "Jab", "code": "j", "type": "ability", "channel": "ability",
+     "timing": { "cooldownMs": 600, "windupMs": 100, "activeMs": 200 },
+     "activation": {},
      "onTrigger": [ { "do": "hit",
-                      "hitbox": { "shape": "rectangle", "radius": null, "range": null, "arc": null,
-                                  "width": 40, "length": 80, "radiusMultiplier": 1, "includeTargetRadius": true },
-                      "targets": ["BOT", "HP_ENTITY"], "nearestOnly": false, "oncePerTarget": false, "aim": null,
+                      "hitbox": { "shape": "rectangle", "width": 40, "length": 80, "radiusMultiplier": 1, "includeTargetRadius": true },
+                      "targets": ["BOT", "HP_ENTITY"],
                       "effects": [ { "type": "damage", "amount": 9, "targetKinds": ["BOT", "HP_ENTITY"] } ],
-                      "visual": { "type": "meleeSlash", "state": null, "visualSize": 120, "visibleMs": 300 } } ],
-     "entities": {} }
+                      "visual": { "type": "meleeSlash", "visualSize": 120, "visibleMs": 300 } } ] }
    ```
 
    Anything that lives over time is an entry in `entities` plus a `spawn` verb; heals and
    buffs are `applyEffects` with `"targets": ["OWNER"]`; a new status is a preset in
    `statuses.json` applied by a `status` effect; a stamina-costed or independently locked
    action goes in the `dash` channel.
-2. **Make it pickable.** Catalogue text, round/tier, `visualInterpolation` and the compact
-   code letter in `frontend/src/gameArena/loadout/BotLoadout.js`; on the server
-   `simulation/gameconfig/CompactAbilityCode.java`, the `service/match/loadout/` pools and the
-   `BotSubmissionValidationService` allowlists. Without these the ability cannot be picked,
-   submitted or validated in rated play.
+2. **Make it pickable.** Give it a one-letter `code` in the data (the compact loadout string);
+   catalogue text, round/tier and `visualInterpolation` in `shared/engine/loadout/BotLoadout.js`;
+   and add it to the server's `service/match/loadout/` pools. Without these it cannot be picked.
 3. **Give it a look.** Reuse a visual `type`, or add one to
    `pixi/botAbilityPresentationDefinitions.js` with a `pixi/renderers/<type>.js` module
    (section 8).
 4. **Add code only for new vocabulary.** A new effect type, status subtype, verb, phase type,
-   movement mode or targeting mode needs code in both runtimes (`effects.js` /
-   `Effects.java`, `verbs.js` / `AbilityVerbs.java`) and in both validators
-   (`gameplayValidation.js` / `GameplayData.java`). An ability that uses only existing
-   vocabulary needs none.
-5. **Test it.** Loading the data runs both validators, so a bad file fails fast. Add an
-   execution test with an `ALWAYS` brain in both runtimes (tests can define small abilities
-   in the same schema with `withTestAbilities` in `AbilityContracts.js` and
-   `AbilityContracts.withTestAbilities` in Java; see `VerbModel.test.js` / `VerbModelTest`).
-   If the ability adds a new interaction, add a scenario to `goldenScenarios.json`,
-   regenerate both goldens and confirm the parity report is clean.
+   movement mode or targeting mode needs execution code once in the shared engine
+   (`ecs/abilities/effects.js`, `verbs.js` and the owning system), plus vocabulary
+   support in `gameplayValidation.js`. An ability that uses only existing vocabulary needs none.
+5. **Test it.** Loading data runs the engine's data checks. Add
+   an `ALWAYS` brain execution test in the shared engine's frontend suite
+   (`withTestAbilities` in `AbilityContracts.js`; see `VerbModel.test.js`).
+   Add an interaction to `goldenScenarios.json` when needed, regenerate the
+   single golden and run worker HTTP tests against it. Run Java tests for
+   schema, loadout and worker transport changes; do not add Java combat tests.
 6. **Look at it** in the practice room, match testing and replay, and run the
    [regression checklist](ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md).
 
@@ -445,18 +414,40 @@ phase (duration, movement mode, hitbox, effects, which event moves to which phas
 targeting, cooldown/charges, visuals. Example: "Arc Mine, a trap: travel
 forward at 20/tick for 800 ms, then a stationary 10 s armed phase; enemy
 proximity or expiry moves to a 300 ms explosion (110 radius, 30 damage once per
-target). Cooldown 8 s. Browser/server parity and replay tests."
+target). Cooldown 8 s. Shared engine execution and worker replay tests."
 
 **Tests** for any gameplay change: an `ALWAYS` brain reaching the real executor
-in both runtimes; both slots when symmetry matters; missing-target
+in the shared engine; both slots when symmetry matters; missing-target
 fallthrough; timing (wind-up, active, cooldown, charges); effect order and
 rounding; entity lifecycle and collision; deterministic repeat runs; replay
 fields.
 
 ```text
 frontend/: npm test, npm run lint, npm run build
-server/:   .\mvnw.cmd test   (focused first: -Dtest=GameplayDataTest,AbilityContractsTest,VerbModelTest,GoldenScenariosTest)
+sim-worker/: npm test
+server/:   .\mvnw.cmd test (metadata, validation and authenticated worker boundary)
 ```
 
 A picker-only or browser-only ability is incomplete: rated play needs
 normalization, server validation, authoritative activation, replay and tests.
+
+## 10. What Spring keeps
+
+Spring executes no gameplay and holds no copy of the ability model. It keeps:
+
+- `simulation/gameconfig/AbilityCatalog`: ability IDs, standard abilities and loadout codes, read
+  from `abilities.json`; the `service/match/loadout/` pools build on it.
+- `ArenaUnits`, `ArenaCoordinates`, `ClosingZoneConfig` and the `HpDecision` presentation summary:
+  request dimensions, puzzle coordinate conversion and socket zone-warning presentation.
+- Brain checks: the JSON nesting cap, `brain.schema.json`, then the worker's `POST /validate`, which
+  runs the shared engine's `botlogic/code/configuration/brainRules.js` (references, sibling order,
+  depth, totals). The editor runs the same two checks before it submits.
+- `MatchReplayDTO`: socket authorization/result/rating envelope carrying raw worker JSON.
+
+Spring consumes worker batches without cutting or mapping render frames. It
+still authorizes reconnect lookahead and schedules result/rating reveals. Calls
+require `SIM_WORKER_SECRET`, use timeouts and bounded concurrency, and report
+engine version plus success/failure metrics. Match failures enter the existing
+retry/cancel path; puzzle failures never record a solve. There is no mode flag
+or fallback engine. Run `npm run version:write --prefix sim-worker` before
+`docker compose build`; deploy server, worker and frontend with matching schemas.

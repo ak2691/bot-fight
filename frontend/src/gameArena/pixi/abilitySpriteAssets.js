@@ -13,7 +13,6 @@ import silencePulseUrl from "../../assets/arena/abilities/zones/silence-pulse.we
 import nullZoneUrl from "../../assets/arena/abilities/zones/null-zone.png";
 import temporalRewindUrl from "../../assets/arena/abilities/support/temporal-rewind.png";
 import basicHealUrl from "../../assets/arena/abilities/support/basic-heal.png";
-import lockOnCrosshairUrl from "../../assets/arena/abilities/support/crosshair.png";
 import repulsorBlastUrl from "../../assets/arena/abilities/repulsorblast/spritesheet.png";
 import regularShieldUrl from "../../assets/arena/abilities/shields/regular-shield.png";
 import orbitalMarkerUrl from "../../assets/arena/abilities/orbital-strike/orbital-strike-marker.png";
@@ -77,7 +76,6 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
         loadAsset(nullZoneUrl, "entity.nullZone"),
         loadAsset(temporalRewindUrl, "entity.temporalRewindZone"),
         loadAsset(basicHealUrl, "effect.basicHeal"),
-        loadAsset(lockOnCrosshairUrl, "effect.lockOnCrosshair"),
         loadAsset(repulsorBlastUrl, "effect.repulsorBurst"),
         loadAsset(regularShieldUrl, "effect.shield"),
         loadAsset(orbitalMarkerUrl, "entity.orbitalMarker"),
@@ -95,7 +93,7 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
         loadFrames(MINE_DETONATE_URLS, "projectile.proximityMine.detonate", loadAsset),
         loadFrames(PHASE_STRIKE_URLS, "effect.phaseStrike", loadAsset),
     ]).then(([bot, drone, fireGun, muzzleFlash, concussiveShot, railShot, stun, dashSmoke, grenadeMineExplosion,
-            gravityGrenade, silencePulse, nullZone, temporalRewind, basicHeal, lockOnCrosshair, repulsorBlast, regularShield, orbitalMarker, orbitalExplosion, frostRing, singularity,
+            gravityGrenade, silencePulse, nullZone, temporalRewind, basicHeal, repulsorBlast, regularShield, orbitalMarker, orbitalExplosion, frostRing, singularity,
             meleeSlashes,
             windburst, fireball, grenadeMoving, grenadeStatic, grenadeDetonate, mineMoving, mineStatic, mineDetonate,
             phaseStrike]) => ({
@@ -130,7 +128,6 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
             nullZone: sliceGrid(nullZone, 5, 1),
             temporalRewind: sliceGrid(temporalRewind, 5, 3),
             basicHeal: sliceGrid(basicHeal, 16, 1),
-            lockOnCrosshair,
             repulsorBlast: sliceGrid(repulsorBlast, 10, 1),
             // The supplied sheet has four rows of five frames.
             shield: sliceGrid(regularShield, 5, 4),

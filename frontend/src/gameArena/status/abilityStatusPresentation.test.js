@@ -50,15 +50,7 @@ test("cooldown arcs render nothing at zero, a solid circle at one, and begin at 
     assert.match(abilityRingArcPath(0.75), /^M 18 2\.5 A 15\.5 15\.5 0 1 1 /);
 });
 
-test("Lock On keeps its white crosshair readable with a high-contrast amber accent", () => {
-    assert.equal(abilityRingColorFor(20, { state: "active" }), "#facc15");
-    assert.equal(abilityRingColorFor(20, { state: "preparing" }), "#facc15");
-    assert.equal(abilityRingColorFor(20, { state: "cooldown" }), "#22c55e");
-    assert.equal(abilityRingColorFor(20, { state: "ready" }), "#22c55e");
-});
-
-test("Lock On and missing artwork use compact safe fallbacks", () => {
-    assert.equal(fallbackAbilityText(20, "Lock On"), "LO");
+test("missing artwork uses compact safe fallbacks", () => {
     assert.equal(fallbackAbilityText("unknown_future_ability", ""), "UF");
     assert.doesNotThrow(() => fallbackAbilityText(null, ""));
 });
@@ -87,10 +79,6 @@ test("preparation, active, cooldown, and ready states use remaining-time directi
     assert.equal(active.state, "active");
     assert.equal(active.remainingMs, 200);
     assert.match(abilityRingBackground(active), /#7dd3fc/);
-
-    const lockOn = abilityStatusFor({ abilityState: { 20: { stage: "active", remainingMs: 200 } } }, 20);
-    assert.equal(lockOn.state, "active");
-    assert.equal(lockOn.durationMs, 200);
 
     const dash = abilityStatusFor({ abilityState: { 19: { stage: "active", remainingMs: 200 } } }, 19);
     assert.equal(dash.state, "active");

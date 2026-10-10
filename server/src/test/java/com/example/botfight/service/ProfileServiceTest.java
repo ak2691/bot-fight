@@ -1,5 +1,12 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.cache.DatabaseLookupCache;
+
+import com.example.botfight.service.rating.EloRatingService;
+
+import com.example.botfight.repository.PlayerRatingRepository;
+import org.mockito.Mockito;
+
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.limits.SlidingWindowRateLimiter;
@@ -53,7 +60,9 @@ class ProfileServiceTest {
             puzzleCompletionRepository,
             profileRepository,
             new SlidingWindowRateLimiter<>(Clock.systemUTC(), 10, Duration.ofMinutes(1)),
-            new TokenBucketRateLimiter<String>(Clock.systemUTC(), 1, Duration.ofSeconds(1)));
+            new TokenBucketRateLimiter<String>(Clock.systemUTC(), 1, Duration.ofSeconds(1)),
+            new DatabaseLookupCache(),
+            new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)));
 
     @Test
     void returnsOwnedAggregate() {
@@ -238,7 +247,7 @@ class ProfileServiceTest {
 
         assertThat(user.getUsername()).isEqualTo("Allan_2");
         assertThat(profile.username()).isEqualTo("Allan_2");
-        org.mockito.Mockito.verify(userRepository).saveAndFlush(user);
+        Mockito.verify(userRepository).saveAndFlush(user);
     }
 
     @Test
@@ -360,7 +369,7 @@ class ProfileServiceTest {
         service.updateAboutMe(authentication, request);
 
         assertThat(profile.getAboutMe()).isEqualTo("SELECT * FROM users;\n<script>alert(1)</script>");
-        org.mockito.Mockito.verify(profileRepository).saveAndFlush(profile);
+        Mockito.verify(profileRepository).saveAndFlush(profile);
     }
 
     @Test

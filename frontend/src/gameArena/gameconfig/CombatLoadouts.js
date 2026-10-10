@@ -1,4 +1,4 @@
-import { actionIdsForLoadout, actionIdsForSandboxLoadout, decodeBotLoadout, decodeSandboxLoadout, encodeBotLoadout, DEFAULT_BOT_LOADOUT } from "../loadout/BotLoadout.js";
+import { actionIdsForLoadout, actionIdsForSandboxLoadout, decodeBotLoadout, decodeSandboxLoadout, encodeBotLoadout, DEFAULT_BOT_LOADOUT } from "../../../../shared/engine/loadout/BotLoadout.js";
 
 export const COMMON_ACTION_IDS = Object.freeze(["none", "variable", "move_walk", "rotate_toward_enemy", "cancel_windup"]);
 

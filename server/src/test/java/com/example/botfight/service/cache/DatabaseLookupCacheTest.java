@@ -23,11 +23,11 @@ class DatabaseLookupCacheTest {
 
         ProfileDTO first = cache.profileSummary(userId, () -> {
             databaseLookups.incrementAndGet();
-            return new ProfileDTO("cache-user", null, "", 0, 0, 0, 0, 0);
+            return new ProfileDTO("cache-user", null, "", 0, 0, 0, 0, 0, new ProfileDTO.QueueStats(new ProfileDTO.ModeStats(0, 0), new ProfileDTO.ModeStats(0, 0)));
         });
         ProfileDTO second = cache.profileSummary(userId, () -> {
             databaseLookups.incrementAndGet();
-            return new ProfileDTO("cache-user", null, "", 0, 0, 0, 0, 0);
+            return new ProfileDTO("cache-user", null, "", 0, 0, 0, 0, 0, new ProfileDTO.QueueStats(new ProfileDTO.ModeStats(0, 0), new ProfileDTO.ModeStats(0, 0)));
         });
 
         assertThat(second).isSameAs(first);
@@ -36,7 +36,7 @@ class DatabaseLookupCacheTest {
         cache.invalidateAfterAboutMeChange(userId, "test-write");
         cache.profileSummary(userId, () -> {
             databaseLookups.incrementAndGet();
-            return new ProfileDTO("cache-user", null, "updated", 0, 0, 0, 0, 0);
+            return new ProfileDTO("cache-user", null, "updated", 0, 0, 0, 0, 0, new ProfileDTO.QueueStats(new ProfileDTO.ModeStats(0, 0), new ProfileDTO.ModeStats(0, 0)));
         });
 
         assertThat(databaseLookups).hasValue(2);
@@ -186,8 +186,8 @@ class DatabaseLookupCacheTest {
                 100,
                 300,
                 100,
-                null,
-                null,
+                1,
+                1,
                 null,
                 List.of());
     }

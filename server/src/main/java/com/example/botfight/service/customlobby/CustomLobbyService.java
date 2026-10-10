@@ -1,5 +1,7 @@
 package com.example.botfight.service.customlobby;
 
+import java.util.Objects;
+
 import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyInviteDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyMemberDTO;
@@ -15,7 +17,7 @@ import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
-import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.match.MatchTimingPolicy;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
 import com.example.botfight.service.invite.InviteTargetUnavailableException;
@@ -73,31 +75,6 @@ public class CustomLobbyService {
     private final Map<UUID, Set<String>> socketSessionIdsByUserId = new HashMap<>();
     private final Map<UUID, LobbyInvite> invitesById = new HashMap<>();
 
-    public CustomLobbyService(
-            CurrentUserService currentUserService,
-            UserRepository userRepository,
-            MatchService matchService,
-            @Qualifier("customLobbyInviteRateLimiter") TokenBucketRateLimiter<UUID> inviteRateLimiter,
-            @Qualifier("customLobbyTeamRateLimiter") TokenBucketRateLimiter<UUID> teamRateLimiter,
-            Clock clock,
-            BlockLookup blockLookup,
-            SingleUserWebSocketSessionRegistry socketRegistry,
-            PartyService partyService,
-            MatchmakingService matchmakingService) {
-        this(
-                currentUserService,
-                userRepository,
-                matchService,
-                inviteRateLimiter,
-                teamRateLimiter,
-                clock,
-                blockLookup,
-                socketRegistry,
-                partyService,
-                matchmakingService,
-                new MatchParticipationCoordinator());
-    }
-
     @Autowired
     public CustomLobbyService(
             CurrentUserService currentUserService,
@@ -121,33 +98,7 @@ public class CustomLobbyService {
         this.socketRegistry = socketRegistry;
         this.partyService = partyService;
         this.matchmakingService = matchmakingService;
-        this.participationCoordinator = participationCoordinator == null
-                ? new MatchParticipationCoordinator()
-                : participationCoordinator;
-    }
-
-    /** Compatibility constructor for focused service tests. */
-    public CustomLobbyService(
-            CurrentUserService currentUserService,
-            UserRepository userRepository,
-            MatchService matchService,
-            TokenBucketRateLimiter<UUID> inviteRateLimiter,
-            TokenBucketRateLimiter<UUID> teamRateLimiter,
-            Clock clock,
-            BlockLookup blockLookup,
-            SingleUserWebSocketSessionRegistry socketRegistry,
-            PartyService partyService) {
-        this(
-                currentUserService,
-                userRepository,
-                matchService,
-                inviteRateLimiter,
-                teamRateLimiter,
-                clock,
-                blockLookup,
-                socketRegistry,
-                partyService,
-                null);
+        this.participationCoordinator = participationCoordinator;
     }
 
     /** Binds a lobby member to the authenticated socket that subscribed to the lobby channel. */
@@ -181,7 +132,7 @@ public class CustomLobbyService {
     /** Used by the STOMP snapshot handler before exposing custom-lobby state. */
     public boolean isRankedParticipant(UUID userId) {
         return participationCoordinator.isRankedParticipant(userId)
-                || (matchmakingService != null && matchmakingService.hasTransientActivity(userId));
+                || (matchmakingService.hasTransientActivity(userId));
     }
 
     public synchronized List<LobbyRecipient> recipientsForLobby(UUID lobbyId) {
@@ -494,9 +445,7 @@ public class CustomLobbyService {
                     .toList();
             baseClockSeconds = lobby.baseClockSeconds;
             incrementSeconds = lobby.incrementSeconds;
-            startPreparation = matchmakingService == null
-                    ? null
-                    : matchmakingService.prepareExternalMatchStart(
+            startPreparation = matchmakingService.prepareExternalMatchStart(
                             members.stream().map(member -> member.user().getId()).collect(Collectors.toSet()));
             lobby.startReservationId = startReservationId;
         }
@@ -510,12 +459,11 @@ public class CustomLobbyService {
                             currentSocketForPrincipal(member.user().getEmail()),
                             member.teamNumber()))
                     .toList();
-            List<OutboundMatchmakingEvent> events = matchService.startTeamMatch(
-                    entrants, MatchMode.CUSTOM, baseClockSeconds, incrementSeconds);
+            List<OutboundMatchmakingEvent> events = matchService.startTeamMatch(entrants, MatchMode.CUSTOM, MatchMode.CUSTOM != MatchMode.CUSTOM, baseClockSeconds, incrementSeconds);
             UUID matchId = events.stream()
                     .map(OutboundMatchmakingEvent::event)
                     .map(event -> event.matchId())
-                    .filter(java.util.Objects::nonNull)
+                    .filter(Objects::nonNull)
                     .findFirst()
                     .orElseThrow(() -> new AuthException("the custom match could not be started"));
 
@@ -532,9 +480,7 @@ public class CustomLobbyService {
                 lobbySnapshot = toDTO(lobby);
             }
 
-            List<PartyService.CustomMatchPartyChange> partyChanges = partyService == null
-                    ? List.of()
-                    : partyService.prepareForCustomMatch(
+            List<PartyService.CustomMatchPartyChange> partyChanges = partyService.prepareForCustomMatch(
                             entrants.stream().map(MatchEntrant::userId).collect(Collectors.toSet()));
             return new StartedMatch(
                     matchId,
@@ -550,7 +496,7 @@ public class CustomLobbyService {
                     lobby.startReservationId = null;
                 }
             }
-            if (matchmakingService != null && startPreparation != null) {
+            if (startPreparation != null) {
                 matchmakingService.releaseExternalMatchStart(startPreparation.reservationId());
             }
         }
@@ -602,11 +548,7 @@ public class CustomLobbyService {
             registeredSockets.remove(socketSessionId);
             if (registeredSockets.isEmpty()) socketSessionIdsByUserId.remove(userId);
         }
-        if (socketRegistry != null && socketRegistry.hasActiveSessionForPrincipal(principalName)) {
-            return new LobbyChange(null, null, List.of(), List.of());
-        }
-        if (socketRegistry == null
-                && !socketSessionIdsByUserId.getOrDefault(userId, Set.of()).isEmpty()) {
+        if (socketRegistry.hasActiveSessionForPrincipal(principalName)) {
             return new LobbyChange(null, null, List.of(), List.of());
         }
         return stateChange(lobby);
@@ -714,17 +656,14 @@ public class CustomLobbyService {
     }
 
     private String currentSocketForPrincipal(String principalName) {
-        return socketRegistry == null
-                ? null
-                : socketRegistry.currentSessionIdForPrincipal(principalName);
+        return socketRegistry.currentSessionIdForPrincipal(principalName);
     }
 
     private boolean isMemberOnline(LobbyMember member) {
         if (member == null || member.user == null || member.user.getId() == null) return false;
-        if (socketRegistry != null) {
+
             return socketRegistry.hasActiveSessionForPrincipal(member.user.getEmail());
-        }
-        return !socketSessionIdsByUserId.getOrDefault(member.user.getId(), Set.of()).isEmpty();
+
     }
 
     private List<LobbyRecipient> recipientsFor(ActiveLobby lobby) {

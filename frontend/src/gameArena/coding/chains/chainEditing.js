@@ -4,8 +4,8 @@ import {
     ACTION_HEADS,
     BOT_CODE_ACTIONS,
     BOT_CODE_SELECTABLES,
-} from "../../botlogic/code/contracts/BotLogicContracts.js";
-import { createExpressionCondition, defaultSelectableForVariable } from "../../botlogic/code/BotCode.js";
+} from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { createExpressionCondition, defaultSelectableForVariable } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import {
     CHAIN_ID_PATTERN,
     CHAIN_MS_MAX,
@@ -17,8 +17,8 @@ import {
     MAX_CHAIN_STEPS,
     MAX_LOOP_NESTING,
     MAX_REPEAT_COUNT,
-} from "../../botlogic/code/configuration/constants.js";
-import { walkChainSteps, walkChainStepsWithLoose } from "../../botlogic/code/configuration/chainSteps.js";
+} from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
+import { walkChainSteps, walkChainStepsWithLoose } from "../../../../../shared/engine/botlogic/code/configuration/chainSteps.js";
 
 export const BRANCH = "branch";
 export const BODY = "body";
@@ -288,11 +288,6 @@ export function moveStepAt(steps, path, delta) {
             return next;
         }),
     };
-}
-
-/** Whether `path` is `ancestor` or sits somewhere inside it. */
-export function isWithin(path, ancestor) {
-    return ancestor.length <= path.length && ancestor.every((part, index) => path[index] === part);
 }
 
 /** Step path -> number in reading order: the step, its conditional body, then what follows. Repeat is a bracket, not a numbered step. */

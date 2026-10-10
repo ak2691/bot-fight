@@ -43,31 +43,14 @@ every supported app version and rollback path is compatible. Any schema
 removal must be a new forward Flyway migration after that review; never rewrite
 V38.
 
-## Replay recorders and delivery modes
+## Replay delivery modes
 
-**Active rated path:** [`MatchRoundResolutionService`](../server/src/main/java/com/example/botfight/service/match/resolution/MatchRoundResolutionService.java)
-calls `MatchSimulationService.buildDuelReplay`, which uses
-`DuelSimulationService.simulateCompact` and retains compact `MatchReplayDTO`
-frames. [`MatchReplayService`](../server/src/main/java/com/example/botfight/service/match/replay/MatchReplayService.java)
-can deliver those frames either as one full compact payload or in batches.
-`ReplayDeliveryMode.FULL` is therefore an active supported mode, not the older
-full recorder identified below.
+Authoritative simulation uses the Node worker and the sole `shared/engine/`.
+The Java full and compact replay recorders and mapping are removed after
+production authority verification. Spring carries raw worker initial-state
+and batch frame JSON, retaining authorization, reconnect lookahead and result
+reveal timing in `MatchReplayService`.
 
-[`application.properties`](../server/src/main/resources/application.properties)
-binds `REPLAY_DELIVERY_MODE` to `botfight.replay.delivery-mode`, defaulting to
-`batched`. [`server/.env.prod.example`](../server/.env.prod.example) also shows
-`batched`; that example does not prove the value used by a deployed service.
-
-**Legacy/inactive candidate:** `DuelSimulationService.simulate` selects
-`FullReplayRecorder`, which retains a per-tick `MatchPlaybackDTO`;
-`MatchSimulationService.buildDuelPlayback` is its wrapper. There is no call to
-that wrapper in the current production source tree, while the active rated path
-uses the compact wrapper. Tests still exercise the older path. Keep it until
-deployed call telemetry, supported-version checks, and external/serialized
-consumer review establish that no production consumer depends on it.
-
-Before changing replay support, verify the deployed `REPLAY_DELIVERY_MODE`,
-server versions still in service, and socket/replay consumers. This checkout
-does not expose production environment values, runtime call metrics, external
-consumers, or database contents, so it cannot establish the actual deployed
-mode, historical recorder usage, or V38 table row counts.
+`ReplayDeliveryMode.FULL` still delivers all worker batches in a single payload;
+`BATCHED` schedules the already-sliced worker batches. Both modes remain active
+socket contracts. `REPLAY_DELIVERY_MODE` defaults to `batched`.

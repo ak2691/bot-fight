@@ -124,6 +124,3 @@ export const EFFECT_GUIDE = Object.freeze([
     }),
 ]);
 
-// Kept as an alias for condition/catalogue consumers that still use the
-// original name while the visible section now covers all player-facing effects.
-export const STATUS_EFFECT_GUIDE = EFFECT_GUIDE;

@@ -8,8 +8,8 @@ import {
     countActionSlots,
     countConditionSlots,
     MAX_CONDITIONS_PER_BRANCH,
-} from "../../botlogic/code/BotCode.js";
-import { CHAIN_STEP_TYPES, MAX_CHAIN_NAME_LENGTH, coordinateVersionFor } from "../../botlogic/code/configuration/constants.js";
+} from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { CHAIN_STEP_TYPES, MAX_CHAIN_NAME_LENGTH } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { actionTypesForLoadout } from "../../gameconfig/CombatLoadouts.js";
 import {
     ActionVariableInspector,
@@ -125,7 +125,6 @@ export const ChainEditor = forwardRef(function ChainEditor({
     const chains = useMemo(() => chainsOf(configuration), [configuration]);
     const chain = findChain(configuration, chainId);
     const customVariables = useMemo(() => configuration.customVariables ?? [], [configuration.customVariables]);
-    const coordinateVersion = coordinateVersionFor(configuration);
     const actionTypes = useMemo(() => actionTypesForLoadout(ACTION_TYPES, selectedLoadout), [selectedLoadout]);
     const lookups = useMemo(() => conditionSummaryLookups(stateVariables, selectableTypes), [stateVariables, selectableTypes]);
     const [selected, setSelected] = useState(null);
@@ -773,7 +772,6 @@ export const ChainEditor = forwardRef(function ChainEditor({
             defaultVariable={defaultVariable}
             untilCondition={newStepCondition("until")}
             customVariables={customVariables}
-            coordinateVersion={coordinateVersion}
             disabled={disabled}
             canAddCondition={budget.conditions > 0}
             canAddAction={budget.actions > 0}

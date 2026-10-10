@@ -1,0 +1,39 @@
+{
+  "rule": "Puzzle brains obey authored budgets and reserve the puzzle namespace for outcome rules.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "options": {
+    "puzzleConstraints": {
+      "maxActionNodes": 0
+    }
+  }
+}

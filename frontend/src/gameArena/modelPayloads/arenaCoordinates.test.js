@@ -9,7 +9,7 @@ import {
     isPublicCoordinate,
     publicOffsetToInternal,
     publicPointToInternal,
-} from "./arenaCoordinates.js";
+} from "../../../../shared/engine/modelPayloads/arenaCoordinates.js";
 
 const pixiCanvasSource = readFileSync(fileURLToPath(new URL("../pixi/PixiCanvas.jsx", import.meta.url)), "utf8");
 

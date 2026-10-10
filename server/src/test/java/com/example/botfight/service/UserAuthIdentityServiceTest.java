@@ -1,5 +1,7 @@
 package com.example.botfight.service;
 
+import org.mockito.Mockito;
+
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.UserAuthIdentityService;
 
@@ -20,7 +22,7 @@ import org.junit.jupiter.api.Test;
 class UserAuthIdentityServiceTest {
 
     private final UserAuthIdentityRepository identityRepository =
-            org.mockito.Mockito.mock(UserAuthIdentityRepository.class);
+            Mockito.mock(UserAuthIdentityRepository.class);
     private final UserAuthIdentityService service = new UserAuthIdentityService(identityRepository);
 
     @Test

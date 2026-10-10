@@ -1,7 +1,7 @@
 import { botAbilityActiveMs } from "../botAbilityPresentationDefinitions.js";
-import { visualProgress } from "../../gameconfig/visualState.js";
-import { BOT_SIZE } from "../../modelPayloads/arenaConstants.js";
-import { compassDegreesToRadians } from "../../botlogic/planner/arenaAngles.js";
+import { visualProgress } from "../../../../../shared/engine/gameconfig/visualState.js";
+import { BOT_SIZE } from "../../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { compassDegreesToRadians } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
 import { abilityStats, abilityVisual, clamp } from "./rendererHelpers.js";
 
 /** Stun: the shock sprite projected from the bot's forward edge while the ability is active. */

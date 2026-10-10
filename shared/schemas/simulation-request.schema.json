@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://botfight.dev/schemas/simulation-request.schema.json",
+  "title": "Botfight simulation request",
+  "description": "What Spring sends the simulator for one match: the arena, the bots with their brains, and the brain schedule of later segments. It mirrors SimulationRequest.DuelSimulationRequest. Brains were validated at submission; the simulator checks them again with brain.schema.json as a guard.",
+  "type": "object",
+  "required": [
+    "matchId",
+    "rulesetVersion",
+    "seed",
+    "arena",
+    "bots"
+  ],
+  "properties": {
+    "matchId": {
+      "$ref": "#/$defs/uuid"
+    },
+    "rulesetVersion": {
+      "const": "duel-v2"
+    },
+    "seed": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,18})$",
+          "description": "Exact signed 64-bit decimal seed; checked by the engine."
+        }
+      ]
+    },
+    "arena": {
+      "$ref": "#/$defs/arena"
+    },
+    "bots": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/bot"
+      }
+    },
+    "segments": {
+      "description": "Timed-rounds segments, each ending at endsAtMs of the match. The first segment uses the bots of the request.",
+      "anyOf": [
+        {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/segment"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "recordFromMs": {
+      "description": "Replay frames are recorded from this match time on (the start of the current round segment).",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stateHashes": {
+          "type": "boolean"
+        },
+        "stopAtMs": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 120000,
+          "multipleOf": 100
+        }
+      }
+    },
+    "puzzle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicConfiguration",
+        "timeLimitMs"
+      ],
+      "properties": {
+        "logicConfiguration": {
+          "type": "object"
+        },
+        "timeLimitMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120000
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "slot": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "loadoutName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "arena": {
+      "type": "object",
+      "required": [
+        "width",
+        "height",
+        "durationMs"
+      ],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 4000
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 4000
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600000
+        },
+        "initialElapsedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        }
+      },
+      "additionalProperties": false
+    },
+    "bot": {
+      "type": "object",
+      "required": [
+        "userId",
+        "username",
+        "slot",
+        "x",
+        "y",
+        "size",
+        "selectedLoadout",
+        "brain"
+      ],
+      "properties": {
+        "userId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "slot": {
+          "$ref": "#/$defs/slot"
+        },
+        "x": {
+          "type": "number",
+          "minimum": -4000,
+          "maximum": 4000
+        },
+        "y": {
+          "type": "number",
+          "minimum": -4000,
+          "maximum": 4000
+        },
+        "rotation": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": -360,
+              "maximum": 360
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "selectedLoadout": {
+          "$ref": "#/$defs/loadoutName"
+        },
+        "brain": {
+          "$ref": "https://botfight.dev/schemas/brain.schema.json"
+        },
+        "initialHp": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "teamNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        }
+      },
+      "additionalProperties": false
+    },
+    "segment": {
+      "type": "object",
+      "required": [
+        "endsAtMs",
+        "bots"
+      ],
+      "properties": {
+        "endsAtMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600000
+        },
+        "bots": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/segmentBot"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "segmentBot": {
+      "type": "object",
+      "required": [
+        "slot",
+        "selectedLoadout",
+        "brain"
+      ],
+      "properties": {
+        "slot": {
+          "$ref": "#/$defs/slot"
+        },
+        "selectedLoadout": {
+          "$ref": "#/$defs/loadoutName"
+        },
+        "brain": {
+          "$ref": "https://botfight.dev/schemas/brain.schema.json"
+        },
+        "variableResets": {
+          "description": "Custom variables (by id or name) reset to their declared default instead of keeping their last value.",
+          "anyOf": [
+            {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

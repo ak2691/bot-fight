@@ -1,0 +1,8 @@
+{
+  "rule": "version is one of the two brain schema versions.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v9",
+    "roots": []
+  }
+}

@@ -13,12 +13,12 @@ import {
     MAX_TOTAL_CONDITIONS,
     MAX_CUSTOM_VARIABLE_SLOTS,
     normalizeRoots,
-    validateAbilityStrategyConfiguration,
     normalizeAbilityStrategyConfiguration,
     abilityDefinitionsForVariable,
-} from "../botlogic/code/BotCode.js";
-import { statusEffectDefinitionsForAbilities } from "../loadout/BotLoadout.js";
-import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
+} from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { validateAbilityStrategyConfiguration } from "../botlogic/code/validateBrain.js";
+import { statusEffectDefinitionsForAbilities } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { priorityForNode } from "../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide from "../../tutorial/TutorialGuide.jsx";
 import Toast, { ToastStack } from "../../components/Toast.jsx";
@@ -48,11 +48,10 @@ import { HudBudget, HudButton, HudScoreboard, HudSwitchRow } from "./HudControls
 import BuildClocks, { BuildOutOfTime, BuildWaiting } from "./BuildClocks.jsx";
 import HoldToSubmitButton from "./HoldToSubmitButton.jsx";
 import { roundLabel, teamHpTotals } from "./matchHud.js";
-import { formatHp } from "../gameconfig/visualState.js";
+import { formatHp } from "../../../../shared/engine/gameconfig/visualState.js";
 import { TIMEOUT_FALLBACKS } from "../../matchmaking/buildClock.js";
 import { isWorkspaceShortcutKeydown, readAddRootShortcut, readWorkspaceShortcut } from "./addRootShortcut.js";
-import { BOT_LOGIC_TREE_VERSION, MAX_CHAIN_STEPS } from "../botlogic/code/configuration/constants.js";
-import { upgradeStoredStrategyCoordinates } from "../persistence/arenaStrategyStorage.js";
+import { BOT_LOGIC_TREE_VERSION, MAX_CHAIN_STEPS } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 1.35;
@@ -432,12 +431,7 @@ export default function CodingPanel({
     const normalizedActiveConfiguration = activeConfigurationSource && typeof activeConfigurationSource === "object"
         ? activeConfigurationSource
         : EMPTY_CONFIGURATION;
-    const activeConfiguration = useMemo(
-        () => activeCodeReadOnly
-            ? normalizedActiveConfiguration
-            : upgradeStoredStrategyCoordinates(normalizedActiveConfiguration),
-        [activeCodeReadOnly, normalizedActiveConfiguration],
-    );
+    const activeConfiguration = normalizedActiveConfiguration;
     const activeLoadout = activeLoadoutSource;
     const validation = validateAbilityStrategyConfiguration(activeConfiguration);
     const isBotCodeLocked = isMatchTesting && (

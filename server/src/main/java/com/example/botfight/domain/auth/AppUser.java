@@ -41,7 +41,6 @@ public class AppUser {
     @Column(name = "guest_expires_at")
     private Instant guestExpiresAt;
 
-
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified = true;
 

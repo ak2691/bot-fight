@@ -1,13 +1,13 @@
-import { abilityDefinition, VISUAL_INTERPOLATION } from "../loadout/BotLoadout.js";
-import { abilityId } from "../gameconfig/AbilityRegistry.js";
-import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
-import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
-import { isBotState } from "../modelPayloads/botState.js";
-import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
-import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { entityContract, eventVerbs, phaseForEntity, phaseSpeed, triggerView, VERBS } from "../ecs/contracts/AbilityContracts.js";
+import { abilityDefinition, VISUAL_INTERPOLATION } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { abilityId } from "../../../../shared/engine/gameconfig/AbilityRegistry.js";
+import { CLOSING_ZONE_TYPE } from "../../../../shared/engine/gameconfig/ArenaHazardConfig.js";
+import { AUTO_STEP_MS } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
+import { compassDegreesToRadians } from "../../../../shared/engine/botlogic/planner/arenaAngles.js";
+import { statusIsActive } from "../../../../shared/engine/ecs/contracts/StatusContracts.js";
+import { entityContract, eventVerbs, phaseForEntity, phaseSpeed, triggerView, VERBS } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { BOT_ABILITY_VISUAL_PRIORITY } from "./botAbilityPresentationDefinitions.js";
-import { activeRemainingMs, windupRemainingMs } from "../gameconfig/AbilityState.js";
+import { activeRemainingMs, windupRemainingMs } from "../../../../shared/engine/gameconfig/AbilityState.js";
 
 const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "mineExplosion", "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball", "windburstProjectile"]);
@@ -58,12 +58,6 @@ export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
     singularityZone: { texturePath: ["singularity"], animation: "time", frameMs: SINGULARITY_FRAME_MS },
     singularityExplosion: { texturePath: ["orbitalExplosion"], animation: "progress", durationMs: 400, remaining: "orbital" },
     frostRing: { texturePath: ["frostRing"], animation: "progress", durationMs: 300 },
-});
-
-export const LOCK_ON_PRESENTATION = Object.freeze({
-    texturePath: ["lockOnCrosshair"],
-    animation: "target",
-    markerSize: Number(triggerView(20)?.visual?.visualSize ?? 48),
 });
 
 function semanticVisualEventActive(shape) {
@@ -265,7 +259,6 @@ export function entityVisualRotation(shape) {
 }
 
 export const BOT_PRESENTATION_DEFINITIONS = Object.freeze({
-    20: LOCK_ON_PRESENTATION,
     7: { texturePath: ["heavySlash"], animation: "progress" }, 8: { texturePath: ["repulsorBlast"], animation: "presentationClock" },
     3: { texturePath: ["rays", "rail_shot"], animation: "alpha" }, 12: { texturePath: ["rays", "pistol"], animation: "alpha" },
     9: { texturePath: ["rays", "concussive_shot"], animation: "alpha" },
@@ -647,13 +640,6 @@ export function activeBotVisual(shape) {
         .find((id) => activeRemainingMs(shape, id) > 0
             && Boolean(triggerView(id)?.visual?.type));
     return abilityVisual ?? active ?? null;
-}
-
-export function lockOnTargetPoint(shape) {
-    if (shape?.abilityTargetX == null || shape?.abilityTargetY == null) return null;
-    const x = Number(shape.abilityTargetX);
-    const y = Number(shape.abilityTargetY);
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
 export function entityCaption(shape) {

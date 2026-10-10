@@ -1,5 +1,7 @@
 package com.example.botfight.service;
 
+import java.util.stream.Collectors;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -21,11 +23,9 @@ import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -161,7 +161,7 @@ class GuestLifecyclePersistenceTest {
         Match mixedMatch = persistMatch(MatchStatus.COMPLETED, List.of(mixedGuest, registeredUser));
 
         return new Fixture(
-                deletableGuests.stream().map(AppUser::getId).collect(java.util.stream.Collectors.toSet()),
+                deletableGuests.stream().map(AppUser::getId).collect(Collectors.toSet()),
                 deletableMatch.getId(),
                 Set.of(
                         runningGuests.get(0).getId(), runningGuests.get(1).getId(),

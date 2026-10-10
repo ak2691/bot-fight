@@ -2,8 +2,8 @@
 // Walks every part of a configuration that can hold a reference: connected roots (their
 // conditionals and root actions), unconnected nodes, and chains (steps, nested If / Repeat bodies
 // and loose blocks). Pure and UI-free so the rules can be tested directly.
-import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../botlogic/code/contracts/BotLogicContracts.js";
-import { CHAIN_STEP_TYPES } from "../botlogic/code/configuration/constants.js";
+import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { CHAIN_STEP_TYPES } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { editorRootsFor } from "./treeWiring.js";
 import { LOOSE, BODY, BRANCH, isConditional, numberChainSteps, pathKey } from "./chains/chainEditing.js";
 

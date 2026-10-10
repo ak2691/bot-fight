@@ -1,9 +1,9 @@
-import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
-import { ABILITIES } from "../../gameconfig/AbilityRegistry.js";
-import { preparingAbilityId } from "../../gameconfig/AbilityState.js";
-import { abilityVisualOpacity, combatVisualRemainingMs, sweepAngle, visualProgress } from "../../gameconfig/visualState.js";
-import { triggerView } from "../../ecs/contracts/AbilityContracts.js";
-import { compassDegreesToRadians } from "../../botlogic/planner/arenaAngles.js";
+import { ABILITY_STATS } from "../../../../../shared/engine/gameconfig/Abilities.js";
+import { ABILITIES } from "../../../../../shared/engine/gameconfig/AbilityRegistry.js";
+import { preparingAbilityId } from "../../../../../shared/engine/gameconfig/AbilityState.js";
+import { abilityVisualOpacity, combatVisualRemainingMs, sweepAngle, visualProgress } from "../../../../../shared/engine/gameconfig/visualState.js";
+import { triggerView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { compassDegreesToRadians } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
 import { botAbilityActiveMs } from "../botAbilityPresentationDefinitions.js";
 import { heavySlashRotation, weaponWindupProgress } from "../pixiVisualState.js";
 import { visualRayLength } from "../rayPresentationGeometry.js";

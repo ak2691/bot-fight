@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AUTO_STEP_MS } from "./arenaConstants.js";
+import { AUTO_STEP_MS } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { buildInitialArenaShapes } from "./arenaShapes.js";
 import { advanceShapes as advanceArenaPreviewTickNormalized } from "../testing/fightTick.js";
 import { sanitizeStrategyConfigurationForLoadout } from "../persistence/arenaStrategyStorage.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../botlogic/code/BotCode.js";
-import { preparingAbilityId, preparingRemainingMs, cooldownRemainingMs, activeRemainingMs } from "../gameconfig/AbilityState.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { preparingAbilityId, preparingRemainingMs, cooldownRemainingMs, activeRemainingMs } from "../../../../shared/engine/gameconfig/AbilityState.js";
 
 // The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);
@@ -88,7 +88,7 @@ test("preview tick decides from the previous state and returns a new state snaps
             branchType: "if",
             priority: 1,
             conditions: [{ type: "always" }],
-            actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: "east" }],
+            actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: 90 }],
             children: [],
         }] }],
     };

@@ -1,4 +1,4 @@
-import { visualProgress } from "../../gameconfig/visualState.js";
+import { visualProgress } from "../../../../../shared/engine/gameconfig/visualState.js";
 import { activeVisualFrame } from "./rendererHelpers.js";
 
 /** Phase Strike: a violet burst when it starts, then the strike sprite along the dash path. */

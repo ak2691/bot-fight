@@ -7,8 +7,8 @@
   },
   "scenarios": [
     {
-      "id": "melee-slash-heavy-strike",
-      "description": "Slash, Heavy Slash and Basic Strike at close range: melee arcs, hit stamina refund, hit stagger.",
+      "id": "melee-slash-heavy",
+      "description": "Slash and Heavy Slash at close range: melee arcs, hit stamina refund, hit stagger.",
       "ticks": 40,
       "bots": [
         {
@@ -16,11 +16,10 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [1,7,34],
+          "abilities": [1,7],
           "roots": [
             {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":7,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":34,"selectable":"opponent_1"}],"children":[]}]}
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":7,"selectable":"opponent_1"}],"children":[]}]}
           ]
         },
         {
@@ -404,8 +403,8 @@
       ]
     },
     {
-      "id": "rewind-phase-lockon",
-      "description": "Rewind, Phase Strike teleport and Lock On at 200 units.",
+      "id": "rewind-phase",
+      "description": "Rewind and Phase Strike teleport at 200 units.",
       "ticks": 50,
       "bots": [
         {
@@ -413,11 +412,10 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [21,25,20],
+          "abilities": [21,25],
           "roots": [
             {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":25,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":20,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":21,"selectable":"opponent_1"}],"children":[]}]}
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":21,"selectable":"opponent_1"}],"children":[]}]}
           ]
         },
         {

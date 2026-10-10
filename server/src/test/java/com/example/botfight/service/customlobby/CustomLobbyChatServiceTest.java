@@ -1,5 +1,9 @@
 package com.example.botfight.service.customlobby;
 
+import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
+import com.example.botfight.service.matchmaking.MatchmakingService;
+import org.mockito.Mockito;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
@@ -54,12 +58,10 @@ class CustomLobbyChatServiceTest {
             clock,
             BlockLookup.none(),
             socketRegistry,
-            partyService);
-    private final CustomLobbyChatService chatService = new CustomLobbyChatService(
-            clock,
-            lobbyService,
-            new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(1)),
-            BlockLookup.none());
+            partyService,
+            Mockito.mock(MatchmakingService.class),
+            new MatchParticipationCoordinator());
+    private final CustomLobbyChatService chatService = new CustomLobbyChatService(clock, lobbyService, new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(1)), BlockLookup.none(), ChatEvidenceRecorder.noOp());
 
     @BeforeEach
     void setUp() {

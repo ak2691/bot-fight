@@ -1,7 +1,6 @@
 package com.example.botfight.service.match;
 
 import com.example.botfight.service.system.StartupReadinessService;
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

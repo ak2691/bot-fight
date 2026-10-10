@@ -2,8 +2,8 @@
   "version": 1,
   "runtime": "browser",
   "scenarios": {
-    "melee-slash-heavy-strike": {
-      "hashes": ["4df3f6e9","6e6e76fe","efd710d3","9dd1f6cf","dae08cdf","fb768500","97d416a5","459c138c","1ac4861a","2d917321","aefa0cf6","64f7e586","6cffcb86","81655f82","e35e0f87","5467be29","84e8d433","2dd37eca","36ea19bf","02121966","3abfdb2c","7f6fa43a","9d7fc1f4","90bd905b","e6d82c7b","5205a891","127adcc8","71860049","7684d6d3","520b263b","a244eed3","a218905b","256af606","e18f72df","498ab1f7","84f2d9af","43592898","9108d0d3","003036c0","03827e2a"],
+    "melee-slash-heavy": {
+      "hashes": ["4df3f6e9","6e6e76fe","efd710d3","9dd1f6cf","dae08cdf","fb768500","97d416a5","459c138c","1ac4861a","2d917321","aefa0cf6","64f7e586","6cffcb86","81655f82","e35e0f87","42e2c5f2","16adc6b3","ca6708d4","09900922","751618e9","216139b1","f09d4d33","23e50e91","3e9acdf2","bd32341d","607eb15c","24bff5fe","c9e7dab7","260af195","484773dd","273821ad","6e599c2d","78af77e4","fa1811b9","9a935b4e","1bfbf523","780e6982","31f0dc51","0d230c00","886c266a"],
       "log": [
         {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":1,"effect":null,"amount":null},
         {"tick":1,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":1,"effect":"damage","amount":8},
@@ -18,30 +18,18 @@
         {"tick":12,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":1,"effect":"damage","amount":10},
         {"tick":12,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":1,"effect":"hit-stagger","amount":300},
         {"tick":12,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10},
-        {"tick":16,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":34,"effect":null,"amount":null},
-        {"tick":16,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":34,"effect":"damage","amount":10},
-        {"tick":16,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":34,"effect":"hit-stagger","amount":300},
-        {"tick":16,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10},
         {"tick":17,"stage":"act","kind":"effect","source":"bot1","target":"bot2","abilityId":7,"effect":"damage","amount":2},
         {"tick":17,"stage":"act","kind":"status","source":null,"target":"bot2","abilityId":7,"effect":"hit-stagger","amount":300},
         {"tick":21,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":1,"effect":null,"amount":null},
         {"tick":21,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":1,"effect":"damage","amount":10},
         {"tick":21,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":1,"effect":"hit-stagger","amount":300},
         {"tick":21,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10},
-        {"tick":25,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":34,"effect":null,"amount":null},
-        {"tick":25,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":34,"effect":"damage","amount":10},
-        {"tick":25,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":34,"effect":"hit-stagger","amount":300},
-        {"tick":25,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10},
         {"tick":27,"stage":"act","kind":"effect","source":"bot1","target":"bot2","abilityId":7,"effect":"damage","amount":2},
         {"tick":27,"stage":"act","kind":"status","source":null,"target":"bot2","abilityId":7,"effect":"hit-stagger","amount":300},
         {"tick":30,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":1,"effect":null,"amount":null},
         {"tick":30,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":1,"effect":"damage","amount":10},
         {"tick":30,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":1,"effect":"hit-stagger","amount":300},
         {"tick":30,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10},
-        {"tick":34,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":34,"effect":null,"amount":null},
-        {"tick":34,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":34,"effect":"damage","amount":10},
-        {"tick":34,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":34,"effect":"hit-stagger","amount":300},
-        {"tick":34,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10},
         {"tick":37,"stage":"act","kind":"effect","source":"bot1","target":"bot2","abilityId":7,"effect":"damage","amount":2},
         {"tick":37,"stage":"act","kind":"status","source":null,"target":"bot2","abilityId":7,"effect":"hit-stagger","amount":300},
         {"tick":39,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":1,"effect":null,"amount":null},
@@ -454,17 +442,16 @@
         {"tick":28,"stage":"act","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"spend","amount":25}
       ]
     },
-    "rewind-phase-lockon": {
-      "hashes": ["9357b716","9357b716","9357b716","9357b716","3ce53a18","9357b716","9357b716","9357b716","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716"],
+    "rewind-phase": {
+      "hashes": ["9357b716","9357b716","9357b716","9357b716","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","5cb977b7","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716","9357b716"],
       "log": [
         {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":25,"effect":null,"amount":null},
-        {"tick":6,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":20,"effect":null,"amount":null},
-        {"tick":9,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":21,"effect":null,"amount":null},
-        {"tick":9,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot1","abilityId":21,"effect":"restore_state","amount":3000},
-        {"tick":9,"stage":"spawn","kind":"spawn","source":"bot1","target":"temporalRewindZone:1:1","abilityId":21,"effect":"temporalRewindZone","amount":null},
+        {"tick":5,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":21,"effect":null,"amount":null},
+        {"tick":5,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot1","abilityId":21,"effect":"restore_state","amount":3000},
+        {"tick":5,"stage":"spawn","kind":"spawn","source":"bot1","target":"temporalRewindZone:1:1","abilityId":21,"effect":"temporalRewindZone","amount":null},
         {"tick":20,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":25,"effect":null,"amount":null},
-        {"tick":39,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":25,"effect":null,"amount":null},
-        {"tick":39,"stage":"entities","kind":"removal","source":"bot1","target":"temporalRewindZone:1:1","abilityId":21,"effect":"temporalRewindZone","amount":null}
+        {"tick":35,"stage":"entities","kind":"removal","source":"bot1","target":"temporalRewindZone:1:1","abilityId":21,"effect":"temporalRewindZone","amount":null},
+        {"tick":39,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":25,"effect":null,"amount":null}
       ]
     },
     "zones-orbital-null-frost": {

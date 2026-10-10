@@ -1,0 +1,45 @@
+{
+  "rule": "Actions come from the closed action list.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": [
+        1,
+        7,
+        3,
+        4,
+        5,
+        6,
+        8
+      ]
+    },
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": 9999,
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

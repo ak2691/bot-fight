@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { combatLogActive } from "../ecs/combatLog.js";
+import { combatLogActive } from "../../../../shared/engine/ecs/combatLog.js";
 import {
     BROWSER_GOLDEN_FILE,
     loadGolden,
@@ -36,12 +36,12 @@ test("every ability triggers in at least one scenario", () => {
             if (entry.kind === "trigger") triggered.add(entry.abilityId);
         }
     }
-    const expected = [...Array(37).keys()].map((index) => index + 1).filter((id) => id !== 2);
+    const expected = [...Array(37).keys()].map((index) => index + 1).filter((id) => ![2, 20, 34].includes(id));
     assert.deepEqual(expected.filter((id) => !triggered.has(id)), []);
 });
 
 test("the combat log is off unless requested and never changes the result", () => {
-    const scenario = file.scenarios.find((candidate) => candidate.id === "melee-slash-heavy-strike");
+    const scenario = file.scenarios.find((candidate) => candidate.id === "melee-slash-heavy");
     const logged = runScenario(scenario);
     const quiet = runScenario(scenario, { log: false });
     assert.ok(logged.log.length > 0);

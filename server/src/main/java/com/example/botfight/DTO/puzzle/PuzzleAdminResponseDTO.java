@@ -20,8 +20,6 @@ public class PuzzleAdminResponseDTO {
     private int opponentTeamSize;
     private String coordinateSystemVersion;
     private JsonNode logicConfiguration;
-    private JsonNode winConditions;
-    private JsonNode loseConditions;
     private List<PuzzleBotResponseDTO> bots;
 
     public UUID getId() { return id; }
@@ -68,12 +66,6 @@ public class PuzzleAdminResponseDTO {
 
     public JsonNode getLogicConfiguration() { return logicConfiguration; }
     public void setLogicConfiguration(JsonNode logicConfiguration) { this.logicConfiguration = logicConfiguration; }
-
-    public JsonNode getWinConditions() { return winConditions; }
-    public void setWinConditions(JsonNode winConditions) { this.winConditions = winConditions; }
-
-    public JsonNode getLoseConditions() { return loseConditions; }
-    public void setLoseConditions(JsonNode loseConditions) { this.loseConditions = loseConditions; }
 
     public List<PuzzleBotResponseDTO> getBots() { return bots; }
     public void setBots(List<PuzzleBotResponseDTO> bots) { this.bots = bots; }

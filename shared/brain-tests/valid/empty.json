@@ -1,0 +1,7 @@
+{
+  "description": "A brain with no roots.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": []
+  }
+}

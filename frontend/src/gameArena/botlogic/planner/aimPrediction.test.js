@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "./ArenaActionPlanner.js";
-import { leadAimTarget, leadSecondsForBlock, projectileSpeedPerSecond, targetVelocityPerSecond } from "./aimPrediction.js";
-import { normalizeAbilityStrategyConfiguration, validateAbilityStrategyConfiguration } from "../code/BotCode.js";
-import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../code/BotCode.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
+import { leadAimTarget, leadSecondsForBlock, projectileSpeedPerSecond, targetVelocityPerSecond } from "../../../../../shared/engine/botlogic/planner/aimPrediction.js";
+import { normalizeAbilityStrategyConfiguration, validateAbilityStrategyConfiguration } from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { buildStatePayload } from "../../../../../shared/engine/modelPayloads/strategyStatePayload.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 
 // The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);

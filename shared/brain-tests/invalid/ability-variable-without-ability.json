@@ -1,0 +1,44 @@
+{
+  "rule": "Selected-ability variables must name an ability.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": []
+    },
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityReady",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

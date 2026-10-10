@@ -1,5 +1,7 @@
 package com.example.botfight.DTO.profile;
 
+import java.time.Instant;
+
 import java.util.List;
 
 public record ProfileSearchPageDTO(
@@ -14,6 +16,6 @@ public record ProfileSearchPageDTO(
             String username,
             Integer elo,
             long onesMatches,
-            java.time.Instant joinedAt) {
+            Instant joinedAt) {
     }
 }

@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar";
 import BackToTopButton from "../../components/BackToTopButton.jsx";
 import { getAbilityCatalogueIcon, getAbilityCatalogueIconLayout } from "../../abilityCatalogueIcons.js";
-import { ABILITY_STATS } from "../../gameArena/gameconfig/Abilities.js";
-import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
+import { ABILITY_STATS } from "../../../../shared/engine/gameconfig/Abilities.js";
+import { ALL_ABILITY_DEFINITIONS } from "../../../../shared/engine/loadout/BotLoadout.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
     abilityEffectChips,
@@ -21,7 +21,6 @@ import {
     SECTION_TITLES,
     STAMINA_NOTE,
     WEAPONS_SECTION,
-    isListedAbility,
     movementSettingsMatching,
     sectionAnchor,
     sectionOf,
@@ -390,7 +389,7 @@ export default function AbilityCataloguePage() {
     const [selectedEffect, setSelectedEffect] = useState(null);
     const [searchTerm, setSearchTerm] = useState("");
     const normalizedSearch = searchTerm.trim().toLowerCase();
-    const visibleAbilities = ALL_ABILITY_DEFINITIONS.filter(isListedAbility).filter((ability) => (
+    const visibleAbilities = ALL_ABILITY_DEFINITIONS.filter((ability) => (
         `${ability.label} ${ability.kind} ${abilityTypeLabels(ability).join(" ")}`.toLowerCase().includes(normalizedSearch)
     ));
     const visibleMovementSettings = movementSettingsMatching(normalizedSearch);

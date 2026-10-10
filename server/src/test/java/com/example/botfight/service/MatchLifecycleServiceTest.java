@@ -1,5 +1,7 @@
 package com.example.botfight.service;
 
+import com.example.botfight.DTO.match.MatchEventType;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -17,16 +19,16 @@ import static org.mockito.Mockito.when;
 import com.example.botfight.domain.match.Match;
 import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.service.match.chat.MatchChatService;
+import com.example.botfight.service.match.MatchChatService;
 import com.example.botfight.service.match.connection.MatchConnectionService;
 import com.example.botfight.service.match.event.MatchEventFactory;
-import com.example.botfight.service.match.lifecycle.MatchLifecycleService;
+import com.example.botfight.service.match.MatchLifecycleService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
+import com.example.botfight.service.match.MatchPersistenceService;
 import com.example.botfight.service.match.state.MatchRuntimeState;
-import com.example.botfight.service.match.submission.MatchSubmissionService;
+import com.example.botfight.service.match.MatchSubmissionService;
 import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
@@ -43,7 +45,7 @@ class MatchLifecycleServiceTest {
 
     @Test
     void reservesWholeRosterBeforePersistenceAndRejectsOverlappingStarts() throws Exception {
-        MatchRuntimeState state = new MatchRuntimeState();
+        MatchRuntimeState state = new MatchRuntimeState(new com.example.botfight.service.match.MatchPhaseService());
         MatchPersistenceService persistence = mock(MatchPersistenceService.class);
         CountDownLatch firstPersistenceEntered = new CountDownLatch(1);
         CountDownLatch releaseFirstPersistence = new CountDownLatch(1);
@@ -66,22 +68,16 @@ class MatchLifecycleServiceTest {
         UUID unrelatedSecond = UUID.randomUUID();
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<?> firstStart = executor.submit(() -> lifecycle.startMatch(
-                    entrant(firstPlayer, "first", "first@example.com", "first-socket"),
-                    entrant(sharedPlayer, "shared", "shared@example.com", "shared-socket")));
+            Future<?> firstStart = executor.submit(() -> lifecycle.startMatch(entrant(firstPlayer, "first", "first@example.com", "first-socket"), entrant(sharedPlayer, "shared", "shared@example.com", "shared-socket"), MatchMode.ONES, true));
             assertThat(firstPersistenceEntered.await(2, TimeUnit.SECONDS)).isTrue();
 
-            assertThatThrownBy(() -> lifecycle.startMatch(
-                    entrant(sharedPlayer, "shared", "shared@example.com", "shared-custom-socket"),
-                    entrant(UUID.randomUUID(), "overlap", "overlap@example.com", "overlap-socket")))
+            assertThatThrownBy(() -> lifecycle.startMatch(entrant(sharedPlayer, "shared", "shared@example.com", "shared-custom-socket"), entrant(UUID.randomUUID(), "overlap", "overlap@example.com", "overlap-socket"), MatchMode.ONES, true))
                     .isInstanceOf(AuthException.class)
                     .hasMessageContaining("already in a match or starting a match");
             assertThat(state.isMatchStartReserved(unrelatedFirst)).isFalse();
             assertThat(state.activeSessionForUser(firstPlayer)).isNull();
 
-            lifecycle.startMatch(
-                    entrant(unrelatedFirst, "unrelated-one", "unrelated-one@example.com", "unrelated-one-socket"),
-                    entrant(unrelatedSecond, "unrelated-two", "unrelated-two@example.com", "unrelated-two-socket"));
+            lifecycle.startMatch(entrant(unrelatedFirst, "unrelated-one", "unrelated-one@example.com", "unrelated-one-socket"), entrant(unrelatedSecond, "unrelated-two", "unrelated-two@example.com", "unrelated-two-socket"), MatchMode.ONES, true);
             assertThat(persistedMatches).hasValue(2);
 
             releaseFirstPersistence.countDown();
@@ -104,7 +100,7 @@ class MatchLifecycleServiceTest {
 
     @Test
     void persistenceFailureReleasesEveryRosterReservationForRetry() {
-        MatchRuntimeState state = new MatchRuntimeState();
+        MatchRuntimeState state = new MatchRuntimeState(new com.example.botfight.service.match.MatchPhaseService());
         MatchPersistenceService persistence = mock(MatchPersistenceService.class);
         AtomicInteger persistedMatches = new AtomicInteger();
         when(persistence.createMatch(any(MatchMode.class), anyBoolean()))
@@ -123,7 +119,7 @@ class MatchLifecycleServiceTest {
                 entrant(firstPlayer, "first", "first@example.com", "first-socket"),
                 entrant(secondPlayer, "second", "second@example.com", "second-socket"));
 
-        assertThatThrownBy(() -> lifecycle.startMatch(roster.get(0), roster.get(1)))
+        assertThatThrownBy(() -> lifecycle.startMatch(roster.get(0), roster.get(1), MatchMode.ONES, true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("simulated participant persistence failure");
         assertThat(state.isMatchStartReserved(firstPlayer)).isFalse();
@@ -131,7 +127,7 @@ class MatchLifecycleServiceTest {
         assertThat(state.activeSessionForUser(firstPlayer)).isNull();
         assertThat(state.activeSessionForUser(secondPlayer)).isNull();
 
-        lifecycle.startMatch(roster.get(0), roster.get(1));
+        lifecycle.startMatch(roster.get(0), roster.get(1), MatchMode.ONES, true);
 
         assertThat(state.activeSessionForUser(firstPlayer))
                 .isSameAs(state.activeSessionForUser(secondPlayer));
@@ -142,7 +138,7 @@ class MatchLifecycleServiceTest {
 
     @Test
     void socketRegistrationFailureDoesNotPublishSessionAndClearsAttemptedSockets() {
-        MatchRuntimeState state = new MatchRuntimeState();
+        MatchRuntimeState state = new MatchRuntimeState(new com.example.botfight.service.match.MatchPhaseService());
         MatchPersistenceService persistence = mock(MatchPersistenceService.class);
         when(persistence.createMatch(any(MatchMode.class), anyBoolean())).thenReturn(matchWithSeed(1));
         MatchConnectionService connections = mock(MatchConnectionService.class);
@@ -153,9 +149,7 @@ class MatchLifecycleServiceTest {
         doThrow(new IllegalStateException("simulated socket registration failure"))
                 .when(connections).registerSocket(secondPlayer, "second-socket");
 
-        assertThatThrownBy(() -> lifecycle.startMatch(
-                entrant(firstPlayer, "first", "first@example.com", "first-socket"),
-                entrant(secondPlayer, "second", "second@example.com", "second-socket")))
+        assertThatThrownBy(() -> lifecycle.startMatch(entrant(firstPlayer, "first", "first@example.com", "first-socket"), entrant(secondPlayer, "second", "second@example.com", "second-socket"), MatchMode.ONES, true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("simulated socket registration failure");
 
@@ -166,27 +160,29 @@ class MatchLifecycleServiceTest {
 
     @Test
     void eventFactoryFailureDoesNotPublishSessionOrRegisterSockets() {
-        MatchRuntimeState state = new MatchRuntimeState();
+        MatchRuntimeState state = new MatchRuntimeState(new com.example.botfight.service.match.MatchPhaseService());
         MatchPersistenceService persistence = mock(MatchPersistenceService.class);
         when(persistence.createMatch(any(MatchMode.class), anyBoolean())).thenReturn(matchWithSeed(1));
         MatchConnectionService connections = mock(MatchConnectionService.class);
         MatchEventFactory eventFactory = mock(MatchEventFactory.class);
         doAnswer(invocation -> {
             throw new IllegalStateException("simulated start-event failure");
-        }).when(eventFactory).forPlayer(
-                any(MatchSession.class),
+        }).when(eventFactory).forPlayer(any(MatchSession.class),
                 any(MatchPlayer.class),
-                eq("MATCH_STARTED"),
+                eq(MatchEventType.MATCH_STARTED),
                 eq("LOADOUT_SELECT"),
                 isNull(),
-                eq("Match accepted. Pick your weapon and first ability."));
+                eq("Match accepted. Pick your weapon and first ability."),
+                eq(0L),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull());
         MatchLifecycleService lifecycle = lifecycle(state, persistence, connections, eventFactory);
         UUID firstPlayer = UUID.randomUUID();
         UUID secondPlayer = UUID.randomUUID();
 
-        assertThatThrownBy(() -> lifecycle.startMatch(
-                entrant(firstPlayer, "first", "first@example.com", "first-socket"),
-                entrant(secondPlayer, "second", "second@example.com", "second-socket")))
+        assertThatThrownBy(() -> lifecycle.startMatch(entrant(firstPlayer, "first", "first@example.com", "first-socket"), entrant(secondPlayer, "second", "second@example.com", "second-socket"), MatchMode.ONES, true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("simulated start-event failure");
 
@@ -209,14 +205,16 @@ class MatchLifecycleServiceTest {
             MatchPersistenceService persistence,
             MatchConnectionService connections,
             MatchEventFactory eventFactory) {
-        return new MatchLifecycleService(
-                state,
+        return new MatchLifecycleService(state,
+                new com.example.botfight.service.match.MatchLockService(),
                 persistence,
                 connections,
                 eventFactory,
                 mock(MatchSubmissionService.class),
                 mock(MatchChatService.class),
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                new com.example.botfight.service.matchmaking.MatchParticipationCoordinator(),
+                org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
     }
 
     private void assertNoPublishedStart(MatchRuntimeState state, UUID firstPlayer, UUID secondPlayer) {

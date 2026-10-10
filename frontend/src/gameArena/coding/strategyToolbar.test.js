@@ -141,7 +141,7 @@ test("conditional ability pickers use all equipped abilities and resource-aware 
 
 test("running previews read bot-code edits without restarting playback", () => {
     const autoPlaySource = read(AUTO_PLAY_HOOK_PATH);
-    const simulationSource = read("../modelPayloads/arenaPreviewSimulation.js");
+    const simulationSource = read("../../../../shared/engine/fight.js");
 
     assert.match(autoPlaySource, /testingConfiguration: testingConfigurationRef\.current/);
     assert.match(simulationSource, /bot\.id === "main"[\s\S]*\? testingConfiguration[\s\S]*bot\.id === "opponent-model"[\s\S]*\? opponentTestingConfiguration/);
@@ -154,12 +154,6 @@ test("practice autoplay pauses in hidden tabs and submissions do not log brain p
     assert.match(autoPlaySource, /if \(!isPracticeRoom\) return undefined;[\s\S]*?document\.addEventListener\("visibilitychange", pausePracticePreviewWhenHidden\)/);
     assert.match(autoPlaySource, /if \(!document\.hidden \|\| !autoIntervalRef\.current\) return;\s*stopAutoPlay\(\);\s*setIsEditingArena\(true\)/);
     assert.doesNotMatch(arenaSource, /console\.(?:info|log)\([^)]*payload/);
-});
-
-test("editable code upgrades legacy coordinates before rendering movement controls", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /activeCodeReadOnly\s*\?\s*normalizedActiveConfiguration\s*:\s*upgradeStoredStrategyCoordinates\(normalizedActiveConfiguration\)/);
 });
 
 test("Pixi hit-testing only selects bots and ignores visual effects", () => {

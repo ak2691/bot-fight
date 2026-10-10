@@ -1,0 +1,705 @@
+{
+  "rule": "Branches nest at most 40 levels.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "n44",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [],
+            "children": [
+              {
+                "id": "n43",
+                "priority": 1,
+                "branchType": "if",
+                "conditions": [],
+                "children": [
+                  {
+                    "id": "n42",
+                    "priority": 1,
+                    "branchType": "if",
+                    "conditions": [],
+                    "children": [
+                      {
+                        "id": "n41",
+                        "priority": 1,
+                        "branchType": "if",
+                        "conditions": [],
+                        "children": [
+                          {
+                            "id": "n40",
+                            "priority": 1,
+                            "branchType": "if",
+                            "conditions": [],
+                            "children": [
+                              {
+                                "id": "n39",
+                                "priority": 1,
+                                "branchType": "if",
+                                "conditions": [],
+                                "children": [
+                                  {
+                                    "id": "n38",
+                                    "priority": 1,
+                                    "branchType": "if",
+                                    "conditions": [],
+                                    "children": [
+                                      {
+                                        "id": "n37",
+                                        "priority": 1,
+                                        "branchType": "if",
+                                        "conditions": [],
+                                        "children": [
+                                          {
+                                            "id": "n36",
+                                            "priority": 1,
+                                            "branchType": "if",
+                                            "conditions": [],
+                                            "children": [
+                                              {
+                                                "id": "n35",
+                                                "priority": 1,
+                                                "branchType": "if",
+                                                "conditions": [],
+                                                "children": [
+                                                  {
+                                                    "id": "n34",
+                                                    "priority": 1,
+                                                    "branchType": "if",
+                                                    "conditions": [],
+                                                    "children": [
+                                                      {
+                                                        "id": "n33",
+                                                        "priority": 1,
+                                                        "branchType": "if",
+                                                        "conditions": [],
+                                                        "children": [
+                                                          {
+                                                            "id": "n32",
+                                                            "priority": 1,
+                                                            "branchType": "if",
+                                                            "conditions": [],
+                                                            "children": [
+                                                              {
+                                                                "id": "n31",
+                                                                "priority": 1,
+                                                                "branchType": "if",
+                                                                "conditions": [],
+                                                                "children": [
+                                                                  {
+                                                                    "id": "n30",
+                                                                    "priority": 1,
+                                                                    "branchType": "if",
+                                                                    "conditions": [],
+                                                                    "children": [
+                                                                      {
+                                                                        "id": "n29",
+                                                                        "priority": 1,
+                                                                        "branchType": "if",
+                                                                        "conditions": [],
+                                                                        "children": [
+                                                                          {
+                                                                            "id": "n28",
+                                                                            "priority": 1,
+                                                                            "branchType": "if",
+                                                                            "conditions": [],
+                                                                            "children": [
+                                                                              {
+                                                                                "id": "n27",
+                                                                                "priority": 1,
+                                                                                "branchType": "if",
+                                                                                "conditions": [],
+                                                                                "children": [
+                                                                                  {
+                                                                                    "id": "n26",
+                                                                                    "priority": 1,
+                                                                                    "branchType": "if",
+                                                                                    "conditions": [],
+                                                                                    "children": [
+                                                                                      {
+                                                                                        "id": "n25",
+                                                                                        "priority": 1,
+                                                                                        "branchType": "if",
+                                                                                        "conditions": [],
+                                                                                        "children": [
+                                                                                          {
+                                                                                            "id": "n24",
+                                                                                            "priority": 1,
+                                                                                            "branchType": "if",
+                                                                                            "conditions": [],
+                                                                                            "children": [
+                                                                                              {
+                                                                                                "id": "n23",
+                                                                                                "priority": 1,
+                                                                                                "branchType": "if",
+                                                                                                "conditions": [],
+                                                                                                "children": [
+                                                                                                  {
+                                                                                                    "id": "n22",
+                                                                                                    "priority": 1,
+                                                                                                    "branchType": "if",
+                                                                                                    "conditions": [],
+                                                                                                    "children": [
+                                                                                                      {
+                                                                                                        "id": "n21",
+                                                                                                        "priority": 1,
+                                                                                                        "branchType": "if",
+                                                                                                        "conditions": [],
+                                                                                                        "children": [
+                                                                                                          {
+                                                                                                            "id": "n20",
+                                                                                                            "priority": 1,
+                                                                                                            "branchType": "if",
+                                                                                                            "conditions": [],
+                                                                                                            "children": [
+                                                                                                              {
+                                                                                                                "id": "n19",
+                                                                                                                "priority": 1,
+                                                                                                                "branchType": "if",
+                                                                                                                "conditions": [],
+                                                                                                                "children": [
+                                                                                                                  {
+                                                                                                                    "id": "n18",
+                                                                                                                    "priority": 1,
+                                                                                                                    "branchType": "if",
+                                                                                                                    "conditions": [],
+                                                                                                                    "children": [
+                                                                                                                      {
+                                                                                                                        "id": "n17",
+                                                                                                                        "priority": 1,
+                                                                                                                        "branchType": "if",
+                                                                                                                        "conditions": [],
+                                                                                                                        "children": [
+                                                                                                                          {
+                                                                                                                            "id": "n16",
+                                                                                                                            "priority": 1,
+                                                                                                                            "branchType": "if",
+                                                                                                                            "conditions": [],
+                                                                                                                            "children": [
+                                                                                                                              {
+                                                                                                                                "id": "n15",
+                                                                                                                                "priority": 1,
+                                                                                                                                "branchType": "if",
+                                                                                                                                "conditions": [],
+                                                                                                                                "children": [
+                                                                                                                                  {
+                                                                                                                                    "id": "n14",
+                                                                                                                                    "priority": 1,
+                                                                                                                                    "branchType": "if",
+                                                                                                                                    "conditions": [],
+                                                                                                                                    "children": [
+                                                                                                                                      {
+                                                                                                                                        "id": "n13",
+                                                                                                                                        "priority": 1,
+                                                                                                                                        "branchType": "if",
+                                                                                                                                        "conditions": [],
+                                                                                                                                        "children": [
+                                                                                                                                          {
+                                                                                                                                            "id": "n12",
+                                                                                                                                            "priority": 1,
+                                                                                                                                            "branchType": "if",
+                                                                                                                                            "conditions": [],
+                                                                                                                                            "children": [
+                                                                                                                                              {
+                                                                                                                                                "id": "n11",
+                                                                                                                                                "priority": 1,
+                                                                                                                                                "branchType": "if",
+                                                                                                                                                "conditions": [],
+                                                                                                                                                "children": [
+                                                                                                                                                  {
+                                                                                                                                                    "id": "n10",
+                                                                                                                                                    "priority": 1,
+                                                                                                                                                    "branchType": "if",
+                                                                                                                                                    "conditions": [],
+                                                                                                                                                    "children": [
+                                                                                                                                                      {
+                                                                                                                                                        "id": "n9",
+                                                                                                                                                        "priority": 1,
+                                                                                                                                                        "branchType": "if",
+                                                                                                                                                        "conditions": [],
+                                                                                                                                                        "children": [
+                                                                                                                                                          {
+                                                                                                                                                            "id": "n8",
+                                                                                                                                                            "priority": 1,
+                                                                                                                                                            "branchType": "if",
+                                                                                                                                                            "conditions": [],
+                                                                                                                                                            "children": [
+                                                                                                                                                              {
+                                                                                                                                                                "id": "n7",
+                                                                                                                                                                "priority": 1,
+                                                                                                                                                                "branchType": "if",
+                                                                                                                                                                "conditions": [],
+                                                                                                                                                                "children": [
+                                                                                                                                                                  {
+                                                                                                                                                                    "id": "n6",
+                                                                                                                                                                    "priority": 1,
+                                                                                                                                                                    "branchType": "if",
+                                                                                                                                                                    "conditions": [],
+                                                                                                                                                                    "children": [
+                                                                                                                                                                      {
+                                                                                                                                                                        "id": "n5",
+                                                                                                                                                                        "priority": 1,
+                                                                                                                                                                        "branchType": "if",
+                                                                                                                                                                        "conditions": [],
+                                                                                                                                                                        "children": [
+                                                                                                                                                                          {
+                                                                                                                                                                            "id": "n4",
+                                                                                                                                                                            "priority": 1,
+                                                                                                                                                                            "branchType": "if",
+                                                                                                                                                                            "conditions": [],
+                                                                                                                                                                            "children": [
+                                                                                                                                                                              {
+                                                                                                                                                                                "id": "n3",
+                                                                                                                                                                                "priority": 1,
+                                                                                                                                                                                "branchType": "if",
+                                                                                                                                                                                "conditions": [],
+                                                                                                                                                                                "children": [
+                                                                                                                                                                                  {
+                                                                                                                                                                                    "id": "n2",
+                                                                                                                                                                                    "priority": 1,
+                                                                                                                                                                                    "branchType": "if",
+                                                                                                                                                                                    "conditions": [],
+                                                                                                                                                                                    "children": [
+                                                                                                                                                                                      {
+                                                                                                                                                                                        "id": "n1",
+                                                                                                                                                                                        "priority": 1,
+                                                                                                                                                                                        "branchType": "if",
+                                                                                                                                                                                        "conditions": [],
+                                                                                                                                                                                        "children": [
+                                                                                                                                                                                          {
+                                                                                                                                                                                            "id": "n0",
+                                                                                                                                                                                            "priority": 1,
+                                                                                                                                                                                            "branchType": "if",
+                                                                                                                                                                                            "conditions": [],
+                                                                                                                                                                                            "children": [
+                                                                                                                                                                                              {
+                                                                                                                                                                                                "id": "leaf",
+                                                                                                                                                                                                "priority": 1,
+                                                                                                                                                                                                "branchType": "if",
+                                                                                                                                                                                                "conditions": [],
+                                                                                                                                                                                                "children": [],
+                                                                                                                                                                                                "actions": [
+                                                                                                                                                                                                  {
+                                                                                                                                                                                                    "action": "move_walk",
+                                                                                                                                                                                                    "movementMode": "target",
+                                                                                                                                                                                                    "movementDirection": 0
+                                                                                                                                                                                                  }
+                                                                                                                                                                                                ]
+                                                                                                                                                                                              }
+                                                                                                                                                                                            ],
+                                                                                                                                                                                            "actions": [
+                                                                                                                                                                                              {
+                                                                                                                                                                                                "action": "move_walk",
+                                                                                                                                                                                                "movementMode": "target",
+                                                                                                                                                                                                "movementDirection": 0
+                                                                                                                                                                                              }
+                                                                                                                                                                                            ]
+                                                                                                                                                                                          }
+                                                                                                                                                                                        ],
+                                                                                                                                                                                        "actions": [
+                                                                                                                                                                                          {
+                                                                                                                                                                                            "action": "move_walk",
+                                                                                                                                                                                            "movementMode": "target",
+                                                                                                                                                                                            "movementDirection": 0
+                                                                                                                                                                                          }
+                                                                                                                                                                                        ]
+                                                                                                                                                                                      }
+                                                                                                                                                                                    ],
+                                                                                                                                                                                    "actions": [
+                                                                                                                                                                                      {
+                                                                                                                                                                                        "action": "move_walk",
+                                                                                                                                                                                        "movementMode": "target",
+                                                                                                                                                                                        "movementDirection": 0
+                                                                                                                                                                                      }
+                                                                                                                                                                                    ]
+                                                                                                                                                                                  }
+                                                                                                                                                                                ],
+                                                                                                                                                                                "actions": [
+                                                                                                                                                                                  {
+                                                                                                                                                                                    "action": "move_walk",
+                                                                                                                                                                                    "movementMode": "target",
+                                                                                                                                                                                    "movementDirection": 0
+                                                                                                                                                                                  }
+                                                                                                                                                                                ]
+                                                                                                                                                                              }
+                                                                                                                                                                            ],
+                                                                                                                                                                            "actions": [
+                                                                                                                                                                              {
+                                                                                                                                                                                "action": "move_walk",
+                                                                                                                                                                                "movementMode": "target",
+                                                                                                                                                                                "movementDirection": 0
+                                                                                                                                                                              }
+                                                                                                                                                                            ]
+                                                                                                                                                                          }
+                                                                                                                                                                        ],
+                                                                                                                                                                        "actions": [
+                                                                                                                                                                          {
+                                                                                                                                                                            "action": "move_walk",
+                                                                                                                                                                            "movementMode": "target",
+                                                                                                                                                                            "movementDirection": 0
+                                                                                                                                                                          }
+                                                                                                                                                                        ]
+                                                                                                                                                                      }
+                                                                                                                                                                    ],
+                                                                                                                                                                    "actions": [
+                                                                                                                                                                      {
+                                                                                                                                                                        "action": "move_walk",
+                                                                                                                                                                        "movementMode": "target",
+                                                                                                                                                                        "movementDirection": 0
+                                                                                                                                                                      }
+                                                                                                                                                                    ]
+                                                                                                                                                                  }
+                                                                                                                                                                ],
+                                                                                                                                                                "actions": [
+                                                                                                                                                                  {
+                                                                                                                                                                    "action": "move_walk",
+                                                                                                                                                                    "movementMode": "target",
+                                                                                                                                                                    "movementDirection": 0
+                                                                                                                                                                  }
+                                                                                                                                                                ]
+                                                                                                                                                              }
+                                                                                                                                                            ],
+                                                                                                                                                            "actions": [
+                                                                                                                                                              {
+                                                                                                                                                                "action": "move_walk",
+                                                                                                                                                                "movementMode": "target",
+                                                                                                                                                                "movementDirection": 0
+                                                                                                                                                              }
+                                                                                                                                                            ]
+                                                                                                                                                          }
+                                                                                                                                                        ],
+                                                                                                                                                        "actions": [
+                                                                                                                                                          {
+                                                                                                                                                            "action": "move_walk",
+                                                                                                                                                            "movementMode": "target",
+                                                                                                                                                            "movementDirection": 0
+                                                                                                                                                          }
+                                                                                                                                                        ]
+                                                                                                                                                      }
+                                                                                                                                                    ],
+                                                                                                                                                    "actions": [
+                                                                                                                                                      {
+                                                                                                                                                        "action": "move_walk",
+                                                                                                                                                        "movementMode": "target",
+                                                                                                                                                        "movementDirection": 0
+                                                                                                                                                      }
+                                                                                                                                                    ]
+                                                                                                                                                  }
+                                                                                                                                                ],
+                                                                                                                                                "actions": [
+                                                                                                                                                  {
+                                                                                                                                                    "action": "move_walk",
+                                                                                                                                                    "movementMode": "target",
+                                                                                                                                                    "movementDirection": 0
+                                                                                                                                                  }
+                                                                                                                                                ]
+                                                                                                                                              }
+                                                                                                                                            ],
+                                                                                                                                            "actions": [
+                                                                                                                                              {
+                                                                                                                                                "action": "move_walk",
+                                                                                                                                                "movementMode": "target",
+                                                                                                                                                "movementDirection": 0
+                                                                                                                                              }
+                                                                                                                                            ]
+                                                                                                                                          }
+                                                                                                                                        ],
+                                                                                                                                        "actions": [
+                                                                                                                                          {
+                                                                                                                                            "action": "move_walk",
+                                                                                                                                            "movementMode": "target",
+                                                                                                                                            "movementDirection": 0
+                                                                                                                                          }
+                                                                                                                                        ]
+                                                                                                                                      }
+                                                                                                                                    ],
+                                                                                                                                    "actions": [
+                                                                                                                                      {
+                                                                                                                                        "action": "move_walk",
+                                                                                                                                        "movementMode": "target",
+                                                                                                                                        "movementDirection": 0
+                                                                                                                                      }
+                                                                                                                                    ]
+                                                                                                                                  }
+                                                                                                                                ],
+                                                                                                                                "actions": [
+                                                                                                                                  {
+                                                                                                                                    "action": "move_walk",
+                                                                                                                                    "movementMode": "target",
+                                                                                                                                    "movementDirection": 0
+                                                                                                                                  }
+                                                                                                                                ]
+                                                                                                                              }
+                                                                                                                            ],
+                                                                                                                            "actions": [
+                                                                                                                              {
+                                                                                                                                "action": "move_walk",
+                                                                                                                                "movementMode": "target",
+                                                                                                                                "movementDirection": 0
+                                                                                                                              }
+                                                                                                                            ]
+                                                                                                                          }
+                                                                                                                        ],
+                                                                                                                        "actions": [
+                                                                                                                          {
+                                                                                                                            "action": "move_walk",
+                                                                                                                            "movementMode": "target",
+                                                                                                                            "movementDirection": 0
+                                                                                                                          }
+                                                                                                                        ]
+                                                                                                                      }
+                                                                                                                    ],
+                                                                                                                    "actions": [
+                                                                                                                      {
+                                                                                                                        "action": "move_walk",
+                                                                                                                        "movementMode": "target",
+                                                                                                                        "movementDirection": 0
+                                                                                                                      }
+                                                                                                                    ]
+                                                                                                                  }
+                                                                                                                ],
+                                                                                                                "actions": [
+                                                                                                                  {
+                                                                                                                    "action": "move_walk",
+                                                                                                                    "movementMode": "target",
+                                                                                                                    "movementDirection": 0
+                                                                                                                  }
+                                                                                                                ]
+                                                                                                              }
+                                                                                                            ],
+                                                                                                            "actions": [
+                                                                                                              {
+                                                                                                                "action": "move_walk",
+                                                                                                                "movementMode": "target",
+                                                                                                                "movementDirection": 0
+                                                                                                              }
+                                                                                                            ]
+                                                                                                          }
+                                                                                                        ],
+                                                                                                        "actions": [
+                                                                                                          {
+                                                                                                            "action": "move_walk",
+                                                                                                            "movementMode": "target",
+                                                                                                            "movementDirection": 0
+                                                                                                          }
+                                                                                                        ]
+                                                                                                      }
+                                                                                                    ],
+                                                                                                    "actions": [
+                                                                                                      {
+                                                                                                        "action": "move_walk",
+                                                                                                        "movementMode": "target",
+                                                                                                        "movementDirection": 0
+                                                                                                      }
+                                                                                                    ]
+                                                                                                  }
+                                                                                                ],
+                                                                                                "actions": [
+                                                                                                  {
+                                                                                                    "action": "move_walk",
+                                                                                                    "movementMode": "target",
+                                                                                                    "movementDirection": 0
+                                                                                                  }
+                                                                                                ]
+                                                                                              }
+                                                                                            ],
+                                                                                            "actions": [
+                                                                                              {
+                                                                                                "action": "move_walk",
+                                                                                                "movementMode": "target",
+                                                                                                "movementDirection": 0
+                                                                                              }
+                                                                                            ]
+                                                                                          }
+                                                                                        ],
+                                                                                        "actions": [
+                                                                                          {
+                                                                                            "action": "move_walk",
+                                                                                            "movementMode": "target",
+                                                                                            "movementDirection": 0
+                                                                                          }
+                                                                                        ]
+                                                                                      }
+                                                                                    ],
+                                                                                    "actions": [
+                                                                                      {
+                                                                                        "action": "move_walk",
+                                                                                        "movementMode": "target",
+                                                                                        "movementDirection": 0
+                                                                                      }
+                                                                                    ]
+                                                                                  }
+                                                                                ],
+                                                                                "actions": [
+                                                                                  {
+                                                                                    "action": "move_walk",
+                                                                                    "movementMode": "target",
+                                                                                    "movementDirection": 0
+                                                                                  }
+                                                                                ]
+                                                                              }
+                                                                            ],
+                                                                            "actions": [
+                                                                              {
+                                                                                "action": "move_walk",
+                                                                                "movementMode": "target",
+                                                                                "movementDirection": 0
+                                                                              }
+                                                                            ]
+                                                                          }
+                                                                        ],
+                                                                        "actions": [
+                                                                          {
+                                                                            "action": "move_walk",
+                                                                            "movementMode": "target",
+                                                                            "movementDirection": 0
+                                                                          }
+                                                                        ]
+                                                                      }
+                                                                    ],
+                                                                    "actions": [
+                                                                      {
+                                                                        "action": "move_walk",
+                                                                        "movementMode": "target",
+                                                                        "movementDirection": 0
+                                                                      }
+                                                                    ]
+                                                                  }
+                                                                ],
+                                                                "actions": [
+                                                                  {
+                                                                    "action": "move_walk",
+                                                                    "movementMode": "target",
+                                                                    "movementDirection": 0
+                                                                  }
+                                                                ]
+                                                              }
+                                                            ],
+                                                            "actions": [
+                                                              {
+                                                                "action": "move_walk",
+                                                                "movementMode": "target",
+                                                                "movementDirection": 0
+                                                              }
+                                                            ]
+                                                          }
+                                                        ],
+                                                        "actions": [
+                                                          {
+                                                            "action": "move_walk",
+                                                            "movementMode": "target",
+                                                            "movementDirection": 0
+                                                          }
+                                                        ]
+                                                      }
+                                                    ],
+                                                    "actions": [
+                                                      {
+                                                        "action": "move_walk",
+                                                        "movementMode": "target",
+                                                        "movementDirection": 0
+                                                      }
+                                                    ]
+                                                  }
+                                                ],
+                                                "actions": [
+                                                  {
+                                                    "action": "move_walk",
+                                                    "movementMode": "target",
+                                                    "movementDirection": 0
+                                                  }
+                                                ]
+                                              }
+                                            ],
+                                            "actions": [
+                                              {
+                                                "action": "move_walk",
+                                                "movementMode": "target",
+                                                "movementDirection": 0
+                                              }
+                                            ]
+                                          }
+                                        ],
+                                        "actions": [
+                                          {
+                                            "action": "move_walk",
+                                            "movementMode": "target",
+                                            "movementDirection": 0
+                                          }
+                                        ]
+                                      }
+                                    ],
+                                    "actions": [
+                                      {
+                                        "action": "move_walk",
+                                        "movementMode": "target",
+                                        "movementDirection": 0
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "actions": [
+                                  {
+                                    "action": "move_walk",
+                                    "movementMode": "target",
+                                    "movementDirection": 0
+                                  }
+                                ]
+                              }
+                            ],
+                            "actions": [
+                              {
+                                "action": "move_walk",
+                                "movementMode": "target",
+                                "movementDirection": 0
+                              }
+                            ]
+                          }
+                        ],
+                        "actions": [
+                          {
+                            "action": "move_walk",
+                            "movementMode": "target",
+                            "movementDirection": 0
+                          }
+                        ]
+                      }
+                    ],
+                    "actions": [
+                      {
+                        "action": "move_walk",
+                        "movementMode": "target",
+                        "movementDirection": 0
+                      }
+                    ]
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": "move_walk",
+                    "movementMode": "target",
+                    "movementDirection": 0
+                  }
+                ]
+              }
+            ],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

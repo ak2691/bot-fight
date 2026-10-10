@@ -39,14 +39,6 @@ public class CustomLobbyChatService {
         this.evidenceRecorder = evidenceRecorder;
     }
 
-    public CustomLobbyChatService(
-            Clock clock,
-            CustomLobbyService customLobbyService,
-            @Qualifier("customLobbyChatRateLimiter") TokenBucketRateLimiter<String> rateLimiter,
-            BlockLookup blockLookup) {
-        this(clock, customLobbyService, rateLimiter, blockLookup, ChatEvidenceRecorder.noOp());
-    }
-
     public CustomLobbyChatSubmission submit(
             UUID userId,
             String principalName,

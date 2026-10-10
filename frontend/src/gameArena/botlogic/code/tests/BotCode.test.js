@@ -15,16 +15,16 @@ import {
     selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized,
     setLogicRootPriority,
     validateAbilityStrategyConfiguration,
-} from "../BotCode.js";
+} from "../../../../../../shared/engine/botlogic/code/BotCode.js";
 import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_STEP_COUNT } from "../../../../tutorial/TutorialPresets.js";
-import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, SELECTABLE_TYPES, TARGET_MODES, VARIABLE_TAGS, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES, abilityDefinitionsForVariable, selectableIdentitiesForVariable, selectableMatchesVariable, variableHasTag } from "../contracts/BotLogicContracts.js";
-import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "../../../loadout/BotLoadout.js";
-import { compareAngleValues, evaluateConditionNodes } from "../runtime/conditionEvaluator.js";
-import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "../runtime/targeting.js";
-import { absoluteMovementAngle, normalizeRelativeMovementDegrees, relativeMovementAngle, relativeMovementVector, vectorToCompassDegrees } from "../../planner/arenaAngles.js";
-import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../planner/ArenaActionPlanner.js";
-import { nodePositionsForGraph, offsetsForGraphPositions } from "../configuration/nodePositions.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../BotCode.js";
+import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, SELECTABLE_TYPES, TARGET_MODES, VARIABLE_TAGS, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES, abilityDefinitionsForVariable, selectableIdentitiesForVariable, selectableMatchesVariable, variableHasTag } from "../../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "../../../../../../shared/engine/loadout/BotLoadout.js";
+import { compareAngleValues, evaluateConditionNodes } from "../../../../../../shared/engine/botlogic/code/runtime/conditionEvaluator.js";
+import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "../../../../../../shared/engine/botlogic/code/runtime/targeting.js";
+import { movementAngle, normalizeRelativeMovementDegrees, relativeMovementVector, vectorToCompassDegrees } from "../../../../../../shared/engine/botlogic/planner/arenaAngles.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
+import { nodePositionsForGraph, offsetsForGraphPositions } from "../../../../../../shared/engine/botlogic/code/configuration/nodePositions.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../../shared/engine/botlogic/code/BotCode.js";
 
 // The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);
@@ -32,7 +32,7 @@ const buildDeterministicLogicAction = (configuration, ...rest) => buildDetermini
 
 function payload(overrides = {}) {
     return {
-        playerModel: { x: 400, y: 400, hp: 100, abilities: ["swing", "concussive_shot"], ...overrides.playerModel },
+        playerModel: { x: 400, y: 400, hp: 100, abilities: ["slash", "concussive_shot"], ...overrides.playerModel },
         closingZone: overrides.closingZone ?? null,
         objects: overrides.objects ?? [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 180 }],
     };
@@ -215,7 +215,7 @@ test("selectable distance defaults to My Bot and Opponent and supports custom pa
             selectable2: "opponent_hunter_drone",
             comparator: "lt",
             right: { type: "number", value: 150 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         playerModel: { x: 100, y: 100 },
@@ -231,17 +231,17 @@ test("selectable distance defaults to My Bot and Opponent and supports custom pa
             left: distance.id,
             selectable1: "my_bot",
             targetMode: TARGET_MODES.COORDINATES,
-            targetX: 150,
-            targetY: 100,
+            targetX: -450,
+            targetY: 500,
             comparator: "eq",
             right: { type: "number", value: 50 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     const normalizedCoordinate = normalizeAbilityStrategyConfiguration(coordinateConfiguration);
     const coordinateCondition = normalizedCoordinate.roots[0].branches[0].conditions[0];
     assert.equal(coordinateCondition.targetMode, TARGET_MODES.COORDINATES);
-    assert.equal(coordinateCondition.targetX, 150);
-    assert.equal(coordinateCondition.targetY, 100);
+    assert.equal(coordinateCondition.targetX, -450);
+    assert.equal(coordinateCondition.targetY, 500);
     assert.equal(selectAbilityStrategyActionPlan(coordinateConfiguration, payload({
         playerModel: { x: 100, y: 100 },
         objects: [],
@@ -304,7 +304,7 @@ test("bearing conditionals use the configured From and To pair", () => {
                 comparator: "eq",
                 right: { type: "number", value: 0 },
             },
-        ], actions: [{ action: "swing" }] }] }],
+        ], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 270 }],
@@ -320,7 +320,7 @@ test("bearing conditionals use the configured From and To pair", () => {
             targetAngle: 90,
             comparator: "eq",
             right: { type: "number", value: 90 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(absoluteAngleConfiguration, payload({
         playerModel: { x: 400, y: 400, rotation: 0 },
@@ -333,11 +333,11 @@ test("bearing conditionals use the configured From and To pair", () => {
             left: "selectable.relativeBearing",
             selectable1: "my_bot",
             targetMode: TARGET_MODES.COORDINATES,
-            targetX: 400,
+            targetX: -200,
             targetY: 300,
             comparator: "eq",
             right: { type: "number", value: 0 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(coordinateBearingConfiguration, payload({
         playerModel: { x: 400, y: 400, rotation: 0 },
@@ -361,7 +361,7 @@ test("bot ability conditionals select the configured bot and declare a loadout d
             ability: 5,
             comparator: "eq",
             right: { type: "boolean", value: true },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{
@@ -381,7 +381,7 @@ test("bot ability conditionals select the configured bot and declare a loadout d
             leftSelectable: "opponent_grenade",
             comparator: "eq",
             right: { type: "number", value: 0 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(hpConfiguration, payload({
         objects: [
@@ -437,7 +437,7 @@ test("normalized editor positions stay with roots and conditionals after priorit
             "action:concussive-condition:0:root:concussive-root": { x: 620, y: 500 },
         },
         roots: [
-            { id: "fire-root", priority: 1, branches: [{ id: "fire-condition", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "swing" }] }] },
+            { id: "fire-root", priority: 1, branches: [{ id: "fire-condition", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "slash" }] }] },
             { id: "concussive-root", priority: 2, branches: [{ id: "concussive-condition", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] }] },
         ],
     };
@@ -469,9 +469,9 @@ test("conditional priority swaps preserve node identities and positions", () => 
             "action:logic-root-1-3:0:root:logic-root": { x: 1120, y: 500 },
         },
         roots: [{ id: "logic-root", branches: [
-            { conditions: [{ type: "always" }], actions: [{ action: "swing" }] },
-            { conditions: [{ type: "always" }], actions: [{ action: "swing" }] },
-            { conditions: [{ type: "always" }], actions: [{ action: "swing" }] },
+            { conditions: [{ type: "always" }], actions: [{ action: "slash" }] },
+            { conditions: [{ type: "always" }], actions: [{ action: "slash" }] },
+            { conditions: [{ type: "always" }], actions: [{ action: "slash" }] },
         ] }],
     });
     const switchedRoots = setLogicBranchPriority(normalizeRoots(configuration.roots), 0, [0], 3);
@@ -541,7 +541,7 @@ test("target-count defaults follow the visible entity type and inspection uses i
 });
 
 test("target existence and age conditions resolve spawned opponent entities", () => {
-    const action = { action: "move_walk", movementMode: "absolute", movementDirection: "east" };
+    const action = { action: "move_walk", movementMode: "absolute", movementDirection: 90 };
     const configuration = {
         roots: [{ branches: [{
             id: "singularity-old-enough",
@@ -649,7 +649,7 @@ test("selectable selectors keep shared runtime entities separated and order by a
             leftSelectable: "opponent_repeller_drone",
             comparator: "eq",
             right: { type: "boolean", value: true },
-        }], actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: "east" }] }] }],
+        }], actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: 90 }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(exists, payload({
         playerModel: state.player,
@@ -702,7 +702,7 @@ test("facing identity allows oriented ability entities", () => {
             leftSelectable: "opponent_hunter_drone",
             comparator: "eq",
             right: { type: "number", value: 30 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(facingConfiguration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 30 },
@@ -721,7 +721,7 @@ test("selectable speed uses a direction-independent per-tick movement magnitude"
             left: "selectable.speed",
             comparator: "gt",
             right: { type: "number", value: 4 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, movementVelocityX: 3, movementVelocityY: 4 }],
@@ -763,7 +763,7 @@ test("danger-zone edge distance uses signed center-to-boundary distance", () => 
             leftSelectable: "my_bot",
             comparator: "lt",
             right: { type: "number", value: -15 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     const normalized = normalizeAbilityStrategyConfiguration(configuration);
     assert.equal(normalized.roots[0].branches[0].conditions[0].right.value, -15);
@@ -785,7 +785,7 @@ test("danger-zone edge distance uses signed center-to-boundary distance", () => 
             leftSelectable: "opponent",
             comparator: "lt",
             right: { type: "number", value: -15 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(opponentConfiguration, payload({
         closingZone: zone,
@@ -799,7 +799,7 @@ test("danger-zone edge distance uses signed center-to-boundary distance", () => 
             leftSelectable: "my_bot",
             comparator: "gt",
             right: { type: "number", value: 0 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(centerInsideConfiguration, payload({
         closingZone: zone,
@@ -816,7 +816,7 @@ test("arena edge distance uses the entity center instead of its hitbox edge", ()
             leftSelectable: "my_bot",
             comparator: "lt",
             right: { type: "number", value: 15 },
-        }], actions: [{ action: "swing" }] }] }],
+        }], actions: [{ action: "slash" }] }] }],
     };
 
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
@@ -835,11 +835,10 @@ test("conditional ability choices include standard abilities and filter charges 
     assert.equal(charges.requiredTag, ABILITY_TAGS.CHARGES);
     assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 2), false);
     assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 19), true);
-    assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 20), true);
     assert.deepEqual(abilityDefinitionsForVariable(charges, equipped).map((ability) => ability.id), [12]);
 
     const normalized = normalizeAbilityStrategyConfiguration({
-        roots: [{ branches: [{ conditions: [{ type: "expression", left: charges.id, ability: "swing", comparator: "gt", right: { type: "number", value: 0 } }], actions: [] }] }],
+        roots: [{ branches: [{ conditions: [{ type: "expression", left: charges.id, ability: "slash", comparator: "gt", right: { type: "number", value: 0 } }], actions: [] }] }],
     });
     assert.equal(normalized.roots[0].branches[0].conditions[0].left, "match.elapsedSeconds");
     assert.equal(normalized.roots[0].branches[0].conditions[0].ability, undefined);
@@ -875,7 +874,7 @@ test("conditional ability choices expose active state and remaining active time"
                     { type: "expression", left: active.id, ability: "concussive_shot", comparator: "eq", right: { type: "boolean", value: true } },
                     { type: "expression", left: activeTime.id, ability: "concussive_shot", comparator: "gt", right: { type: "number", value: 0.5 } },
                 ],
-                actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: "north" }],
+                actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: 0 }],
             },
             { id: "fallback", conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] },
         ] }],
@@ -888,7 +887,7 @@ test("conditional ability choices expose active state and remaining active time"
 });
 
 test("ability phase conditionals expose mutually exclusive active, cooldown, preparation, and ready states", () => {
-    const action = { action: "move_walk", movementMode: "absolute", movementDirection: "east" };
+    const action = { action: "move_walk", movementMode: "absolute", movementDirection: 90 };
     const phaseConfiguration = (conditions) => ({
         roots: [{ branches: [{ id: "phase", conditions, actions: [action] }] }],
     });
@@ -1007,7 +1006,7 @@ test("ability conditionals resolve several selected abilities and numeric prepar
         [19, "dash"],
         [33, "overclock"],
     ];
-    const action = { action: "move_walk", movementMode: "absolute", movementDirection: "north" };
+    const action = { action: "move_walk", movementMode: "absolute", movementDirection: 0 };
     for (const [abilityId, ability] of activeConditions) {
         const result = selectAbilityStrategyActionPlan({
             roots: [{ branches: [{ id: `active-${abilityId}`, conditions: [{
@@ -1071,7 +1070,7 @@ test("numeric-string ability selections preserve Dash active-state conditions", 
         roots: [{ branches: [{
             id: "dash-active",
             conditions: [{ type: "expression", left: active.id, ability: "19", comparator: "eq", right: { type: "boolean", value: true } }],
-            actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: "north" }],
+            actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: 0 }],
         }, { id: "fallback", conditions: [{ type: "always" }], actions: [{ action: "none" }] }] }],
     };
 
@@ -1132,7 +1131,7 @@ test("movement actions normalize relative angles and discard movement offsets", 
             movementMode: "coordinates",
             movementDirection: -90,
             targetX: 125,
-            targetY: 640,
+            targetY: 540,
             targetOffsetX: 80,
             targetOffsetY: -40,
         }] }] }],
@@ -1142,7 +1141,7 @@ test("movement actions normalize relative angles and discard movement offsets", 
     assert.equal(movement.movementDirection, -90);
     assert.equal(movement.targetMode, "coordinates");
     assert.equal(movement.targetX, 125);
-    assert.equal(movement.targetY, 640);
+    assert.equal(movement.targetY, 540);
     assert.equal("targetOffsetX" in movement, false);
     assert.equal("targetOffsetY" in movement, false);
 
@@ -1157,17 +1156,6 @@ test("absolute movement angles use the north-zero clockwise compass", () => {
         }] }] }],
     });
     assert.equal(normalized.roots[0].branches[0].actions[0].movementDirection, -90);
-    assert.equal(absoluteMovementAngle("east"), 90);
-    assert.equal(absoluteMovementAngle("west"), 270);
-
-    const normalizedDash = normalizeAbilityStrategyConfiguration({
-        roots: [{ branches: [{ actions: [{
-            action: 19,
-            movementMode: "absolute",
-            movementDirection: "east",
-        }] }] }],
-    });
-    assert.equal(normalizedDash.roots[0].branches[0].actions[0].movementDirection, 90);
 
     const actionFor = (movementDirection) => buildDeterministicLogicAction({
         roots: [{ branches: [{ conditions: [{ type: "always" }], actions: [{
@@ -1225,7 +1213,7 @@ test("rotate actions support absolute angles and absolute coordinates", () => {
 test("relative movement angles use the universal clockwise compass", () => {
     assert.equal(vectorToCompassDegrees(1, 0), 90);
     const toward = relativeMovementVector(0, -100, 0);
-    const right = relativeMovementVector(0, -100, relativeMovementAngle(90));
+    const right = relativeMovementVector(0, -100, movementAngle(90));
     const away = relativeMovementVector(0, -100, 180);
     const left = relativeMovementVector(0, -100, 270);
 
@@ -1251,7 +1239,7 @@ test("selectable directions compare positive and negative angle equivalents", ()
             left: "selectable.absoluteBearing",
             comparator: "lt",
             right: { type: "number", value: 50 },
-        }], actions: [{ action: "swing" }], children: [] }] }],
+        }], actions: [{ action: "slash" }], children: [] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 400, y: 300, hp: 100, rotation: 180 }],
@@ -1262,7 +1250,7 @@ test("selectable directions compare positive and negative angle equivalents", ()
         roots: [{ branches: [{ id: "centered-angle", conditions: [
             { type: "expression", left: "selectable.absoluteBearing", comparator: "gte", right: { type: "number", value: -50 } },
             { type: "expression", left: "selectable.absoluteBearing", comparator: "lt", right: { type: "number", value: 50 } },
-        ], actions: [{ action: "swing" }], children: [] }] }],
+        ], actions: [{ action: "slash" }], children: [] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(boundedConfiguration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 400, y: 300, hp: 100, rotation: 180 }],
@@ -1272,7 +1260,7 @@ test("selectable directions compare positive and negative angle equivalents", ()
         roots: [{ branches: [{ id: "facing-range", conditions: [
             { type: "expression", left: "selectable.facing", comparator: "gt", right: { type: "number", value: 10 } },
             { type: "expression", left: "selectable.facing", comparator: "lt", right: { type: "number", value: 50 } },
-        ], actions: [{ action: "swing" }], children: [] }] }],
+        ], actions: [{ action: "slash" }], children: [] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(facingConfiguration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 30 }],
@@ -1317,7 +1305,7 @@ test("status-effect conditionals resolve multiple effect types and labels", () =
         statusEffectDefinitionsForAbilities([5, 9, 15, 33]).map((effect) => effect.id),
         ["burn", "slow", "silence", "overclock"],
     );
-    const action = { action: "move_walk", movementMode: "absolute", movementDirection: "west" };
+    const action = { action: "move_walk", movementMode: "absolute", movementDirection: 270 };
     for (const [statusEffect, label] of [["burn", "Burn"], ["slow", "Slow"], ["overclock", "Overclock"]]) {
         const result = selectAbilityStrategyActionPlan({
             roots: [{ branches: [{ id: `status-${statusEffect}`, conditions: [{
@@ -1335,7 +1323,7 @@ test("status-effect conditionals resolve multiple effect types and labels", () =
 });
 
 test("right-hand ability and status variables keep their own selection metadata", () => {
-    const action = { action: "move_walk", movementMode: "absolute", movementDirection: "east" };
+    const action = { action: "move_walk", movementMode: "absolute", movementDirection: 90 };
     const abilityResult = selectAbilityStrategyActionPlan({
         roots: [{ branches: [{ id: "right-ability", conditions: [{
             type: "expression",
@@ -1380,7 +1368,7 @@ test("status conditions read Overclock like Burn from the generic status collect
         comparator: "gt",
         right: { type: "number", value: 3 },
     };
-    const action = { action: "move_walk", movementMode: "absolute", movementDirection: "west" };
+    const action = { action: "move_walk", movementMode: "absolute", movementDirection: 270 };
     for (const statusEffect of ["burn", "overclock"]) {
         const configuration = { roots: [{ branches: [{ conditions: [activeCondition(statusEffect)], actions: [action] }] }] };
         const result = selectAbilityStrategyActionPlan(configuration, payload({
@@ -1467,11 +1455,11 @@ test("empty strategy uses the roots schema", () => {
 
 test("retired blocks and clusters are not migrated", () => {
     const code = normalizeAbilityStrategyConfiguration({
-        blocks: [{ action: "swing", conditions: [{ type: "always" }] }],
-        clusters: [{ blocks: [{ action: "swing", conditions: [{ type: "always" }] }] }],
+        blocks: [{ action: "slash", conditions: [{ type: "always" }] }],
+        clusters: [{ blocks: [{ action: "slash", conditions: [{ type: "always" }] }] }],
     });
     assert.deepEqual(code, {
-        version: "bot-logic-tree-v1",
+        version: "bot-logic-tree-v2",
         roots: [],
         customVariables: [],
     });
@@ -1530,7 +1518,7 @@ test("numeric conditional order selects a later conditional", () => {
     const configuration = {
         roots: [{
             branches: [
-                { id: "first", branchType: "if", priority: 1, conditions: [{ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 1 } }], actions: [{ action: "swing" }] },
+                { id: "first", branchType: "if", priority: 1, conditions: [{ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 1 } }], actions: [{ action: "slash" }] },
                 { id: "second", branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] },
             ],
         }],
@@ -1542,7 +1530,7 @@ test("numeric conditional order selects a later conditional", () => {
 
 test("root priority switches values without moving roots or changing execution", () => {
     const roots = [
-        { id: "fire-root", name: "Fire", priority: 1, branches: [{ id: "fire", conditions: [{ type: "always" }], actions: [{ action: "swing" }] }] },
+        { id: "fire-root", name: "Fire", priority: 1, branches: [{ id: "fire", conditions: [{ type: "always" }], actions: [{ action: "slash" }] }] },
         { id: "concussive-root", name: "Concussive", priority: 2, branches: [{ id: "concussive", conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] }] },
     ];
     const switched = setLogicRootPriority(roots, 1, 1);
@@ -1555,7 +1543,7 @@ test("root priority switches values without moving roots or changing execution",
 
 test("a matching conditional with an unavailable ability falls through to the next conditional", () => {
     const configuration = { roots: [{ branches: [
-        { id: "cooling-down", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "swing" }] },
+        { id: "cooling-down", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "slash" }] },
         { id: "ready", branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] },
     ] }] };
     const plan = selectAbilityStrategyActionPlan(configuration, payload({
@@ -1631,7 +1619,7 @@ test("tutorial priority lesson keeps roots in place while swapping priorities", 
 
 test("roots count conditions and validate as a trainable code", () => {
     const configuration = {
-        roots: [{ priority: 1, branches: [{ id: "branch", branchType: "if", conditions: [{ type: "always" }], actions: [{ action: "swing" }], children: [] }] }],
+        roots: [{ priority: 1, branches: [{ id: "branch", branchType: "if", conditions: [{ type: "always" }], actions: [{ action: "slash" }], children: [] }] }],
     };
     assert.equal(countConditionSlots(configuration), 1);
     assert.deepEqual(validateAbilityStrategyConfiguration(configuration).errors, []);

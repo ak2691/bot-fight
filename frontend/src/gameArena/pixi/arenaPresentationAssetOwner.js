@@ -31,7 +31,6 @@ export const REQUIRED_ARENA_PRESENTATION_PATHS = Object.freeze([
     "nullZone",
     "temporalRewind",
     "basicHeal",
-    "lockOnCrosshair",
     "repulsorBlast",
     "shield",
     "orbitalMarker",

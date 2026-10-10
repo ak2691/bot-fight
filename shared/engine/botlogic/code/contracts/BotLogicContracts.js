@@ -1,0 +1,526 @@
+import { abilityContract, entityContractForAbility, findVerb, triggerVerbs, VERBS } from "../../../ecs/contracts/AbilityContracts.js";
+import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, entitySelectableDefinitions } from "../../../loadout/BotLoadout.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../modelPayloads/arenaConstants.js";
+import { MOVEMENT_CONFIG } from "../../../gameconfig/MovementConfig.js";
+import { DASH_CHANNEL, abilityChannel } from "../../../gameconfig/AbilityChannels.js";
+import { BOT_SELECTABLE_IDENTITIES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, selectableHasIdentity } from "../../../modelPayloads/selectableIdentities.js";
+import { CUSTOM_NUMBER_MAX } from "../configuration/constants.js";
+
+export { ABILITY_TAGS };
+
+export const BOT_CODE_ACTIONS = Object.freeze({
+    NONE: "none",
+    VARIABLE: "variable",
+    MOVE_WALK: "move_walk",
+    ROTATE_TOWARD_TARGET: "rotate_toward_enemy",
+    CANCEL_WINDUP: "cancel_windup",
+    // Chain control actions. The main canvas offers them in the action picker; chains themselves cannot run them.
+    RUN_CHAIN: "run_chain",
+});
+
+export const BOT_CODE_CONDITIONS = Object.freeze({
+    ALWAYS: "always",
+    EXPRESSION: "expression",
+});
+
+export const BOT_CODE_SELECTABLES = Object.freeze({
+    MY: "my_bot",
+    OPPONENT: "opponent_1",
+});
+
+const ENTITY_SELECTABLE_DEFINITIONS = entitySelectableDefinitions();
+const ENTITY_SELECTABLE_ENTITY_TYPES = new Set(
+    ENTITY_SELECTABLE_DEFINITIONS.map((ability) => ability.entityType),
+);
+
+/**
+ * Older saved brains used one unnumbered opponent selector and side-only
+ * entity selectors. Keep accepting them at the normalization boundary, but
+ * never expose them as selectable options.
+ */
+export function canonicalBotSelectableId(selectableId) {
+    const [base, ...rest] = String(selectableId ?? "").split(":");
+    let canonicalBase = base === "opponent" ? BOT_CODE_SELECTABLES.OPPONENT : base;
+    for (const entityType of ENTITY_SELECTABLE_ENTITY_TYPES) {
+        if (base === `my_${entityType}`) {
+            canonicalBase = `${BOT_CODE_SELECTABLES.MY}_${entityType}`;
+            break;
+        }
+        if (base === `opponent_${entityType}`) {
+            canonicalBase = `${BOT_CODE_SELECTABLES.OPPONENT}_${entityType}`;
+            break;
+        }
+    }
+    return [canonicalBase, ...rest].join(":");
+}
+
+export const BOT_CODE_COMPARATORS = Object.freeze({
+    LT: "lt",
+    LTE: "lte",
+    EQ: "eq",
+    NEQ: "neq",
+    GTE: "gte",
+    GT: "gt",
+});
+
+export const ACTION_HEADS = Object.freeze({
+    NONE: "none",
+    VARIABLE: "variable",
+    MOVEMENT: "movement",
+    ROTATION: "rotation",
+    ABILITY: "ability",
+    // Cancel has its own channel: it never competes with, or is blocked by, the ability lock.
+    CANCEL: "cancel",
+    // Dash has its own channel too (interim): a dash never blocks or waits on another ability, and one dash
+    // and one ability can start on the same tick.
+    DASH: "dash",
+    // Chain control uses no movement, rotation, ability or cancel category.
+    CHAIN: "chain",
+});
+
+export const CUSTOM_VARIABLE_CONTRACT = Object.freeze({
+    PREFIX: "custom.",
+    DEFAULT_NAME: "Variable",
+});
+
+export const CUSTOM_VARIABLE_OPERATIONS = Object.freeze({
+    SET: "set",
+    ADD: "add",
+    SUBTRACT: "subtract",
+    MODULO: "modulo",
+});
+
+export const STATE_VARIABLE_SCOPES = Object.freeze({
+    MATCH: "match",
+    SELECTABLE: "selectable",
+});
+
+export const STATE_VARIABLE_SOURCES = Object.freeze({
+    MATCH_ELAPSED_SECONDS: "matchElapsedSeconds",
+    SELECTABLE_DISTANCE: "selectableDistance",
+    SELECTABLE_DAMAGE_TAKEN_LAST_TICK: "selectableDamageTakenLastTick",
+    SELECTABLE_HP_NET_CHANGE_LAST_TICK: "selectableHpNetChangeLastTick",
+    SELECTABLE_X: "selectableX",
+    SELECTABLE_Y: "selectableY",
+    SELECTABLE_HP: "selectableHp",
+    SELECTABLE_ABSOLUTE_BEARING: "selectableAbsoluteBearing",
+    SELECTABLE_MOVEMENT_DIRECTION: "selectableMovementDirection",
+    SELECTABLE_SPEED: "selectableSpeed",
+    SELECTABLE_APPROACH_ANGLE: "selectableApproachAngle",
+    SELECTABLE_MOVING: "selectableMoving",
+    BOT_ANY_ABILITY_PREPARING: "botAnyAbilityPreparing",
+    BOT_STAMINA: "botStamina",
+    BOT_SPRINTING: "botSprinting",
+    BOT_FAST_TURNING: "botFastTurning",
+    SELECTABLE_RELATIVE_BEARING: "selectableRelativeBearing",
+    SELECTABLE_FACING: "selectableFacing",
+    SELECTABLE_COUNT: "selectableCount",
+    SELECTABLE_AGE: "selectableAge",
+    SELECTABLE_EDGE_DISTANCE: "selectableEdgeDistance",
+    SELECTABLE_DANGER_ZONE_EDGE_DISTANCE: "selectableDangerZoneEdgeDistance",
+    SELECTABLE_EXISTS: "selectableExists",
+    SELECTABLE_ALIVE: "selectableAlive",
+    SELECTED_ABILITY_READY: "selectedAbilityReady",
+    SELECTED_ABILITY_ACTIVE: "selectedAbilityActive",
+    SELECTED_ABILITY_ACTIVE_MS: "selectedAbilityActiveMs",
+    SELECTED_ABILITY_ON_COOLDOWN: "selectedAbilityOnCooldown",
+    SELECTED_ABILITY_COOLDOWN_MS: "selectedAbilityCooldownMs",
+    SELECTED_ABILITY_SINCE_HIT: "selectedAbilitySinceHit",
+    SELECTED_ABILITY_CHARGES: "selectedAbilityCharges",
+    SELECTED_ABILITY_PREPARING: "selectedAbilityPreparing",
+    SELECTED_ABILITY_PREPARATION_MS: "selectedAbilityPreparationMs",
+    SELECTED_ABILITY_BASE_RANGE: "selectedAbilityBaseRange",
+    SELECTED_STATUS_EFFECT_ACTIVE: "selectedStatusEffectActive",
+    SELECTED_STATUS_EFFECT_DURATION_MS: "selectedStatusEffectDurationMs",
+});
+
+export const VARIABLE_TAGS = Object.freeze({
+    ALLOW_NEGATIVE_INTEGER: "allow-negative-integer",
+});
+
+export const SELECTABLE_CAPABILITIES = Object.freeze({
+    HEALTH: "health",
+});
+
+export { SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, selectableHasIdentity };
+
+// Pair variables need two selectable slots. Single-selectable variables are filtered
+// directly by the selectable identities they require. Selector labels are optional
+// variable metadata; when absent, every selector is simply labeled Entity.
+export const VARIABLE_SELECTABLE_TYPES = Object.freeze({
+    PAIR: "Variable_Pair",
+});
+
+export const TARGET_MODES = Object.freeze({
+    TARGET: "target",
+    COORDINATES: "coordinates",
+    ANGLE: "angle",
+});
+
+const DISTANCE_TARGET_MODES = Object.freeze([
+    TARGET_MODES.TARGET,
+    TARGET_MODES.COORDINATES,
+]);
+const BEARING_TARGET_MODES = Object.freeze([
+    TARGET_MODES.TARGET,
+    TARGET_MODES.ANGLE,
+    TARGET_MODES.COORDINATES,
+]);
+
+export function selectableIdentitiesForVariable(variable, pairSlot = null) {
+    if (variable?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+        const identities = variable.pairSelectableIdentities ?? [[], []];
+        if (pairSlot === 0 || pairSlot === 1) return identities[pairSlot] ?? [];
+        return [...new Set(identities.flat())];
+    }
+    return variable?.selectableIdentities ?? [];
+}
+
+/**
+ * The raw (not yet normalized) first and second selectables of a pair condition.
+ * Older brains stored one `selectable` for variables that later became pairs. It
+ * normally maps into the second slot; a variable that declares
+ * `legacySingleSelectableSlot: 0` (Approach Angle, whose old selectable was the
+ * moving entity) maps it into the first slot and leaves the second at its default.
+ */
+export function rawSelectablePair(condition, variable) {
+    if (variable?.legacySingleSelectableSlot === 0) {
+        return [
+            condition?.selectable1 ?? condition?.leftSelectable ?? condition?.selectable,
+            condition?.selectable2,
+        ];
+    }
+    return [condition?.selectable1, condition?.selectable2 ?? condition?.selectable];
+}
+
+export function selectableMatchesVariable(selectable, variable, pairSlot = null) {
+    const required = selectableIdentitiesForVariable(variable, pairSlot);
+    return required.length === 0 || required.every((identity) => selectableHasIdentity(selectable, identity));
+}
+
+export const SELECTABLE_OWNERS = Object.freeze({
+    MY: "my",
+    OPPONENT: "opponent",
+    NONE: "none",
+});
+
+export const NUMBERED_BOT_SELECTABLE_TYPES = Object.freeze([
+    ...Array.from({ length: 7 }, (_, offset) => {
+        const index = offset + 1;
+        return {
+            id: `teammate_${index}`,
+            label: `Teammate ${index}`,
+            owner: SELECTABLE_OWNERS.MY,
+            role: "teammate",
+            botIndex: index,
+            kind: "bot",
+            healthBearing: true,
+            selectableIdentities: BOT_SELECTABLE_IDENTITIES,
+            botSelector: `teammate_${index}`,
+        };
+    }),
+    ...Array.from({ length: 7 }, (_, offset) => {
+        const index = offset + 1;
+        return {
+            id: `opponent_${index}`,
+            label: `Opponent ${index}`,
+            owner: SELECTABLE_OWNERS.OPPONENT,
+            role: "opponent",
+            botIndex: index,
+            kind: "bot",
+            healthBearing: true,
+            selectableIdentities: BOT_SELECTABLE_IDENTITIES,
+            botSelector: `opponent_${index}`,
+        };
+    }),
+]);
+
+// Entity selectors retain the broad owner field for conditional compatibility,
+// but also identify the exact bot whose spawned entities are being selected.
+// Keep Opponent 1 first to preserve the previous default entity target.
+const ENTITY_OWNER_SELECTABLE_TYPES = Object.freeze([
+    {
+        id: BOT_CODE_SELECTABLES.OPPONENT,
+        label: "Opponent 1",
+        owner: SELECTABLE_OWNERS.OPPONENT,
+        role: "opponent",
+        botIndex: 1,
+        botSelector: BOT_CODE_SELECTABLES.OPPONENT,
+    },
+    {
+        id: BOT_CODE_SELECTABLES.MY,
+        label: "My Bot",
+        owner: SELECTABLE_OWNERS.MY,
+        role: "self",
+        botIndex: 0,
+        botSelector: BOT_CODE_SELECTABLES.MY,
+    },
+    ...NUMBERED_BOT_SELECTABLE_TYPES.filter((selectable) => selectable.role === "teammate"),
+    ...NUMBERED_BOT_SELECTABLE_TYPES.filter((selectable) => selectable.role === "opponent" && selectable.botIndex > 1),
+]);
+
+export const SELECTABLE_ORDERS = Object.freeze(["closest", "farthest", "oldest", "newest"]);
+export const MOVEMENT_MODES = Object.freeze(["target", "coordinates", "absolute"]);
+export const MOVEMENT_DIRECTION_MIN = -360;
+export const MOVEMENT_DIRECTION_MAX = 360;
+export const CONDITION_TYPES = Object.freeze([
+    { id: BOT_CODE_CONDITIONS.ALWAYS, label: "ALWAYS", group: "Basic", requiresValue: false },
+]);
+export const CONDITION_DEFINITIONS = CONDITION_TYPES;
+
+export const CONDITION_COMPARATORS = Object.freeze([
+    { id: "lt", label: "<", valueTypes: ["number"] },
+    { id: "lte", label: "<=", valueTypes: ["number"] },
+    { id: "eq", label: "=", valueTypes: ["number", "boolean"] },
+    { id: "neq", label: "!=", valueTypes: ["number", "boolean"] },
+    { id: "gte", label: ">=", valueTypes: ["number"] },
+    { id: "gt", label: ">", valueTypes: ["number"] },
+]);
+export const COMPARATOR_BY_ID = new Map(CONDITION_COMPARATORS.map((comparator) => [comparator.id, comparator]));
+
+export const ACTION_TYPES = Object.freeze([
+    { id: BOT_CODE_ACTIONS.NONE, label: "N/A (Nested Conditions Only)", head: ACTION_HEADS.NONE },
+    { id: BOT_CODE_ACTIONS.VARIABLE, label: "Variable: Modify Custom Variable", head: ACTION_HEADS.VARIABLE, variableAction: true },
+    { id: BOT_CODE_ACTIONS.MOVE_WALK, label: "Movement: Walk", head: ACTION_HEADS.MOVEMENT, movementConfig: true, coordinateTarget: true },
+    { id: BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET, label: "Rotate: Face Target", head: ACTION_HEADS.ROTATION, coordinateTarget: true, angleTarget: true },
+    { id: BOT_CODE_ACTIONS.CANCEL_WINDUP, label: "Cancel: Wind-up", head: ACTION_HEADS.CANCEL },
+    ...ALL_ABILITY_DEFINITIONS.flatMap((ability) => ability.actions.map((id) => abilityActionDefinition(ability, id))),
+]);
+// Resolvable by ID. The main canvas picker adds them to ACTION_TYPES; chain steps never offer them.
+export const CHAIN_ACTION_TYPES = Object.freeze([
+    { id: BOT_CODE_ACTIONS.RUN_CHAIN, label: "Chain: Run", head: ACTION_HEADS.CHAIN, chainAction: true },
+]);
+export const ACTION_BY_ID = new Map([...ACTION_TYPES, ...CHAIN_ACTION_TYPES].map((action) => [action.id, action]));
+
+export const SELECTABLE_TYPES = Object.freeze([
+    { id: BOT_CODE_SELECTABLES.MY, label: "My Bot", owner: SELECTABLE_OWNERS.MY, role: "self", botIndex: 0, botSelector: BOT_CODE_SELECTABLES.MY, kind: "bot", healthBearing: true, selectableIdentities: BOT_SELECTABLE_IDENTITIES },
+    ...NUMBERED_BOT_SELECTABLE_TYPES,
+    ...ENTITY_SELECTABLE_DEFINITIONS.flatMap((ability) => selectableDefinitionsForAbility(ability)),
+]);
+export const SELECTABLE_BY_ID = new Map(SELECTABLE_TYPES.map((selectable) => [selectable.id, selectable]));
+
+// One-line picker hints (under ~45 characters). UI-only; ids and runtime contracts are unchanged.
+const VARIABLE_DESCRIPTIONS = Object.freeze({
+    "match.elapsedSeconds": "Seconds since the match started",
+    "selectable.distance": "Gap between two entities",
+    "selectable.hp": "Current health",
+    "selectable.damageTakenLastTick": "Damage taken in the last tick",
+    "selectable.hpNetChangeLastTick": "HP gained or lost in the last tick",
+    "selectable.x": "Horizontal position in the arena",
+    "selectable.y": "Vertical position in the arena",
+    "selectable.alive": "Whether the entity is still in the fight",
+    "selectable.absoluteBearing": "Arena angle from one entity to another",
+    "selectable.movementDirection": "Angle the entity is moving toward",
+    "selectable.speed": "Distance moved per tick",
+    "selectable.approachAngle": "0 = moving toward the target, 180 = away",
+    "selectable.moving": "Moved during the last tick",
+    "bot.anyAbilityPreparing": "Any of its abilities is winding up",
+    "bot.stamina": "Stamina left, from 0 to 100. At 0 the bot cannot dash, sprint or fast turn until it refills",
+    "bot.sprinting": "Currently sprinting",
+    "bot.fastTurning": "Currently turning fast",
+    "selectable.relativeBearing": "How far to turn to face the other entity",
+    "selectable.facing": "Angle the entity is facing",
+    "selectable.count": "How many of this object exist",
+    "selectable.age": "Seconds since the object appeared",
+    "selectable.edgeDistance": "Distance to the nearest arena wall",
+    "selectable.dangerZoneEdgeDistance": "Distance to the closing zone edge",
+    "selectable.exists": "Whether at least one exists",
+    "bot.selectedAbilityReady": "Ability can be used now",
+    "bot.selectedAbilityActive": "Ability effect is running",
+    "bot.selectedAbilityOnCooldown": "Ability can't be used yet",
+    "bot.selectedAbilityActiveMs": "Seconds the ability has been active",
+    "bot.selectedAbilityCooldownMs": "Seconds until the ability is ready",
+    "bot.selectedAbilitySinceHit": "Seconds since the ability last hit an enemy",
+    "bot.selectedAbilityCharges": "Charges the ability has stored",
+    "bot.selectedAbilityPreparing": "Ability is winding up",
+    "bot.selectedAbilityPreparationMs": "Seconds left in the wind-up",
+    "bot.selectedAbilityBaseRange": "How far the ability reaches",
+    "bot.selectedStatusEffectActive": "Status effect is currently applied",
+    "bot.selectedStatusEffectDurationMs": "Seconds left on the status effect",
+});
+
+const GENERIC_ABILITY_VARIABLES = [
+    ["selectedAbilityReady", "Ability Ready", "boolean", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_READY, {}],
+    ["selectedAbilityActive", "Ability Active", "boolean", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ACTIVE, {}],
+    ["selectedAbilityOnCooldown", "On Cooldown", "boolean", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ON_COOLDOWN, {}],
+    ["selectedAbilityActiveMs", "Active Time", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ACTIVE_MS, { min: 0, max: 60, unit: "seconds", step: 0.1 }],
+    ["selectedAbilityCooldownMs", "Cooldown Left", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_COOLDOWN_MS, { min: 0, max: 60, unit: "seconds", step: 0.1 }],
+    ["selectedAbilitySinceHit", "Time Since Hit", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_SINCE_HIT, { min: 0, max: CUSTOM_NUMBER_MAX, unit: "seconds", step: 0.1 }],
+    ["selectedAbilityCharges", "Charges", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_CHARGES, { min: 0, max: 100, unit: "charges", step: 1, requiredTag: ABILITY_TAGS.CHARGES }],
+    ["selectedAbilityPreparing", "Preparing", "boolean", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_PREPARING, { requiredTag: "preparation" }],
+    ["selectedAbilityBaseRange", "Base Range", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_BASE_RANGE, { min: 0, max: 2000, unit: "arena units", step: 1, requiredTag: ABILITY_TAGS.RANGE }],
+    ["selectedAbilityPreparationMs", "Prep Time", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_PREPARATION_MS, { min: 0, max: 10, unit: "seconds", step: 0.1, requiredTag: "preparation" }],
+].flatMap(([field, label, valueType, runtimeSource, options]) => [
+    variableDefinition(`bot.${field}`, label, valueType, {
+        group: "Abilities & Status",
+        supportsAbility: true,
+        supportsSelectable: true,
+        selectableIdentities: [SELECTABLE_IDENTITIES.BOT],
+        selectableDependency: SELECTABLE_DEPENDENCIES.ABILITY_LOADOUT,
+        selectableOrderable: false,
+        defaultSelectable: BOT_CODE_SELECTABLES.MY,
+        scope: STATE_VARIABLE_SCOPES.SELECTABLE,
+        runtimeSource,
+        ...options,
+    }),
+]);
+
+const GENERIC_STATUS_VARIABLES = [
+    ["selectedStatusEffectActive", "Has Status", "boolean", STATE_VARIABLE_SOURCES.SELECTED_STATUS_EFFECT_ACTIVE, {}],
+    ["selectedStatusEffectDurationMs", "Status Time", "number", STATE_VARIABLE_SOURCES.SELECTED_STATUS_EFFECT_DURATION_MS, { min: 0, max: 60, unit: "seconds", step: 0.1 }],
+].flatMap(([field, label, valueType, runtimeSource, options]) => [
+    variableDefinition(`bot.${field}`, label, valueType, {
+        group: "Abilities & Status",
+        supportsStatusEffect: true,
+        supportsSelectable: true,
+        selectableIdentities: [SELECTABLE_IDENTITIES.BOT],
+        selectableDependency: SELECTABLE_DEPENDENCIES.STATUS_EFFECT_LOADOUT,
+        selectableOrderable: false,
+        defaultSelectable: BOT_CODE_SELECTABLES.MY,
+        scope: STATE_VARIABLE_SCOPES.SELECTABLE,
+        runtimeSource,
+        ...options,
+    }),
+]);
+
+export const STATE_VARIABLES = Object.freeze([
+    variableDefinition("match.elapsedSeconds", "Match Time", "number", { group: "General", min: 0, max: 99_999, defaultValue: 0, unit: "seconds", step: 0.1, scope: STATE_VARIABLE_SCOPES.MATCH, runtimeSource: STATE_VARIABLE_SOURCES.MATCH_ELAPSED_SECONDS }),
+    variableDefinition("selectable.distance", "Distance", "number", { group: "Entity", min: 0, max: Math.hypot(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS), unit: "arena units", supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, targetModes: DISTANCE_TARGET_MODES, pairSelectableIdentities: [[], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_DISTANCE }),
+    variableDefinition("selectable.hp", "HP", "number", { group: "Entity", min: 0, max: 300, unit: "HP", supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_HP }),
+    variableDefinition("selectable.damageTakenLastTick", "Damage Taken", "number", { group: "Entity", min: 0, max: 300, unit: "damage", supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_DAMAGE_TAKEN_LAST_TICK }),
+    variableDefinition("selectable.hpNetChangeLastTick", "HP Change", "number", { group: "Entity", min: -300, max: 300, unit: "HP", tags: [VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER], supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_HP_NET_CHANGE_LAST_TICK }),
+    variableDefinition("selectable.x", "X", "number", { group: "Position & Movement", min: -ARENA_WIDTH_UNITS / 2, max: ARENA_WIDTH_UNITS / 2, unit: "arena units", tags: [VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER], supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_X }),
+    variableDefinition("selectable.y", "Y", "number", { group: "Position & Movement", min: -ARENA_HEIGHT_UNITS / 2, max: ARENA_HEIGHT_UNITS / 2, unit: "arena units", tags: [VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER], supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_Y }),
+    variableDefinition("selectable.alive", "Alive", "boolean", { group: "Entity", supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_ALIVE }),
+    variableDefinition("selectable.absoluteBearing", "Direction To", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", unit: "deg", supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, selectableSelectorLabels: ["From", "To"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_ABSOLUTE_BEARING }),
+    variableDefinition("selectable.movementDirection", "Move Direction", "number", { group: "Movement", min: -360, max: 360, suffix: "deg", unit: "deg", supportsSelectable: true, defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_MOVEMENT_DIRECTION }),
+    variableDefinition("selectable.speed", "Speed", "number", { group: "Movement", min: 0, max: 100, unit: "arena units / tick", supportsSelectable: true, defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_SPEED }),
+    variableDefinition("selectable.approachAngle", "Approach Angle", "number", { group: "Movement", min: 0, max: 180, suffix: "deg", unit: "deg", circularAngle: false, supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, selectableSelectorLabels: ["From", "To"], pairSelectableIdentities: [[], []], legacySingleSelectableSlot: 0, defaultSelectable1: BOT_CODE_SELECTABLES.OPPONENT, defaultSelectable2: BOT_CODE_SELECTABLES.MY, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_APPROACH_ANGLE }),
+    variableDefinition("selectable.moving", "Is Moving", "boolean", { group: "Movement", supportsSelectable: true, defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_MOVING }),
+    variableDefinition("selectable.relativeBearing", "Angle To", "number", { group: "Rotation", min: 0, max: 180, suffix: "deg", unit: "deg", circularAngle: false, supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, targetModes: BEARING_TARGET_MODES, selectableSelectorLabels: ["From", "To"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING }),
+    variableDefinition("selectable.facing", "Facing", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", unit: "deg", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.FACING], defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_FACING }),
+    variableDefinition("selectable.count", "Count", "number", { group: "Ability Entity", min: 0, max: 100, unit: "objects", step: 1, supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.ABILITY_ENTITY], selectableOrderable: false, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_COUNT }),
+    variableDefinition("selectable.age", "Age", "number", { group: "Ability Entity", unit: "seconds", step: 0.1, min: 0, max: 120, supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.ABILITY_ENTITY], scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_AGE }),
+    variableDefinition("selectable.edgeDistance", "Edge Distance", "number", { group: "Entity", min: 0, max: 500, unit: "arena units", supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_EDGE_DISTANCE }),
+    variableDefinition("selectable.dangerZoneEdgeDistance", "Zone Distance", "number", { group: "Entity", min: -1200, max: 1200, unit: "arena units", tags: [VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER], supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_DANGER_ZONE_EDGE_DISTANCE }),
+    ...GENERIC_ABILITY_VARIABLES,
+    variableDefinition("bot.anyAbilityPreparing", "Any Ability Winding Up", "boolean", { group: "Abilities & Status", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_ANY_ABILITY_PREPARING }),
+    variableDefinition("bot.stamina", "Stamina", "number", { group: "Movement", min: 0, max: MOVEMENT_CONFIG.staminaMax, unit: "stamina", step: 1, supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.MY, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_STAMINA }),
+    variableDefinition("bot.fastTurning", "Turning fast", "boolean", { group: "Rotation", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.MY, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_FAST_TURNING }),
+    variableDefinition("bot.sprinting", "Sprinting", "boolean", { group: "Movement", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.MY, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_SPRINTING }),
+    ...GENERIC_STATUS_VARIABLES,
+    variableDefinition("selectable.exists", "Exists", "boolean", { group: "Ability Entity", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.ABILITY_ENTITY], scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_EXISTS }),
+]);
+export const STATE_VARIABLE_BY_ID = new Map(STATE_VARIABLES.map((variable) => [variable.id, variable]));
+// Speed stays in STATE_VARIABLES so saved brains keep evaluating it, but it is no longer offered in the picker.
+const HIDDEN_PICKER_VARIABLE_IDS = new Set(["selectable.speed"]);
+export const VISIBLE_STATE_VARIABLES = Object.freeze(STATE_VARIABLES.filter((variable) => !HIDDEN_PICKER_VARIABLE_IDS.has(variable.id)));
+export function abilityDefinitionsForVariable(variable, equippedAbilityIds) {
+    const equipped = equippedAbilityIds instanceof Set ? equippedAbilityIds : new Set(equippedAbilityIds ?? []);
+    return ALL_ABILITY_DEFINITIONS.filter((ability) => equipped.has(ability.id)
+        && (!variable?.requiredTag || ability.tags.includes(variable.requiredTag)));
+}
+
+export function variableDefinition(id, label, valueType, options = {}) {
+    return {
+        id,
+        label,
+        valueType,
+        description: VARIABLE_DESCRIPTIONS[id] ?? "",
+        angle: options.angle ?? options.suffix === "deg",
+        circularAngle: options.circularAngle ?? (options.angle ?? options.suffix === "deg"),
+        defaultValue: valueType === "boolean" ? true : 50,
+        min: valueType === "number" ? 0 : undefined,
+        max: valueType === "number" ? 100 : undefined,
+        step: valueType === "number" ? 0.1 : undefined,
+        tags: [],
+        ...options,
+    };
+}
+
+export function variableHasTag(variable, tag) {
+    return Array.isArray(variable?.tags) && variable.tags.includes(tag);
+}
+
+export function defaultAbilityForVariable(variable) {
+    return variable?.abilityOptions?.[0]?.id
+        ?? abilityDefinitionsForVariable(variable, ALL_ABILITY_DEFINITIONS.map((ability) => ability.id))[0]?.id
+        ?? ALL_ABILITY_DEFINITIONS[0]?.id ?? 1;
+}
+
+export function defaultStatusEffectForVariable(variable) {
+    return variable?.statusEffectOptions?.[0]?.id ?? null;
+}
+
+export function defaultSelectablePairForVariable(variable, selectableTypes = SELECTABLE_TYPES) {
+    const available = Array.isArray(selectableTypes) ? selectableTypes : SELECTABLE_TYPES;
+    const fallbackFirst = variable?.defaultSelectable1 ?? BOT_CODE_SELECTABLES.MY;
+    const fallbackSecond = variable?.defaultSelectable2 ?? BOT_CODE_SELECTABLES.OPPONENT;
+    const isAvailableForSlot = (selectableId, pairSlot) => {
+        const base = String(selectableId ?? "").split(":")[0];
+        const selectable = available.find((candidate) => candidate.id === base);
+        return selectable && selectableMatchesVariable(selectable, variable, pairSlot);
+    };
+    const first = isAvailableForSlot(fallbackFirst, 0)
+        ? fallbackFirst
+        : available.find((selectable) => isAvailableForSlot(selectable.id, 0))?.id ?? fallbackFirst;
+    const second = isAvailableForSlot(fallbackSecond, 1)
+        ? fallbackSecond
+        : available.find((selectable) => selectable.id !== first && isAvailableForSlot(selectable.id, 1))?.id ?? fallbackSecond;
+    return [
+        first,
+        second,
+    ];
+}
+
+function abilityActionDefinition(ability, actionId) {
+    const contract = abilityContract(ability.id);
+    const entity = entityContractForAbility(ability.id);
+    const movementConfig = findVerb(triggerVerbs(ability.id), VERBS.MOVE) != null;
+    const locationTarget = entity?.targeting?.position === "target";
+    return {
+        id: actionId,
+        abilityId: ability.id,
+        label: ability.actionLabel ?? `Ability: ${ability.label}`,
+        head: abilityChannel(ability.id) === DASH_CHANNEL ? ACTION_HEADS.DASH : ACTION_HEADS.ABILITY,
+        targetMode: contract?.activation?.targetMode ?? (locationTarget ? "target" : null),
+        coordinateTarget: movementConfig || locationTarget,
+        locationTarget,
+        movementConfig,
+        orientationConfig: Boolean(contract?.activation?.phaseFacingDefault),
+    };
+}
+
+function selectableDefinitionsForAbility(ability) {
+    const entity = entityContractForAbility(ability.id);
+    if (!entity) return [];
+    if (entity.targeting?.owner === SELECTABLE_OWNERS.NONE) {
+        return [{
+            id: entity.entityType,
+            label: ability.label,
+            abilityId: ability.id,
+            owner: SELECTABLE_OWNERS.NONE,
+            kind: "entity",
+            entityType: entity.entityType,
+            runtimeType: entity.runtimeType,
+            healthBearing: Boolean(entity.phases?.some((phase) => phase?.health)),
+            selectableIdentities: ability.selectableIdentities,
+            tags: ability.tags,
+        }];
+    }
+    return ENTITY_OWNER_SELECTABLE_TYPES.map((owner) => ({
+        id: `${owner.id}_${entity.entityType}`,
+        label: `${ability.label} by ${owner.label}`,
+        abilityId: ability.id,
+        owner: owner.owner,
+        role: owner.role,
+        botIndex: owner.botIndex,
+        botSelector: owner.botSelector,
+        kind: "entity",
+        entityType: entity.entityType,
+        runtimeType: entity.runtimeType,
+        healthBearing: Boolean(entity.phases?.some((phase) => phase?.health)),
+        selectableIdentities: ability.selectableIdentities,
+        tags: ability.tags,
+    }));
+}

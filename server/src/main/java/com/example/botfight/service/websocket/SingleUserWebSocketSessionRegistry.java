@@ -17,7 +17,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.handler.WebSocketHandlerDecoratorFactory;
@@ -53,11 +52,6 @@ public class SingleUserWebSocketSessionRegistry {
         }
         this.eventPublisher = eventPublisher;
         this.maxSessionsPerPrincipal = maxSessionsPerPrincipal;
-    }
-
-    /** Compatibility constructor for focused registry tests. */
-    public SingleUserWebSocketSessionRegistry() {
-        this(null, DEFAULT_MAX_SESSIONS_PER_PRINCIPAL);
     }
 
     public int maxSessionsPerPrincipal() {
@@ -221,7 +215,7 @@ public class SingleUserWebSocketSessionRegistry {
     private void publishDisconnect(WebSocketSessionDisconnectedEvent event) {
         if (event == null) return;
         try {
-            if (eventPublisher != null) eventPublisher.publishEvent(event);
+            eventPublisher.publishEvent(event);
         } finally {
             if (event.finalSession()) {
                 synchronized (this) {

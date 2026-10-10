@@ -1,0 +1,55 @@
+{
+  "description": "Lead aim on a rotation and on an ability.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "priority": 1,
+            "action": "rotate_toward_enemy",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "rotate_toward_enemy",
+                "selectable": "opponent_1",
+                "targetOffsetX": 0,
+                "targetOffsetY": 0,
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0,
+                "targetAngle": 0,
+                "aim": "lead",
+                "leadSeconds": 0.5
+              },
+              {
+                "action": 4,
+                "selectable": "opponent_1"
+              }
+            ],
+            "targetOffsetX": 0,
+            "targetOffsetY": 0,
+            "targetMode": "target",
+            "targetX": 0,
+            "targetY": 0,
+            "targetAngle": 0,
+            "aim": "lead",
+            "leadSeconds": 0.5,
+            "branchType": "if",
+            "children": []
+          }
+        ]
+      }
+    ],
+    "customVariables": []
+  }
+}

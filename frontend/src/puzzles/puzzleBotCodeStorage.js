@@ -1,8 +1,7 @@
-import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "../gameArena/botlogic/graph/CodeEditorGraph.js";
 import {
     createDefaultAbilityStrategyConfiguration,
     normalizeAbilityStrategyConfiguration,
-} from "../gameArena/botlogic/code/BotCode.js";
+} from "../../../shared/engine/botlogic/code/BotCode.js";
 
 export const PUZZLE_BOT_CODE_STORAGE_PREFIX = "botfight-puzzle-bot-code-v1";
 const MAX_PUZZLE_BOT_CODE_BYTES = 750_000;
@@ -23,10 +22,7 @@ export function puzzleBotCodeStorageKey(puzzleNumber) {
 
 function normalizeStoredCode(value, fallback = null) {
     if (!value || typeof value !== "object") return fallback;
-    const normalized = normalizeAbilityStrategyConfiguration(value);
-    return value.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION
-        ? { ...normalized, editorGraph: sanitizeCodeEditorGraph(value.editorGraph) }
-        : normalized;
+    return normalizeAbilityStrategyConfiguration(value);
 }
 
 export function readPuzzleBotCodeDraft(puzzleNumber, fallback = createDefaultAbilityStrategyConfiguration(), storage = browserStorage()) {

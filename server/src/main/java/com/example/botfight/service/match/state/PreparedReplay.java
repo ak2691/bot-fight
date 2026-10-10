@@ -5,7 +5,6 @@ import java.util.List;
 
 public record PreparedReplay(
         MatchReplayDTO replayPlayback,
-        MatchReplayDTO fullReplay,
         int replayDurationMillis,
         List<PreparedReplayBatch> batches) {
 }

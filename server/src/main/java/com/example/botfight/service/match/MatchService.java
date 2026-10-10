@@ -1,243 +1,76 @@
 package com.example.botfight.service.match;
 
-import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.service.match.state.MatchPhase;
+
 import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.match.MatchCodeViewResponseDTO;
-import com.example.botfight.DTO.match.MatchmakingEventDTO;
-import com.example.botfight.DTO.match.MatchmakingEventDTO.RoundBrainDTO;
 import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.domain.match.MatchMode;
-import com.example.botfight.service.match.connection.MatchConnectionService;
 import com.example.botfight.service.match.connection.MatchReconnectionService;
-import com.example.botfight.service.match.coordination.MatchLockService;
-import com.example.botfight.service.match.chat.MatchChatService;
-import com.example.botfight.service.chatmoderation.ChatEvidenceRecorder;
-import com.example.botfight.service.match.event.MatchEventFactory;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
-import com.example.botfight.service.match.loadout.MatchLoadoutService;
-import com.example.botfight.service.match.lifecycle.MatchLifecycleService;
 import com.example.botfight.service.match.model.MatchChatClosure;
 import com.example.botfight.service.match.model.MatchChatSubmission;
 import com.example.botfight.service.match.model.MatchEntrant;
-import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.service.match.model.MatchSubmissionResult;
-import com.example.botfight.service.match.phase.MatchPhaseService;
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
-import com.example.botfight.service.match.replay.ReplayDeliveryMode;
-import com.example.botfight.service.match.replay.MatchReplayService;
-import com.example.botfight.service.match.simulation.MatchSimulationService;
-import com.example.botfight.service.match.resolution.MatchRoundResolutionService;
-import com.example.botfight.service.match.submission.MatchSubmissionService;
+import com.example.botfight.service.match.event.MatchEventGuard;
 import com.example.botfight.service.match.state.MatchRuntimeState;
-import com.example.botfight.service.match.timing.MatchTimingService;
-import com.example.botfight.service.block.BlockLookup;
-import com.example.botfight.service.limits.SlidingWindowRateLimiter;
-import com.example.botfight.service.limits.TokenBucketRateLimiter;
-import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
-import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class MatchService {
-    private final Clock clock;
-    private final MatchPersistenceService matchPersistenceService;
-    private final MatchRuntimeState runtimeState = new MatchRuntimeState();
-    private final ConcurrentMap<UUID, MatchSession> activeSessionsByUserId = runtimeState.activeSessionsByUserId();
-    private final MatchLockService matchLockService = new MatchLockService();
+    private final MatchRuntimeState runtimeState;
+    private final MatchLockService matchLockService;
     private final MatchChatService matchChatService;
-    private final MatchEventFactory matchEventFactory;
-    private final MatchReplayService matchReplayService;
-    private final MatchLoadoutService matchLoadoutService;
     private final MatchSubmissionService matchSubmissionService;
     private final MatchLifecycleService matchLifecycleService;
-    private final MatchPhaseService matchPhaseService;
+    private final MatchEventGuard matchEventGuard;
     private final MatchReconnectionService matchReconnectionService;
     private final MatchTimingService matchTimingService;
     private final MatchRoundResolutionService matchRoundResolutionService;
-    private final SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter;
-    private final ConcurrentMap<UUID, CodeViewRequest> pendingCodeViewRequests = new ConcurrentHashMap<>();
-
-    private static final Duration CODE_VIEW_REQUEST_TTL = Duration.ofSeconds(15);
-    private static final int MAX_CODE_VIEW_BRAIN_BYTES = 120_000;
-    private static final int MAX_CODE_VIEW_LOADOUT_LENGTH = 40;
+    private final MatchCodeViewService codeViewService;
 
     public MatchService(
-            MatchSimulationService matchSimulationService,
-            MatchPersistenceService matchPersistenceService,
-            MatchConnectionService matchConnectionService,
-            Clock clock,
-            @Value("${botfight.replay.delivery-mode:full}") ReplayDeliveryMode replayDeliveryMode,
-            @Qualifier("matchChatRateLimiter") TokenBucketRateLimiter<String> matchChatRateLimiter) {
-        this(
-                matchSimulationService,
-                matchPersistenceService,
-                matchConnectionService,
-                clock,
-                replayDeliveryMode,
-                matchChatRateLimiter,
-                BlockLookup.none(),
-                new SlidingWindowRateLimiter<>(clock, 1, Duration.ofSeconds(1)));
+            MatchRuntimeState runtimeState,
+            MatchLockService matchLockService,
+            MatchChatService matchChatService,
+            MatchSubmissionService matchSubmissionService,
+            MatchLifecycleService matchLifecycleService,
+            MatchEventGuard matchEventGuard,
+            MatchReconnectionService matchReconnectionService,
+            MatchTimingService matchTimingService,
+            MatchRoundResolutionService matchRoundResolutionService,
+            MatchCodeViewService codeViewService) {
+        this.runtimeState = runtimeState;
+        this.matchLockService = matchLockService;
+        this.matchChatService = matchChatService;
+        this.matchSubmissionService = matchSubmissionService;
+        this.matchLifecycleService = matchLifecycleService;
+        this.matchEventGuard = matchEventGuard;
+        this.matchReconnectionService = matchReconnectionService;
+        this.matchTimingService = matchTimingService;
+        this.matchRoundResolutionService = matchRoundResolutionService;
+        this.codeViewService = codeViewService;
     }
 
-    public MatchService(
-            MatchSimulationService matchSimulationService,
-            MatchPersistenceService matchPersistenceService,
-            MatchConnectionService matchConnectionService,
-            Clock clock,
-            @Value("${botfight.replay.delivery-mode:full}") ReplayDeliveryMode replayDeliveryMode,
-            @Qualifier("matchChatRateLimiter") TokenBucketRateLimiter<String> matchChatRateLimiter,
-            BlockLookup blockLookup) {
-        this(
-                matchSimulationService,
-                matchPersistenceService,
-                matchConnectionService,
-                clock,
-                replayDeliveryMode,
-                matchChatRateLimiter,
-                blockLookup,
-                new SlidingWindowRateLimiter<>(clock, 1, Duration.ofSeconds(1)));
+    public List<OutboundMatchmakingEvent> simulationLoadingEvents(UUID matchId, int round) {
+        return matchSubmissionService.simulationLoadingEvents(matchId, round);
     }
 
-    public MatchService(
-            MatchSimulationService matchSimulationService,
-            MatchPersistenceService matchPersistenceService,
-            MatchConnectionService matchConnectionService,
-            Clock clock,
-            @Value("${botfight.replay.delivery-mode:full}") ReplayDeliveryMode replayDeliveryMode,
-            @Qualifier("matchChatRateLimiter") TokenBucketRateLimiter<String> matchChatRateLimiter,
-            BlockLookup blockLookup,
-            @Qualifier("matchCodeViewRateLimiter")
-            SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter) {
-        this(
-                matchSimulationService,
-                matchPersistenceService,
-                matchConnectionService,
-                clock,
-                replayDeliveryMode,
-                matchChatRateLimiter,
-                blockLookup,
-                matchCodeViewRateLimiter,
-                ChatEvidenceRecorder.noOp());
+    public MatchSession sessionForScheduling(UUID matchId) { return runtimeState.activeSessionForMatch(matchId); }
+
+    public boolean isSchedulingDeadlineCurrent(UUID matchId, MatchPhase phase,
+            int round, Instant deadline) {
+        return runtimeState.isSchedulingDeadlineCurrent(matchId, phase, round, deadline);
     }
 
-    public MatchService(
-            MatchSimulationService matchSimulationService,
-            MatchPersistenceService matchPersistenceService,
-            MatchConnectionService matchConnectionService,
-            Clock clock,
-            @Value("${botfight.replay.delivery-mode:full}") ReplayDeliveryMode replayDeliveryMode,
-            @Qualifier("matchChatRateLimiter") TokenBucketRateLimiter<String> matchChatRateLimiter,
-            BlockLookup blockLookup,
-            @Qualifier("matchCodeViewRateLimiter")
-            SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter,
-            ChatEvidenceRecorder chatEvidenceService) {
-        this(
-                matchSimulationService,
-                matchPersistenceService,
-                matchConnectionService,
-                clock,
-                replayDeliveryMode,
-                matchChatRateLimiter,
-                blockLookup,
-                matchCodeViewRateLimiter,
-                chatEvidenceService,
-                new MatchParticipationCoordinator());
-    }
-
-    @Autowired
-    public MatchService(
-            MatchSimulationService matchSimulationService,
-            MatchPersistenceService matchPersistenceService,
-            MatchConnectionService matchConnectionService,
-            Clock clock,
-            @Value("${botfight.replay.delivery-mode:full}") ReplayDeliveryMode replayDeliveryMode,
-            @Qualifier("matchChatRateLimiter") TokenBucketRateLimiter<String> matchChatRateLimiter,
-            BlockLookup blockLookup,
-            @Qualifier("matchCodeViewRateLimiter")
-            SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter,
-            ChatEvidenceRecorder chatEvidenceService,
-            MatchParticipationCoordinator participationCoordinator) {
-        this.clock = clock;
-        this.matchPersistenceService = matchPersistenceService;
-        this.matchCodeViewRateLimiter = matchCodeViewRateLimiter;
-        JsonMapper jsonMapper = new JsonMapper();
-        this.matchChatService = new MatchChatService(
-                clock,
-                activeSessionsByUserId,
-                matchChatRateLimiter,
-                blockLookup,
-                chatEvidenceService);
-        this.matchLoadoutService = new MatchLoadoutService(jsonMapper);
-        this.matchReplayService = new MatchReplayService(replayDeliveryMode);
-        this.matchEventFactory = new MatchEventFactory(
-                clock,
-                matchConnectionService,
-                matchPersistenceService,
-                matchChatService,
-                runtimeState.initialLoadoutSelectionStartedMatchIds(),
-                matchLoadoutService::abilityOffersForPlayer,
-                this::roundBrainsForPlayer,
-                this::previousRoundWon);
-        this.matchSubmissionService = new MatchSubmissionService(
-                runtimeState.activeSessionsByUserId(),
-                runtimeState.matchSubmissionsByKey(),
-                runtimeState.roundHistoryByMatchId(),
-                clock,
-                jsonMapper,
-                matchPersistenceService,
-                matchLoadoutService,
-                matchEventFactory);
-        this.matchLifecycleService = new MatchLifecycleService(
-                runtimeState,
-                matchPersistenceService,
-                matchConnectionService,
-                matchEventFactory,
-                matchSubmissionService,
-                matchChatService,
-                clock,
-                participationCoordinator);
-        this.matchPhaseService = new MatchPhaseService(runtimeState, clock);
-        this.matchReconnectionService = new MatchReconnectionService(
-                runtimeState,
-                clock,
-                matchConnectionService,
-                matchPersistenceService,
-                matchEventFactory,
-                matchReplayService,
-                matchLifecycleService::clearSession);
-        this.matchTimingService = new MatchTimingService(
-                runtimeState,
-                clock,
-                matchLockService,
-                matchPersistenceService,
-                matchEventFactory,
-                matchLoadoutService,
-                matchSubmissionService);
-        this.matchRoundResolutionService = new MatchRoundResolutionService(
-                runtimeState,
-                clock,
-                matchLockService,
-                matchSimulationService,
-                matchPersistenceService,
-                matchConnectionService,
-                matchEventFactory,
-                matchReplayService,
-                matchSubmissionService,
-                matchChatService);
+    public List<OutboundMatchmakingEvent> beginNextRound(UUID matchId, int replayRound) {
+        return withMatchLock(matchId, () -> matchTimingService.beginNextRound(matchId, replayRound));
     }
 
     private UUID matchIdForUser(UUID userId) {
@@ -266,9 +99,7 @@ public class MatchService {
     }
 
     public void revealCompletedMatchResult(UUID matchId) {
-        if (matchPersistenceService != null) {
-            matchPersistenceService.invalidateAfterResultReveal(matchId);
-        }
+        matchLifecycleService.revealCompletedMatchResult(matchId);
     }
 
     public void leaveCompletedMatch(UUID userId) {
@@ -289,25 +120,10 @@ public class MatchService {
             String socketSessionId) {
         UUID matchId = matchIdForUser(userId);
         if (matchId == null) {
-            return List.of(matchEventFactory.noActiveMatchEvent(userId, username, principalName));
+            return matchReconnectionService.resumeMatch(userId, username, principalName, socketSessionId);
         }
         return withMatchLock(matchId, () -> matchReconnectionService.resumeMatch(
                 userId, username, principalName, socketSessionId));
-    }
-
-    @Transactional
-    public List<OutboundMatchmakingEvent> startMatch(
-            MatchEntrant opponent,
-            MatchEntrant player) {
-        return matchLifecycleService.startMatch(opponent, player);
-    }
-
-    @Transactional
-    public List<OutboundMatchmakingEvent> startMatch(
-            MatchEntrant opponent,
-            MatchEntrant player,
-            MatchMode mode) {
-        return matchLifecycleService.startMatch(opponent, player, mode);
     }
 
     @Transactional
@@ -322,25 +138,11 @@ public class MatchService {
     @Transactional
     public List<OutboundMatchmakingEvent> startTeamMatch(
             List<MatchEntrant> entrants,
-            MatchMode mode) {
-        return matchLifecycleService.startTeamMatch(entrants, mode);
-    }
-
-    @Transactional
-    public List<OutboundMatchmakingEvent> startTeamMatch(
-            List<MatchEntrant> entrants,
             MatchMode mode,
+            boolean ranked,
             Integer baseClockSeconds,
             Integer incrementSeconds) {
-        return matchLifecycleService.startTeamMatch(entrants, mode, baseClockSeconds, incrementSeconds);
-    }
-
-    @Transactional
-    public List<OutboundMatchmakingEvent> startTeamMatch(
-            List<MatchEntrant> entrants,
-            MatchMode mode,
-            boolean ranked) {
-        return matchLifecycleService.startTeamMatch(entrants, mode, ranked);
+        return matchLifecycleService.startTeamMatch(entrants, mode, mode != MatchMode.CUSTOM, baseClockSeconds, incrementSeconds);
     }
 
     @Transactional
@@ -350,10 +152,6 @@ public class MatchService {
             Integer roundNumber,
             String timeoutFallback) {
         return matchTimingService.setTimeoutFallback(userId, matchId, roundNumber, timeoutFallback);
-    }
-
-    public List<OutboundMatchmakingEvent> selectLoadout(UUID userId, String selectedLoadout) {
-        return matchTimingService.selectLoadout(userId, selectedLoadout);
     }
 
     @Transactional
@@ -392,42 +190,16 @@ public class MatchService {
         return matchTimingService.beginInitialLoadoutSelection(matchId);
     }
 
-    public OutboundMatchmakingEvent activateRoundLoadoutSelection(
-            OutboundMatchmakingEvent pendingEvent) {
-        return matchTimingService.activateRoundLoadoutSelection(pendingEvent);
-    }
-
     public List<OutboundMatchmakingEvent> markDisconnected(String principalName) {
         return markDisconnected(principalName, null);
     }
 
-    /** Adds an authenticated tab to the active match's user-level connection set. */
     public void registerSocketSession(UUID userId, String socketSessionId) {
-        MatchSession session = userId == null ? null : activeSessionsByUserId.get(userId);
-        if (session == null || socketSessionId == null || socketSessionId.isBlank()) return;
-        withMatchLock(session.matchId(), () -> {
-            MatchSession current = activeSessionsByUserId.get(userId);
-            if (current != null && current.matchId().equals(session.matchId())) {
-                matchReconnectionService.registerSocketSession(userId, socketSessionId);
-            }
-            return null;
-        });
+        matchReconnectionService.registerSocketSession(userId, socketSessionId);
     }
 
-    /** Removes exactly one closed tab, retaining match presence for other tabs. */
     public void unregisterSocketSession(String principalName, String socketSessionId) {
-        MatchSession session = matchReconnectionService.findSessionForPrincipal(principalName);
-        if (session == null) return;
-        withMatchLock(session.matchId(), () -> {
-            MatchPlayer player = session.players().stream()
-                    .filter(candidate -> principalName.equals(candidate.principalName()))
-                    .findFirst()
-                    .orElse(null);
-            if (player != null) {
-                matchReconnectionService.unregisterSocketSession(player.userId(), socketSessionId);
-            }
-            return null;
-        });
+        matchReconnectionService.unregisterSocketSession(principalName, socketSessionId);
     }
 
     public List<OutboundMatchmakingEvent> markDisconnected(
@@ -458,11 +230,7 @@ public class MatchService {
     }
 
     public void requireActiveMatchForUser(UUID userId, UUID matchId) {
-        MatchSession session = activeSessionsByUserId.get(userId);
-        if (session == null || matchId == null || !session.matchId().equals(matchId)) {
-            throw new AuthException("user is not active in this match");
-        }
-        playerForUser(session, userId);
+        matchSubmissionService.requireActiveMatchForUser(userId, matchId);
     }
 
     /**
@@ -503,29 +271,7 @@ public class MatchService {
                 submission));
     }
 
-    /** Convenience entry point for callers that already have the active match brain. */
     @Transactional
-    public MatchSubmissionResult acceptMatchSubmission(
-            UUID userId,
-            UUID expectedMatchId,
-            BotSubmission submission) {
-        MatchSession session = activeSessionsByUserId.get(userId);
-        if (expectedMatchId == null || session == null || !expectedMatchId.equals(session.matchId())) {
-            return MatchSubmissionResult.rejected("match submission context is invalid");
-        }
-        return acceptMatchSubmission(
-                userId,
-                expectedMatchId,
-                session.roundNumber(),
-                MatchSubmissionService.BUILDING_PHASE,
-                submission);
-    }
-
-    public MatchChatSubmission submitChatMessage(UUID userId, UUID matchId, String rawMessage) {
-        if (matchId == null) return MatchChatSubmission.rejected(null, "Match chat is closed.");
-        return withMatchLock(matchId, () -> matchChatService.submit(userId, matchId, rawMessage));
-    }
-
     public MatchChatSubmission submitChatMessage(
             UUID userId,
             UUID matchId,
@@ -550,116 +296,12 @@ public class MatchService {
         return withMatchLock(matchId, () -> matchLifecycleService.surrender(userId));
     }
 
-    /** Sends a one-shot, read-only code request to another current participant. */
-    public OutboundMatchmakingEvent requestCodeView(
-            UUID requesterId,
-            UUID matchId,
-            UUID targetUserId,
-            Integer roundNumber) {
-        if (requesterId == null || matchId == null || targetUserId == null
-                || requesterId.equals(targetUserId) || roundNumber == null) {
-            throw new AuthException("the code view request is invalid");
-        }
-        return withMatchLock(matchId, () -> {
-            MatchSession session = activeSessionsByUserId.get(requesterId);
-            if (session == null || !matchId.equals(session.matchId())) {
-                throw new AuthException("you are not active in this match");
-            }
-            if (session.roundNumber() != roundNumber) {
-                throw new AuthException("the code view request is stale");
-            }
-            MatchPlayer requester = playerForUserOrNull(session, requesterId);
-            MatchPlayer target = playerForUserOrNull(session, targetUserId);
-            if (requester == null || target == null) {
-                throw new AuthException("the requested player is not in this match");
-            }
-            if (requester.teamNumber() != target.teamNumber()) {
-                throw new AuthException("you can only view real code from a teammate");
-            }
-            matchCodeViewRateLimiter.requireAllowed(requesterId);
-            Instant now = Instant.now(clock);
-            pendingCodeViewRequests.entrySet().removeIf(entry ->
-                    !now.isBefore(entry.getValue().createdAt().plus(CODE_VIEW_REQUEST_TTL)));
-            UUID requestId = UUID.randomUUID();
-            pendingCodeViewRequests.put(
-                    requestId,
-                    new CodeViewRequest(
-                            requestId,
-                            matchId,
-                            requesterId,
-                            targetUserId,
-                            roundNumber,
-                            now));
-            OutboundMatchmakingEvent requestEvent = matchEventFactory.forPlayer(
-                    session,
-                    target,
-                    "MATCH_CODE_VIEW_REQUEST",
-                    codeViewStatus(session),
-                    null,
-                    "A participant requested a read-only snapshot of your current bot code.");
-            return withCodeViewState(requestEvent, requestId, target, null, null);
-        });
+    public OutboundMatchmakingEvent requestCodeView(UUID requesterId, UUID matchId, UUID targetUserId, Integer roundNumber) {
+        return codeViewService.requestCodeView(requesterId, matchId, targetUserId, roundNumber);
     }
 
-    /** Accepts a response only from the participant that owns the request. */
-    public OutboundMatchmakingEvent respondCodeView(
-            UUID targetUserId,
-            MatchCodeViewResponseDTO response) {
-        if (targetUserId == null || response == null || response.requestId() == null) {
-            throw new AuthException("the code view response is invalid");
-        }
-        CodeViewRequest request = pendingCodeViewRequests.get(response.requestId());
-        if (request == null
-                || !targetUserId.equals(request.targetUserId())
-                || !request.matchId().equals(response.matchId())
-                || !targetUserId.equals(response.targetUserId())
-                || !request.roundNumber().equals(response.roundNumber())) {
-            throw new AuthException("the code view request is no longer available");
-        }
-        if (response.brain() == null || !response.brain().isObject()
-                || response.brain().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length
-                        > MAX_CODE_VIEW_BRAIN_BYTES) {
-            throw new AuthException("the code snapshot is too large or invalid");
-        }
-        if (response.selectedLoadout() != null
-                && response.selectedLoadout().length() > MAX_CODE_VIEW_LOADOUT_LENGTH) {
-            throw new AuthException("the code snapshot loadout is invalid");
-        }
-
-        return withMatchLock(request.matchId(), () -> {
-            MatchSession session = activeSessionsByUserId.get(targetUserId);
-            if (session == null || !request.matchId().equals(session.matchId())
-                    || session.roundNumber() != request.roundNumber()) {
-                pendingCodeViewRequests.remove(request.requestId());
-                throw new AuthException("the code view request is stale");
-            }
-            MatchPlayer target = playerForUserOrNull(session, targetUserId);
-            MatchPlayer requester = playerForUserOrNull(session, request.requesterId());
-            if (target == null || requester == null) {
-                pendingCodeViewRequests.remove(request.requestId());
-                throw new AuthException("the code view request is no longer available");
-            }
-            if (requester.teamNumber() != target.teamNumber()) {
-                pendingCodeViewRequests.remove(request.requestId());
-                throw new AuthException("you can only view real code from a teammate");
-            }
-            if (!pendingCodeViewRequests.remove(request.requestId(), request)) {
-                throw new AuthException("the code view request is no longer available");
-            }
-            OutboundMatchmakingEvent resultEvent = matchEventFactory.forPlayer(
-                    session,
-                    requester,
-                    "MATCH_CODE_VIEW_RESULT",
-                    codeViewStatus(session),
-                    null,
-                    "Read-only bot code snapshot received.");
-            return withCodeViewState(
-                    resultEvent,
-                    request.requestId(),
-                    target,
-                    response.brain(),
-                    response.selectedLoadout());
-        });
+    public OutboundMatchmakingEvent respondCodeView(UUID targetUserId, MatchCodeViewResponseDTO response) {
+        return codeViewService.respondCodeView(targetUserId, response);
     }
 
     @Transactional
@@ -672,88 +314,11 @@ public class MatchService {
         return matchRoundResolutionService.cancelFailedSimulation(matchId, roundNumber);
     }
 
-    /**
-     * Matchmaking events are snapshots, not commands. They may be delayed by
-     * the scheduler or by concurrent socket handlers, so they must still
-     * describe the authoritative match phase when they are delivered.
-     */
     public boolean isCurrentEvent(OutboundMatchmakingEvent outbound) {
-        String rejectionReason = currentEventRejectionReason(outbound);
-        return rejectionReason == null;
+        return matchEventGuard.isCurrentEvent(outbound);
     }
 
     public String currentEventRejectionReason(OutboundMatchmakingEvent outbound) {
-        if (outbound == null || outbound.event() == null) {
-            return matchPhaseService.currentEventRejectionReason(outbound);
-        }
-        if (outbound.event().matchId() == null
-                || "MATCH_ACCEPT".equals(outbound.event().status())
-                || "MATCH_RESULT_READY".equals(outbound.event().type())) {
-            return matchPhaseService.currentEventRejectionReason(outbound);
-        }
-        return withMatchLock(
-                outbound.event().matchId(),
-                () -> matchPhaseService.currentEventRejectionReason(outbound));
+        return matchEventGuard.currentEventRejectionReason(outbound);
     }
-
-    private List<RoundBrainDTO> roundBrainsForPlayer(UUID matchId, UUID userId) {
-        return matchSubmissionService.roundBrainsForPlayer(matchId, userId);
-    }
-
-    private Boolean previousRoundWon(UUID matchId, UUID userId) {
-        return matchSubmissionService.previousRoundWon(matchId, userId);
-    }
-
-    private MatchPlayer playerForUser(MatchSession session, UUID userId) {
-        return session.players().stream()
-                .filter(player -> player.userId().equals(userId))
-                .findFirst()
-                .orElseThrow(() -> new AuthException("player is not in this match"));
-    }
-
-    private MatchPlayer playerForUserOrNull(MatchSession session, UUID userId) {
-        if (session == null || userId == null) return null;
-        return session.players().stream()
-                .filter(player -> userId.equals(player.userId()))
-                .findFirst()
-                .orElse(null);
-    }
-
-    private OutboundMatchmakingEvent withCodeViewState(
-            OutboundMatchmakingEvent outbound,
-            UUID requestId,
-            MatchPlayer target,
-            tools.jackson.databind.JsonNode brain,
-            String selectedLoadout) {
-        MatchmakingEventDTO event = outbound.event().withCodeViewState(
-                requestId,
-                target.userId(),
-                target.username(),
-                brain,
-                selectedLoadout);
-        return new OutboundMatchmakingEvent(
-                outbound.principalName(),
-                event,
-                outbound.delayMillis(),
-                outbound.publishAt());
-    }
-
-    private String codeViewStatus(MatchSession session) {
-        if (session.isReplay()) return "SIMULATION_PREPARING";
-        if (session.players().stream().allMatch(MatchPlayer::finished)) return "SIMULATION_LOADING";
-        if (session.countdownEndsAt() != null) return "PREP";
-        if (session.entityPlacementEndsAt() != null) return "OBJECT_PLACEMENT";
-        if (session.buildingEndsAt() != null) return "BUILDING";
-        return "LOADOUT_SELECT";
-    }
-
-    private record CodeViewRequest(
-            UUID requestId,
-            UUID matchId,
-            UUID requesterId,
-            UUID targetUserId,
-            Integer roundNumber,
-            Instant createdAt) {
-    }
-
 }

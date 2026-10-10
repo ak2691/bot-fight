@@ -13,13 +13,13 @@ import {
     abilityDefinitionsForVariable,
     normalizeAbilityStrategyConfiguration,
     VISIBLE_STATE_VARIABLES,
-} from "../../gameArena/botlogic/code/BotCode.js";
+} from "../../../../shared/engine/botlogic/code/BotCode.js";
 import {
     decodeBotLoadout,
     decodeSandboxLoadout,
     STANDARD_ABILITY_IDS,
     statusEffectDefinitionsForAbilities,
-} from "../../gameArena/loadout/BotLoadout.js";
+} from "../../../../shared/engine/loadout/BotLoadout.js";
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameArena/gameconfig/CombatLoadouts.js";
 import {
     BASE_BOT_HP,
@@ -29,7 +29,7 @@ import {
     PUBLIC_BOT_CENTER_MIN_Y,
     PRACTICE_OPPONENT_PUBLIC_START,
     PRACTICE_PLAYER_PUBLIC_START,
-} from "../../gameArena/modelPayloads/arenaConstants.js";
+} from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { countActions, selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { fetchAdminPuzzle, savePuzzle, updatePuzzle } from "../../puzzles/puzzleApi.js";
 import PuzzleLogicWorkspace, {
@@ -178,8 +178,6 @@ function createDefaultPuzzle() {
         maxConditionNodes: MAX_CONDITION_NODES,
         maxCustomVariables: MAX_CUSTOM_VARIABLES,
         puzzleLogic,
-        winConditions: flattenPuzzleConditions(puzzleLogic, "win"),
-        loseConditions: flattenPuzzleConditions(puzzleLogic, "lose"),
         playerTeamSize: MIN_PUZZLE_TEAM_SIZE,
         opponentTeamSize: MIN_PUZZLE_TEAM_SIZE,
         bots,
@@ -244,8 +242,6 @@ function puzzleDraftFromAdminResponse(payload) {
         maxConditionNodes: numberOrFallback(payload?.maxConditionNodes, defaults.maxConditionNodes),
         maxCustomVariables: numberOrFallback(payload?.maxCustomVariables, defaults.maxCustomVariables),
         puzzleLogic,
-        winConditions: flattenPuzzleConditions(puzzleLogic, "win"),
-        loseConditions: flattenPuzzleConditions(puzzleLogic, "lose"),
         playerTeamSize,
         opponentTeamSize,
         bots: normalizedSourceBots,
@@ -311,8 +307,6 @@ function normalizePuzzleDraftConditions(draft) {
     return {
         ...draft,
         puzzleLogic,
-        winConditions: flattenPuzzleConditions(puzzleLogic, "win"),
-        loseConditions: flattenPuzzleConditions(puzzleLogic, "lose"),
     };
 }
 
@@ -718,8 +712,6 @@ export default function PuzzleBuilderPage() {
         setDraft((current) => ({
             ...current,
             puzzleLogic: normalizedLogic,
-            winConditions: flattenPuzzleConditions(normalizedLogic, "win"),
-            loseConditions: flattenPuzzleConditions(normalizedLogic, "lose"),
         }));
     }, [conditionTargetAbilityIds, conditionTargets, conditionVariables]);
     const handlePuzzleTeamSizeChange = useCallback((field, value) => {
@@ -771,8 +763,6 @@ export default function PuzzleBuilderPage() {
                 playerTeamSize: draft.playerTeamSize,
                 opponentTeamSize: draft.opponentTeamSize,
                 logicConfiguration: normalizedLogic,
-                winConditions: flattenPuzzleConditions(normalizedLogic, "win"),
-                loseConditions: flattenPuzzleConditions(normalizedLogic, "lose"),
                 bots: (draft.bots ?? []).map(requestPuzzleBot),
                 // The builder's player code is a temporary testing draft. Keep
                 // the server-side player bot valid without saving that draft.

@@ -6,8 +6,8 @@ import {
     countConditionSlots,
     normalizeAbilityStrategyConfiguration,
     validateAbilityStrategyConfiguration,
-} from "../BotCode.js";
-import { ACTION_TYPES, ACTION_BY_ID } from "../contracts/BotLogicContracts.js";
+} from "../../../../../../shared/engine/botlogic/code/BotCode.js";
+import { ACTION_TYPES, ACTION_BY_ID } from "../../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 import { traceScenario } from "./chainScenarioRunner.js";
 
 // The same scenarios and expected traces run on the server (ChainRuntimeSimulationTest).

@@ -1,4 +1,4 @@
-import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
+import { BASE_BOT_HP } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 
 function teamOf(participant) {
     const team = Number(participant?.teamNumber);

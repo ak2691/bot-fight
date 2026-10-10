@@ -1,6 +1,6 @@
 # Timed Rounds Match Format
 
-Status: partly built. The building blocks are done: weapons and ability rework (S1-S6), movement and stamina on both runtimes (P0a/P0b, including sprint and fast turn), action chains with Time Since Hit (C1-C4), and the segmented authoritative simulation (P3). Lock On and Basic Strike are out of the base kit. The rest of the match format (lifecycle, clocks, frontend flow: P4 onward) is not implemented. Verify current code before acting on any of it. Where it conflicts with today's rules in `AGENTS.md` (for example "a timeout is a draw"), this document describes the intended future rules, not the current ones.
+Status: built, except multi-spawn and Shotgun Blast (S7). This is the design rationale; `AGENTS.md`, [`ABILITIES.md`](ABILITIES.md) and [`MATCH_TIMING.md`](MATCH_TIMING.md) state the current rules, and the code wins where they differ.
 
 ## 1. Problem
 
@@ -367,7 +367,7 @@ Prepared module libraries were considered and **not adopted**: they would move t
 
 ## 8. Architecture
 
-No real-time server is needed. Each fight segment is an ordinary authoritative batch simulation. The full implementation plan is in [`TIMED_ROUNDS_IMPLEMENTATION_PLAN.md`](TIMED_ROUNDS_IMPLEMENTATION_PLAN.md).
+No real-time server is needed. Each fight segment is an ordinary authoritative batch simulation.
 
 - **Approach: a brain schedule, not snapshots.** To produce segment *k*, the server re-runs the whole match from tick 0 with the original seed. It swaps each bot's brain and loadout at each round boundary, and records only segment *k*. This is deterministic by construction, needs no snapshot format, and costs milliseconds (at most 1,200 ticks).
 - **Persistence:** store each round's brains, picks, and variable resets plus the seed, so the whole match re-simulates exactly and stays auditable.

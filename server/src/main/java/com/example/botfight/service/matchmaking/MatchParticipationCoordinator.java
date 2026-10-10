@@ -1,5 +1,7 @@
 package com.example.botfight.service.matchmaking;
 
+import java.util.Objects;
+
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -90,7 +92,7 @@ public class MatchParticipationCoordinator {
     /** Keeps ranked ownership through active match play, until session cleanup. */
     public synchronized void releaseRankedParticipants(Collection<UUID> userIds) {
         if (userIds == null) return;
-        userIds.stream().filter(java.util.Objects::nonNull).forEach(rankedParticipants::remove);
+        userIds.stream().filter(Objects::nonNull).forEach(rankedParticipants::remove);
     }
 
     public synchronized boolean isRankedParticipant(UUID userId) {
@@ -111,7 +113,7 @@ public class MatchParticipationCoordinator {
     }
 
     private List<UUID> normalizedRoster(Collection<UUID> userIds) {
-        if (userIds == null || userIds.isEmpty() || userIds.stream().anyMatch(java.util.Objects::isNull)) {
+        if (userIds == null || userIds.isEmpty() || userIds.stream().anyMatch(Objects::isNull)) {
             return List.of();
         }
         return List.copyOf(new HashSet<>(userIds));

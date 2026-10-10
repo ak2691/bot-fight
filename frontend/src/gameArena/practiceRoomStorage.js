@@ -1,12 +1,10 @@
-import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "./botlogic/graph/CodeEditorGraph.js";
-import { normalizeAbilityStrategyConfiguration } from "./botlogic/code/BotCode.js";
-import { upgradeStoredStrategyCoordinates } from "./persistence/arenaStrategyStorage.js";
+import { normalizeAbilityStrategyConfiguration } from "../../../shared/engine/botlogic/code/BotCode.js";
 import {
     decodeBotLoadout,
     decodeSandboxLoadout,
     encodeBotLoadout,
     encodeSandboxLoadout,
-} from "./loadout/BotLoadout.js";
+} from "../../../shared/engine/loadout/BotLoadout.js";
 import {
     BASE_BOT_HP,
     PUBLIC_BOT_CENTER_MAX_X,
@@ -15,8 +13,7 @@ import {
     PUBLIC_BOT_CENTER_MIN_Y,
     PRACTICE_OPPONENT_PUBLIC_START,
     PRACTICE_PLAYER_PUBLIC_START,
-} from "./modelPayloads/arenaConstants.js";
-import { internalPointToPublic } from "./modelPayloads/arenaCoordinates.js";
+} from "../../../shared/engine/modelPayloads/arenaConstants.js";
 import {
     PUZZLE_OPPONENT_TEAM,
     PUZZLE_PLAYER_TEAM,
@@ -28,7 +25,7 @@ import {
 export const PRACTICE_ROOM_STORAGE_KEY = "arena-practice-room-v1";
 export const PRACTICE_ROOM_STORAGE_VERSION = 3;
 const MAX_PRACTICE_ROOM_BYTES = 750_000;
-/** Practice and sandbox bots start with Slash (1) equipped now that Basic Strike left the base kit. */
+/** Practice and sandbox bots start with Slash (1) equipped. */
 export const DEFAULT_PRACTICE_LOADOUT = encodeSandboxLoadout({ abilities: [1] });
 
 function defaultPracticeBot(teamNumber, slot) {
@@ -45,16 +42,6 @@ function defaultPracticeBot(teamNumber, slot) {
         startHp: BASE_BOT_HP,
     };
 }
-
-export const DEFAULT_PRACTICE_CONFIG = Object.freeze({
-    playerTeamSize: 1,
-    opponentTeamSize: 1,
-    initialElapsedMs: 0,
-    bots: Object.freeze([
-        Object.freeze(defaultPracticeBot(PUZZLE_PLAYER_TEAM, 1)),
-        Object.freeze(defaultPracticeBot(PUZZLE_OPPONENT_TEAM, 1)),
-    ]),
-});
 
 function browserStorage() {
     return typeof localStorage === "undefined" ? null : localStorage;
@@ -90,31 +77,6 @@ function teamNumberForPracticeBot(bot) {
         : PUZZLE_PLAYER_TEAM;
 }
 
-/**
- * A bot saved as the old nested arena shape (transform, health, stats) is converted to the flat roster
- * fields once, here. Its position is an internal arena point; flat roster fields are public.
- */
-function flattenLegacyNestedBot(bot, coordinatesAreInternal) {
-    if (!bot || typeof bot !== "object" || !(bot.transform || bot.health)) return bot;
-    const { transform, health } = bot;
-    const flat = { ...bot };
-    delete flat.transform;
-    delete flat.health;
-    delete flat.stats;
-    const position = transform?.position;
-    const hasPosition = Number.isFinite(Number(position?.x)) && Number.isFinite(Number(position?.y));
-    const start = hasPosition
-        ? (coordinatesAreInternal ? position : internalPointToPublic(position))
-        : {};
-    return {
-        ...flat,
-        startX: flat.startX ?? start.x,
-        startY: flat.startY ?? start.y,
-        rotation: flat.rotation ?? transform?.rotation,
-        startHp: flat.startHp ?? health?.current,
-    };
-}
-
 function normalizedPracticeBot(bot, fallback) {
     const teamNumber = teamNumberForPracticeBot(bot);
     const slot = Math.max(1, Math.floor(Number(bot?.slot) || Number(fallback?.slot) || 1));
@@ -130,20 +92,9 @@ function normalizedPracticeBot(bot, fallback) {
     };
 }
 
-export function normalizePracticeConfig(source, { coordinatesAreInternal = false } = {}) {
+export function normalizePracticeConfig(source) {
     const value = source && typeof source === "object" ? source : {};
-    const legacyBots = [
-        value.playerBot ? { ...value.playerBot, role: "PLAYER", teamNumber: PUZZLE_PLAYER_TEAM, slot: 1 } : null,
-        value.opponentBot ? { ...value.opponentBot, role: "OPPONENT", teamNumber: PUZZLE_OPPONENT_TEAM, slot: 1 } : null,
-    ].filter(Boolean);
-    const rawSourceBots = (Array.isArray(value.bots) ? value.bots : legacyBots)
-        .map((bot) => flattenLegacyNestedBot(bot, coordinatesAreInternal));
-    const sourceBots = coordinatesAreInternal
-        ? rawSourceBots.map((bot) => {
-            const point = internalPointToPublic({ x: bot?.startX, y: bot?.startY });
-            return { ...bot, startX: point.x, startY: point.y };
-        })
-        : rawSourceBots;
+    const sourceBots = Array.isArray(value.bots) ? value.bots : [];
     const playerCount = sourceBots.filter((bot) => teamNumberForPracticeBot(bot) === PUZZLE_PLAYER_TEAM).length;
     const opponentCount = sourceBots.filter((bot) => teamNumberForPracticeBot(bot) === PUZZLE_OPPONENT_TEAM).length;
     const playerTeamSize = normalizePuzzleTeamSize(value.playerTeamSize, playerCount || 1);
@@ -157,24 +108,17 @@ export function normalizePracticeConfig(source, { coordinatesAreInternal = false
         bot,
         defaultPracticeBot(bot.teamNumber, bot.slot),
     ));
-    const rawElapsedMs = value.initialElapsedMs ?? (
-        value.timeSeconds == null ? 0 : Number(value.timeSeconds) * 1000
-    );
     return {
         playerTeamSize,
         opponentTeamSize,
-        initialElapsedMs: Math.round(boundedNumber(rawElapsedMs, 0, 0, 60_000)),
+        initialElapsedMs: Math.round(boundedNumber(value.initialElapsedMs, 0, 0, 60_000)),
         bots,
     };
 }
 
 function normalizeStoredConfiguration(value) {
     if (!value || typeof value !== "object") return null;
-    const upgraded = upgradeStoredStrategyCoordinates(value);
-    const normalized = normalizeAbilityStrategyConfiguration(upgraded);
-    return value.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION
-        ? { ...normalized, editorGraph: sanitizeCodeEditorGraph(upgraded.editorGraph) }
-        : normalized;
+    return normalizeAbilityStrategyConfiguration(value);
 }
 
 function storedBotState(value) {
@@ -190,12 +134,10 @@ export function readPracticeRoomDraft(storage = browserStorage()) {
         const raw = storage.getItem(PRACTICE_ROOM_STORAGE_KEY);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== "object") return null;
+        if (parsed?.version !== PRACTICE_ROOM_STORAGE_VERSION) return null;
         return {
             version: PRACTICE_ROOM_STORAGE_VERSION,
-            config: normalizePracticeConfig(parsed.config, {
-                coordinatesAreInternal: Number(parsed.version ?? 1) < PRACTICE_ROOM_STORAGE_VERSION,
-            }),
+            config: normalizePracticeConfig(parsed.config),
             player: storedBotState(parsed.player),
             opponent: storedBotState(parsed.opponent),
         };

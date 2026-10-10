@@ -29,32 +29,10 @@ export function showCachedEffect(view, slot, texture, { x = 0, y = 0, rotation =
     return sprite;
 }
 
-/** A free-standing sprite in a scene layer (not part of any view container), e.g. the lock-on crosshair. */
-function createMarker(layer, texture, size) {
-    const container = new Container();
-    const sprite = new Sprite(texture);
-    sprite.anchor.set(0.5);
-    sprite.width = size;
-    sprite.height = size;
-    sprite.tint = 0xffffff;
-    sprite.eventMode = "none";
-    container.eventMode = "none";
-    container.addChild(sprite);
-    layer.addChild(container);
-    return { container };
-}
-
-function destroyMarker(marker) {
-    marker.container.parent?.removeChild?.(marker.container);
-    marker.container.destroy({ children: true });
-}
-
 export const rendererKit = Object.freeze({
     showEffect: showCachedEffect,
     hideEffects: hideCachedEffects,
     frameAtProgress: spriteFrameAtProgress,
     frameAt: spriteFrame,
     muzzleAnchor: textureMuzzleAnchor,
-    createMarker,
-    destroyMarker,
 });

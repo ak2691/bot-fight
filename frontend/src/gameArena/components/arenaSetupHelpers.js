@@ -5,7 +5,7 @@ import {
     PUBLIC_BOT_CENTER_MAX_Y,
     PUBLIC_BOT_CENTER_MIN_X,
     PUBLIC_BOT_CENTER_MIN_Y,
-} from "../modelPayloads/arenaConstants.js";
+} from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { PUZZLE_OPPONENT_TEAM, PUZZLE_PLAYER_TEAM } from "../../pages/puzzles/puzzleRoster.js";
 
 const HALF_WIDTH = ARENA_WIDTH_UNITS / 2;

@@ -12,3 +12,4 @@ artifacts/
 !**/.env.example
 !**/.env.*.example
 context.md
+/shared/build-version.txt

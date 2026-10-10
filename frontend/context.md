@@ -14,7 +14,7 @@ to [`src/gameArena/context.md`](src/gameArena/context.md).
   server validation remain backend-owned.
 - `src/auth/`: session state and route protection.
 - `src/security/csrf.js`: CSRF acquisition/header helpers for state changes.
-- `src/notifications/`: app-wide notification subscription, duel/party/custom-lobby invite
+- `src/notifications/`: app-wide notification subscription, party/custom-lobby invite
   actions, and block-aware notification state.
 - `src/chatModeration/`: report submission UI/API shared by match and custom-lobby
   chat; admin review is under `src/pages/admin/`.
@@ -31,22 +31,31 @@ Route UI and navigation bugs here first. Authentication behavior usually spans
 | Custom lobby UI and live roster | `src/pages/customLobby/` and `src/matchmaking/` | `src/notifications/`, `src/components/AppNavbar.jsx`, and server custom-lobby areas |
 | Puzzle list or admin puzzle authoring | `src/pages/puzzles/` and `src/puzzles/` | `src/auth/`, arena code/loadout contracts, and server puzzle areas |
 | Login/session/CSRF | `src/auth/`, `src/security/` | server auth/security areas |
-| Notifications, duel/party/custom-lobby invites, and blocks | `src/notifications/`, `src/components/AppNavbar.jsx`, `src/pages/profile/` | matchmaking queue/socket, server party/custom-lobby/invite/block/notification areas |
+| Notifications, party/custom-lobby invites, and blocks | `src/notifications/`, `src/components/AppNavbar.jsx`, `src/pages/profile/` | matchmaking queue/socket, server party/custom-lobby/invite/block/notification areas |
 | Chat reporting and admin moderation | `src/chatModeration/`, chat components under `src/matchmaking/` and `src/pages/customLobby/`, and `src/pages/admin/` | server chat moderation controller/service/domain/repository and [`../docs/CHAT_MODERATION.md`](../docs/CHAT_MODERATION.md) |
 | Matchmaking lifecycle/ability draft or match chat | `src/pages/`, `src/matchmaking/` | server matchmaking areas |
 | WebSocket framing/reconnect | `src/matchmaking/` | server WebSocket configuration and controller areas |
-| Logic evaluation/normalization | `src/gameArena/botlogic/code/` | nearby tests and arena payload/loadout contracts |
-| Movement planning | `src/gameArena/botlogic/planner/` | arena geometry and constants areas |
+| Logic evaluation/normalization | `../shared/engine/botlogic/code/` (tests in `src/gameArena/botlogic/code/tests/`) | nearby tests and arena payload/loadout contracts |
+| Movement planning | `../shared/engine/botlogic/planner/` | arena geometry and constants areas |
 | Match submission API | `src/gameArena/botlogic/submission/` | server DTO, controller, validation, and service areas |
 | Arena, combat, loadout, Pixi | [`src/gameArena/context.md`](src/gameArena/context.md) | relevant docs via `docs/context.md` |
-| Authoritative replay display | `src/replay/` | arena presentation and server replay DTO areas |
+| Authoritative replay display | `src/replay/` | shared-engine render frames and server replay authorization |
 
 ## Logic and API boundaries
 
-`src/gameArena/botlogic/` owns the structured code contract and deterministic browser-side
-selection/planning helpers. Keep schema normalization pure and bounded. Stable
+`../shared/engine/botlogic/` owns the structured code contract and deterministic
+selection/planning helpers (the engine is shared with sim-worker; see
+[`../shared/engine/context.md`](../shared/engine/context.md)); `src/gameArena/botlogic/` keeps the editor graph,
+submission client, brain-schema validation and the tests. Keep schema normalization pure and bounded. Stable
 action, target, condition, comparator, and ability IDs must match server
 validation and simulation.
+
+`code/configuration/brainSchema.js` validates a normalized brain with ajv against `shared/schemas/brain.schema.json`
+(the file the server checks); the editor shows its errors. That schema is generated from the contracts in
+`code/contracts/` and the loadout catalog by `scripts/generate-brain-schema.mjs` (`npm run schema:brain`), and a test fails
+when the committed file is stale. Change a variable, action or limit there and regenerate. The rules a schema
+cannot express are `shared/engine/botlogic/code/configuration/brainRules.js`; the editor runs them after the
+schema (`validateBrain.js`), and the sim-worker runs the same file for every submission.
 
 `SubmissionClient.js` sends normalized code/loadout data; it does not make the
 browser authoritative. Any payload change requires tracing the matching server

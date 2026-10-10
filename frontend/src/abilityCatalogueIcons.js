@@ -1,5 +1,4 @@
 /** Static decorative artwork generated from the arena presentation assets. */
-const lockOnIconUrl = new URL("./assets/arena/abilities/support/crosshair.png", import.meta.url).href;
 
 export const ABILITY_CATALOGUE_ICONS = Object.freeze({
     slash: "/assets/ability-list/icons/swing.webp",
@@ -20,7 +19,6 @@ export const ABILITY_CATALOGUE_ICONS = Object.freeze({
     hunter_drone: "/assets/ability-list/icons/hunter_drone.webp",
     wind_burst: "/assets/ability-list/icons/wind_burst.webp",
     dash: "/assets/ability-list/icons/dash.webp",
-    lock_on: lockOnIconUrl,
     rewind: "/assets/ability-list/icons/temporal_rewind.webp",
     orbital_strike: "/assets/ability-list/icons/orbital_strike.webp",
     absolute_guard: "/assets/ability-list/icons/absolute_guard.webp",
@@ -55,4 +53,4 @@ export function getAbilityCatalogueIconLayout(abilityId) {
     const name = abilityIdentity(abilityId)?.name;
     return ABILITY_CATALOGUE_ICON_LAYOUTS[name] ?? "default";
 }
-import { abilityIdentity } from "./gameArena/gameconfig/AbilityRegistry.js";
+import { abilityIdentity } from "../../shared/engine/gameconfig/AbilityRegistry.js";

@@ -3,17 +3,16 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
 import AppNavbar from "../../components/AppNavbar.jsx";
 import Arena from "../../gameArena/Arena.jsx";
-import { customVariableDefinitions, STATE_VARIABLES, VISIBLE_STATE_VARIABLES } from "../../gameArena/botlogic/code/BotCode.js";
+import { customVariableDefinitions, STATE_VARIABLES, VISIBLE_STATE_VARIABLES } from "../../../../shared/engine/botlogic/code/BotCode.js";
 import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { fetchPuzzle, submitPuzzleAttempt } from "../../puzzles/puzzleApi.js";
-import { puzzleConditionLabel } from "../../puzzles/puzzleConditions.js";
 import { readPuzzleBotCodeDraft } from "../../puzzles/puzzleBotCodeStorage.js";
 import { resolveSelectableTarget } from "../../gameArena/coding/nodes/actionNodePresentation.js";
 import { summarizeCondition } from "../../gameArena/coding/nodes/conditionSummary.js";
 import { useStackedLayout } from "../../tutorial/useStackedLayout.js";
 import "../../tutorial/tutorialGuide.css";
 import { loadPuzzleSubmissions, savePuzzleSubmission } from "../../puzzles/puzzleSubmissions.js";
-import PuzzleLogicWorkspace from "./PuzzleLogicWorkspace.jsx";
+import PuzzleLogicWorkspace, { flattenPuzzleConditions } from "./PuzzleLogicWorkspace.jsx";
 import {
     MIN_PUZZLE_TEAM_SIZE,
     PUZZLE_OPPONENT_TEAM,
@@ -50,7 +49,6 @@ function puzzleWithBotRoles(payload) {
 
 function PuzzleConditionStrip({ condition, variableDefinitions, selectableTypes, onOpenConfiguration }) {
     const canOpenConfiguration = typeof onOpenConfiguration === "function";
-    const isFull = condition?.type === "always" || condition?.type === "expression";
     const lookups = {
         variable: (id) => variableDefinitions.find((variable) => variable.id === id) ?? null,
         selectable: (id) => resolveSelectableTarget(id, selectableTypes).description,
@@ -62,9 +60,9 @@ function PuzzleConditionStrip({ condition, variableDefinitions, selectableTypes,
             return String(id ?? "Ability");
         },
     };
-    const label = puzzleConditionLabel(condition, variableDefinitions);
-    const summary = isFull ? summarizeCondition(condition, lookups) : null;
-    const body = summary ? (
+    const summary = summarizeCondition(condition, lookups);
+    const label = [summary.subject, ...summary.entities, summary.comparator, summary.value, ...summary.valueEntities].filter(Boolean).join(" ");
+    const body = (
         <span className="code-bt-strip-text">
             <span className="code-bt-subject">{summary.subject}</span>
             {summary.entities.map((entity, index) => <span className="code-bt-entity" key={index}>{entity}</span>)}
@@ -72,7 +70,7 @@ function PuzzleConditionStrip({ condition, variableDefinitions, selectableTypes,
             {summary.value && <span className="code-bt-value">{summary.value}</span>}
             {summary.valueEntities.map((entity, index) => <span className="code-bt-entity" key={`value-${index}`}>{entity}</span>)}
         </span>
-    ) : <span className="code-bt-strip-text"><span className="code-bt-subject">{label}</span></span>;
+    );
     return (
         <li>
             {canOpenConfiguration ? (
@@ -93,8 +91,8 @@ function PuzzleIcon({ className = "h-5 w-5" }) {
 }
 
 function PuzzleInfoBody({ puzzle, isSolved, variableDefinitions, selectableTypes, onOpenConfiguration }) {
-    const winConditions = Array.isArray(puzzle.winConditions) ? puzzle.winConditions : [];
-    const loseConditions = Array.isArray(puzzle.loseConditions) ? puzzle.loseConditions : [];
+    const winConditions = flattenPuzzleConditions(puzzle.logicConfiguration, "win");
+    const loseConditions = flattenPuzzleConditions(puzzle.logicConfiguration, "lose");
     const description = typeof puzzle.description === "string" ? puzzle.description.trim() : "";
     const playerTeam = Number(puzzle.playerTeamSize);
     const opponentTeam = Number(puzzle.opponentTeamSize);

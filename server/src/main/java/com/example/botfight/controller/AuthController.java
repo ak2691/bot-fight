@@ -30,7 +30,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -76,41 +75,6 @@ public class AuthController {
         this.authenticatedGetRateLimiter = authenticatedGetRateLimiter;
         this.passwordResetService = passwordResetService;
         this.authRequestExecutor = authRequestExecutor;
-    }
-
-    /** Compatibility constructor for focused controller tests that do not exercise password reset routes. */
-    public AuthController(
-            AuthService authService,
-            GoogleAuthService googleAuthService,
-            TokenBucketRateLimiter<String> authIpRateLimiter,
-            TokenBucketRateLimiter<String> authEmailRateLimiter,
-            TokenBucketRateLimiter<String> authenticatedGetRateLimiter,
-            PasswordResetService passwordResetService) {
-        this(
-                authService,
-                googleAuthService,
-                authIpRateLimiter,
-                authEmailRateLimiter,
-                authenticatedGetRateLimiter,
-                passwordResetService,
-                new SyncTaskExecutor());
-    }
-
-    /** Compatibility constructor for focused controller tests that do not exercise password reset routes. */
-    public AuthController(
-            AuthService authService,
-            GoogleAuthService googleAuthService,
-            TokenBucketRateLimiter<String> authIpRateLimiter,
-            TokenBucketRateLimiter<String> authEmailRateLimiter,
-            TokenBucketRateLimiter<String> authenticatedGetRateLimiter) {
-        this(
-                authService,
-                googleAuthService,
-                authIpRateLimiter,
-                authEmailRateLimiter,
-                authenticatedGetRateLimiter,
-                null,
-                new SyncTaskExecutor());
     }
 
     @PostMapping("/register")

@@ -1,4 +1,4 @@
-import { MAX_CHAIN_STEPS } from "../../botlogic/code/configuration/constants.js";
+import { MAX_CHAIN_STEPS } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { stepMeterState } from "./chainEditing.js";
 
 /** Toolbar identity while a chain is open: "← Brain › name". The arrow goes back to the main canvas. */

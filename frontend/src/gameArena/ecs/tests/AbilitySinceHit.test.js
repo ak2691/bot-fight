@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { advanceShapes as advanceArenaPreviewTickNormalized } from "../../testing/fightTick.js";
 import { buildInitialArenaShapes, buildOpponentShape } from "../../modelPayloads/arenaShapes.js";
-import { NEVER_HIT_SECONDS, abilitySinceHitSeconds } from "../../gameconfig/AbilityHitRecord.js";
-import { createAbilityEntity } from "../entities/EntityFactory.js";
-import { applyEffectsFromEntity } from "../abilities/effects.js";
-import { STATE_VARIABLE_BY_ID } from "../../botlogic/code/contracts/BotLogicContracts.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
-import { activeRemainingMs } from "../../gameconfig/AbilityState.js";
+import { NEVER_HIT_SECONDS, abilitySinceHitSeconds } from "../../../../../shared/engine/gameconfig/AbilityHitRecord.js";
+import { createAbilityEntity } from "../../../../../shared/engine/ecs/entities/EntityFactory.js";
+import { applyEffectsFromEntity } from "../../../../../shared/engine/ecs/abilities/effects.js";
+import { STATE_VARIABLE_BY_ID } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { activeRemainingMs } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 
 // The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);
@@ -72,7 +72,7 @@ test("Time Since Hit is a generic ability variable with the general number range
 });
 
 test("Slash hit reads 0.1 the next tick and keeps counting through misses", () => {
-    const configuration = { roots: [castAbility(SLASH), walk(2, "west", [sinceHit(SLASH)])] };
+    const configuration = { roots: [castAbility(SLASH), walk(2, 270, [sinceHit(SLASH)])] };
     const history = runArena(arena({ ability: SLASH, defenderX: 380 }), configuration, 14);
     const hit = firstTickWhere(history, ({ defender }) => defender.hp < defender.maxHp);
     assert.ok(hit >= 0, "Slash lands on the adjacent defender");
@@ -141,7 +141,7 @@ test("A hit on an enemy summon does not count", () => {
 
 test("Time Since Hit can be read for an opponent's ability", () => {
     const opponentCondition = { ...sinceHit(SLASH), selectable: "opponent_1", leftSelectable: "opponent_1" };
-    const watcher = { roots: [walk(1, "south", [opponentCondition])] };
+    const watcher = { roots: [walk(1, 180, [opponentCondition])] };
     const history = runArena(arena({ ability: SLASH, defenderX: 380 }), watcher, 8, { roots: [castAbility(SLASH)] });
     const hit = firstTickWhere(history, ({ main }) => main.hp < main.maxHp);
     assert.ok(hit >= 0, "the opponent's Slash lands on My Bot");

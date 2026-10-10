@@ -1,0 +1,20 @@
+{
+  "rule": "Timed steps are whole ticks of 100 ms.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "chains": [
+      {
+        "id": "chain.a",
+        "name": "A",
+        "steps": [
+          {
+            "type": "wait",
+            "forMs": 150
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.model;
 
-import com.example.botfight.DTO.match.MatchReplayDTO;
+import com.example.botfight.service.simulation.WorkerReplay.EndBotState;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -16,16 +16,16 @@ public record HpDecision(Map<Integer, Double> teamHp, Integer winningTeam) {
     private static final double EQUAL_EPSILON = 1e-6;
 
     /** Returns the decision for a segment's final bot states, or null if at most one team is alive. */
-    public static HpDecision fromEndState(List<MatchReplayDTO.ReplayBotDTO> finalBots) {
+    public static HpDecision fromEndState(List<EndBotState> finalBots) {
         if (finalBots == null || finalBots.isEmpty()) return null;
         Map<Integer, Double> hpByTeam = new TreeMap<>();
         long aliveTeams = finalBots.stream()
                 .filter(bot -> bot.hp() > 0)
-                .map(MatchReplayDTO.ReplayBotDTO::teamNumber)
+                .map(EndBotState::teamNumber)
                 .distinct()
                 .count();
         if (aliveTeams <= 1) return null;
-        for (MatchReplayDTO.ReplayBotDTO bot : finalBots) {
+        for (EndBotState bot : finalBots) {
             hpByTeam.merge(bot.teamNumber(), Math.max(0.0, bot.hp()), Double::sum);
         }
         double best = hpByTeam.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);

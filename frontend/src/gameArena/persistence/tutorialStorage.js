@@ -4,7 +4,6 @@ import { loadStoredStrategyConfiguration } from "./arenaStrategyStorage.js";
 
 const TUTORIAL_STRATEGY_PREFIX = "arena-tutorial-strategy-v2-";
 export const TUTORIAL_COMPLETION_PREFIX = "arena-tutorial-completion-v2-";
-export const TUTORIAL_SOLUTION_PREFIX = "arena-tutorial-solution-v2-";
 const TUTORIAL_CHALLENGE_VERSION_PREFIX = "arena-tutorial-challenge-v2-";
 const TUTORIAL_PROGRESS_KEY = "arena-tutorial-progress-v1";
 const TUTORIAL_GUIDE_PROGRESS_PREFIX = "arena-tutorial-guide-progress-v1-";
@@ -104,13 +103,3 @@ export function saveTutorialBooleanState(prefix, step, value) {
     }
 }
 
-export function tutorialChallengeForScenario(step, scenario) {
-    const completed = loadTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, step);
-    return {
-        status: "idle",
-        remainingMs: scenario.durationMs ?? 0,
-        code: "ready",
-        completed,
-        initialRunComplete: scenario.id === "priority" ? completed : false,
-    };
-}

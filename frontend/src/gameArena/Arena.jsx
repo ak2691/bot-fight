@@ -4,22 +4,22 @@ import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
 import AppNavbar from "../components/AppNavbar";
 import PixiCanvas from "./pixi/PixiCanvas.jsx";
 import CodingPanel from "./coding/CodingPanel.jsx";
-import { SELECTABLE_BOT_ABILITIES, encodeSandboxLoadout, normalizedSandboxLoadout } from "./loadout/BotLoadout.js";
+import { SELECTABLE_BOT_ABILITIES, encodeSandboxLoadout, normalizedSandboxLoadout } from "../../../shared/engine/loadout/BotLoadout.js";
 import { loadoutDraftForEntry, loadoutDraftsForRoster, sandboxLoadoutWithWeapon, toggleSandboxAbility } from "./loadout/sandboxLoadout.js";
 import ArenaSetup from "./components/ArenaSetup.jsx";
 import SandboxLoadoutModal from "./components/modals/SandboxLoadoutModal.jsx";
 import {
     createDefaultAbilityStrategyConfiguration,
     normalizeAbilityStrategyConfiguration,
-    validateAbilityStrategyConfiguration,
-} from "./botlogic/code/BotCode.js";
+} from "../../../shared/engine/botlogic/code/BotCode.js";
+import { validateAbilityStrategyConfiguration } from "./botlogic/code/validateBrain.js";
 import { submitBlockedReason } from "./coding/holdToSubmit.js";
 import { CLOCK_TICK_MS, TIMEOUT_FALLBACKS, inAutoSubmitWindow, playerClockView } from "../matchmaking/buildClock.js";
 import {
     buildBotSubmissionPayload,
     submitBotPayload
 } from "./botlogic/submission/SubmissionClient.js";
-import { isClosingZone } from "./ecs/entities/ClosingZoneSystem.js";
+import { isClosingZone } from "../../../shared/engine/ecs/entities/ClosingZoneSystem.js";
 import {
     DEFAULT_BOT_CONFIGURATION_ID,
 } from "./gameconfig/CombatLoadouts.js";
@@ -32,8 +32,8 @@ import {
 } from "../pages/puzzles/puzzleRoster.js";
 import { restoreTutorialNavigationScrollPosition } from "../tutorial/tutorialLessonNavigation.js";
 
-import { BASE_BOT_HP } from "./modelPayloads/arenaConstants.js";
-import { internalPointToPublic } from "./modelPayloads/arenaCoordinates.js";
+import { BASE_BOT_HP } from "../../../shared/engine/modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "../../../shared/engine/modelPayloads/arenaCoordinates.js";
 import {
     buildInitialArenaShapes,
     buildOpponentShape,
@@ -56,7 +56,7 @@ import {
     puzzleSetupForArena,
     synchronizePuzzleBuilderBotShape,
 } from "./setup/ArenaSetup.js";
-import { isBotState } from "./modelPayloads/botState.js";
+import { isBotState } from "../../../shared/engine/modelPayloads/botState.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "./modelPayloads/previewBaseline.js";
 import { useArenaAutoPlay } from "./hooks/useArenaAutoPlay.js";
 import {

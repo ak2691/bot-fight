@@ -36,7 +36,7 @@ class SingleUserWebSocketSessionRegistryTest {
     @Test
     void multipleTransportsForOnePrincipalRemainActiveAndOneCloseIsNotFinal()
             throws Exception {
-        SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry();
+        SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry(event -> {}, SingleUserWebSocketSessionRegistry.DEFAULT_MAX_SESSIONS_PER_PRINCIPAL);
         Principal principal = () -> "pilot@example.com";
         WebSocketSession oldSession = session("socket-old", principal, true);
         WebSocketSession currentSession = session("socket-current", principal, true);
@@ -60,7 +60,7 @@ class SingleUserWebSocketSessionRegistryTest {
     @Test
     void stompConnectAddsItsPrincipalWithoutReplacingAnOlderTransport()
             throws Exception {
-        SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry();
+        SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry(event -> {}, SingleUserWebSocketSessionRegistry.DEFAULT_MAX_SESSIONS_PER_PRINCIPAL);
         Principal principal = () -> "pilot@example.com";
         WebSocketSession oldSession = session("socket-old", principal, true);
         WebSocketSession newSession = session("socket-new", null, true);
@@ -109,7 +109,7 @@ class SingleUserWebSocketSessionRegistryTest {
 
     @Test
     void sixthSessionIsRejectedWithTerminalCloseStatusWithoutClosingExistingTabs() throws Exception {
-        SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry(null, 5);
+        SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry(event -> {}, 5);
         Principal principal = () -> "pilot@example.com";
         WebSocketHandler decorated = registry.decoratorFactory().decorate(new TextWebSocketHandler());
         List<WebSocketSession> sessions = new ArrayList<>();
@@ -132,7 +132,7 @@ class SingleUserWebSocketSessionRegistryTest {
 
     @Test
     void concurrentRegistrationsAndDisconnectsLeaveNoStaleSessionEntries() throws Exception {
-        SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry(null, 5);
+        SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry(event -> {}, 5);
         Principal principal = () -> "pilot@example.com";
         WebSocketHandler decorated = registry.decoratorFactory().decorate(new TextWebSocketHandler());
         int count = 20;

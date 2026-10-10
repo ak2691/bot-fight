@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { botAbilityPresentationForType } from "../botAbilityPresentationDefinitions.js";
-import { BOT_ABILITY_RENDERERS, destroyBotAbilityRenderers, syncBotAbilityRenderers, updateBotAbilityRenderers } from "./index.js";
+import { BOT_ABILITY_RENDERERS, syncBotAbilityRenderers, updateBotAbilityRenderers } from "./index.js";
 import { activeBotVisual } from "../pixiVisualState.js";
 
 /** Records what a renderer asks Pixi to do, so draws can be compared without a GPU. */
@@ -15,28 +15,20 @@ function fakeGraphics() {
 
 function fakeKit() {
     const shown = [];
-    const markers = [];
     return {
         shown,
-        markers,
         showEffect: (view, slot, texture, options) => shown.push({ slot, texture, ...options }),
         hideEffects: () => {},
         frameAtProgress: (frames, progress) => `${frames?.[0] ?? "frame"}@${Number(progress).toFixed(3)}`,
         frameAt: (frames, elapsedMs) => `${frames?.[0] ?? "frame"}+${elapsedMs}`,
         muzzleAnchor: () => 0.04,
-        createMarker: (layer, texture, size) => {
-            const marker = { layer, texture, size, destroyed: false, container: { visible: false, position: { set() {} }, scale: { set() {} } } };
-            markers.push(marker);
-            return marker;
-        },
-        destroyMarker: (marker) => { marker.destroyed = true; },
     };
 }
 
 const arenaSprites = {
     abilities: {
         meleeSlash: ["slash"], heavySlash: ["heavy"], dashSmoke: ["smoke"], stun: ["stun"], shield: ["shield"],
-        phaseStrike: ["phase"], frostRing: ["frost"], temporalRewind: ["rewind"], lockOnCrosshair: "crosshair",
+        phaseStrike: ["phase"], frostRing: ["frost"], temporalRewind: ["rewind"],
         muzzleFlash: ["flash"], repulsorBlast: ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
         rays: { rail_shot: ["rail"], pistol: ["pistol"], concussive_shot: ["concussive"] },
     },
@@ -58,7 +50,7 @@ function context(view, shape, extra = {}) {
         rotation: Math.PI / 2,
         dead: false,
         otherBots: [],
-        layers: { lockOn: { id: "lockOn" } },
+        layers: {},
         kit: view.kit,
         activeAbilityId: activeBotVisual(shape),
         ...extra,
@@ -182,22 +174,6 @@ test("start effects ask the scene for particles only when their visual becomes a
     assert.deepEqual(heals, [[10, 20, 12]]);
     sync(10, 10);
     assert.equal(heals.length, 1);
-});
-
-test("Lock-On keeps one scene marker per bot, hides it when inactive, and releases it on destroy", () => {
-    const view = fakeView();
-    const target = { view: { shape: { id: "bot-2", hp: 100, size: 60 } }, position: { x: 400, y: 300 } };
-    const locking = botShape({ abilityTargetX: 395, abilityTargetY: 305 }, { 20: { stage: "active", remainingMs: 100 } });
-    frame(view, locking, { otherBots: [target] });
-    assert.equal(view.kit.markers.length, 1);
-    assert.equal(view.kit.markers[0].container.visible, true);
-    frame(view, locking, { otherBots: [target] });
-    assert.equal(view.kit.markers.length, 1, "marker is reused");
-    frame(view, botShape(), { otherBots: [target] });
-    assert.equal(view.kit.markers[0].container.visible, false);
-    destroyBotAbilityRenderers(view, view.kit);
-    assert.equal(view.kit.markers[0].destroyed, true);
-    assert.equal(view.abilityRenderers.size, 0);
 });
 
 test("Repulsor advances its cosmetic clock from the activation, not from snapshot gaps", () => {

@@ -1,4 +1,4 @@
-import { createFight } from "../modelPayloads/arenaPreviewSimulation.js";
+import { createFight } from "../../../../shared/engine/fight.js";
 
 /**
  * Test helper: one tick of a fresh fight over `shapes`, returned as the render frame. The input shapes are not

@@ -1,0 +1,14 @@
+{
+  "rule": "Orphans are conditional or action nodes.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "orphans": [
+      {
+        "id": "a",
+        "kind": "other"
+      }
+    ]
+  }
+}

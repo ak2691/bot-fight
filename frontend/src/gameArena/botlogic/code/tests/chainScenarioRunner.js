@@ -1,8 +1,8 @@
-import { normalizeAbilityStrategyConfiguration } from "../BotCode.js";
+import { normalizeAbilityStrategyConfiguration } from "../../../../../../shared/engine/botlogic/code/BotCode.js";
 import { advanceShapes as advanceArenaPreviewTick } from "../../../testing/fightTick.js";
 import { buildInitialArenaShapes } from "../../../modelPayloads/arenaShapes.js";
-import { STATUS_EFFECT_APPLICATIONS } from "../../../ecs/contracts/StatusContracts.js";
-import { applyStatus } from "../../../ecs/abilities/effects.js";
+import { STATUS_EFFECT_APPLICATIONS } from "../../../../../../shared/engine/ecs/contracts/StatusContracts.js";
+import { applyStatus } from "../../../../../../shared/engine/ecs/abilities/effects.js";
 
 const MAIN_X = 300;
 const MAIN_Y = 600;

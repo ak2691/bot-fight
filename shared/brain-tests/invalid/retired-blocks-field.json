@@ -1,0 +1,9 @@
+{
+  "rule": "The retired blocks list is not part of a brain.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "blocks": [],
+    "roots": []
+  }
+}

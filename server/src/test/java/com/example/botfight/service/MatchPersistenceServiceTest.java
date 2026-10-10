@@ -1,6 +1,16 @@
 package com.example.botfight.service;
 
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
+import com.example.botfight.service.cache.DatabaseLookupCache;
+
+import com.example.botfight.service.rating.EloRatingService;
+
+import com.example.botfight.domain.match.MatchResult;
+import com.example.botfight.repository.MatchRoundBotCodeRepository;
+import com.example.botfight.repository.PlayerRatingRepository;
+import java.util.Optional;
+import org.mockito.Mockito;
+
+import com.example.botfight.service.match.MatchPersistenceService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,13 +44,7 @@ class MatchPersistenceServiceTest {
     private final MatchParticipantRepository matchParticipantRepository = mock(MatchParticipantRepository.class);
     private final ProfileRepository profileRepository = mock(ProfileRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
-    private final MatchPersistenceService service = new MatchPersistenceService(
-            matchRepository,
-            matchParticipantRepository,
-            profileRepository,
-            userRepository,
-            Clock.fixed(RESTARTED_AT, ZoneOffset.UTC),
-            new JsonMapper());
+    private final MatchPersistenceService service = new MatchPersistenceService(matchRepository, matchParticipantRepository, profileRepository, userRepository, Clock.fixed(RESTARTED_AT, ZoneOffset.UTC), new JsonMapper(), Mockito.mock(MatchRoundBotCodeRepository.class), new DatabaseLookupCache(), new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)));
 
     @Test
     void cancelsPersistedRunningMatchesWithoutAssigningAnOutcome() {
@@ -73,7 +77,7 @@ class MatchPersistenceServiceTest {
 
         assertThat(service.cancelMatchesInterruptedByServerRestart()).isZero();
 
-        org.mockito.Mockito.verify(matchRepository, org.mockito.Mockito.never())
+        Mockito.verify(matchRepository, Mockito.never())
                 .saveAll(any());
     }
 
@@ -91,9 +95,9 @@ class MatchPersistenceServiceTest {
         secondUser.setId(UUID.randomUUID());
         MatchParticipant first = participant(firstUser, 1100, null);
         MatchParticipant second = participant(secondUser, 1200, null);
-        first.setResult(com.example.botfight.domain.match.MatchResult.WIN);
-        second.setResult(com.example.botfight.domain.match.MatchResult.LOSS);
-        when(matchRepository.findById(matchId)).thenReturn(java.util.Optional.of(match));
+        first.setResult(MatchResult.WIN);
+        second.setResult(MatchResult.LOSS);
+        when(matchRepository.findById(matchId)).thenReturn(Optional.of(match));
         when(matchParticipantRepository.findByMatchId(matchId)).thenReturn(List.of(first, second));
 
         assertThat(service.cancelMatchAfterSimulationFailure(matchId)).isTrue();

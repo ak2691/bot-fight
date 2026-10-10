@@ -366,28 +366,6 @@
     grid-template-columns: minmax(0, 1fr) 30px;
 }
 
-.code-rs-add-chain {
-    align-self: stretch;
-    height: 30px;
-    margin-top: 6px;
-    border: 1px solid #43a6d1;
-    border-radius: 5px;
-    background: #286583;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.code-rs-add-chain:hover:not(:disabled) {
-    background: #317a9d;
-}
-
-.code-rs-add-chain:disabled {
-    cursor: not-allowed;
-    opacity: .5;
-}
-
 @media (max-width: 640px) {
     .code-rs-row--chain {
         grid-template-columns: minmax(0, 1fr) 34px;
@@ -400,8 +378,7 @@
         opacity: 1;
     }
 
-    .code-rs-tabs button,
-    .code-rs-add-chain {
+    .code-rs-tabs button {
         height: 34px;
     }
 }

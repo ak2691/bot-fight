@@ -1,0 +1,44 @@
+{
+  "rule": "bot.* variables need a bot selector, not an ability entity.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": []
+    },
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.anyAbilityPreparing",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "my_bot_grenade"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

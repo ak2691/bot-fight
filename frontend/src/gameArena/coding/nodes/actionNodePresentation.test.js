@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ACTION_TYPES, SELECTABLE_TYPES } from "../../botlogic/code/BotCode.js";
+import { ACTION_TYPES, SELECTABLE_TYPES } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import {
     actionSelectablePickerModel,
     encodeSelectableReplacement,
@@ -10,7 +10,7 @@ import {
     UNAVAILABLE_TARGET_LABEL,
     variableActionSummary,
 } from "./actionNodePresentation.js";
-import { CUSTOM_VARIABLE_OPERATIONS } from "../../botlogic/code/BotCode.js";
+import { CUSTOM_VARIABLE_OPERATIONS } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 
 const singularityTarget = SELECTABLE_TYPES.find((selectable) => selectable.id === "opponent_1_singularity_zone");
 const availableTargets = SELECTABLE_TYPES.filter((selectable) => selectable.id !== singularityTarget.id);

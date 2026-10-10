@@ -11,7 +11,7 @@ import {
     botAbilityPresentationForType,
 } from "./botAbilityPresentationDefinitions.js";
 import { BOT_ABILITY_RENDERERS } from "./renderers/index.js";
-import { triggerView } from "../ecs/contracts/AbilityContracts.js";
+import { triggerView } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 
 const sourceOf = (relativePath) => readFile(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
 
@@ -66,7 +66,7 @@ test("every presentation type has exactly one renderer module and vice versa", a
 
 test("active presentation precedence matches the established ability priority", () => {
     assert.deepEqual(BOT_ABILITY_VISUAL_PRIORITY,
-        [1, 3, 6, 20, 7, 12, 9, 13, 8, 10, 16, 23, 25, 26, 30, 32, 33, 34, 35, 36, 37]);
+        [1, 3, 6, 7, 12, 9, 13, 8, 10, 16, 23, 25, 26, 30, 32, 33, 35, 36, 37]);
 });
 
 test("the weapons have their own visual types instead of sharing meleeSlash", () => {

@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { ABILITY_CATALOGUE_ICON_LAYOUTS, ABILITY_CATALOGUE_ICONS, getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
-import { BOT_ABILITIES } from "../../gameArena/loadout/BotLoadout.js";
+import { BOT_ABILITIES } from "../../../../shared/engine/loadout/BotLoadout.js";
 import { EFFECT_GUIDE } from "./statusEffectCatalogue.js";
 
 const ICON_DIRECTORY = fileURLToPath(new URL("../../../public/assets/ability-list/icons/", import.meta.url));
@@ -27,7 +27,7 @@ const LEGACY_ICON_FILENAMES = Object.freeze({
 });
 
 test("every registered ability has one generated catalogue icon", () => {
-    assert.equal(Object.keys(ABILITY_CATALOGUE_ICONS).length, ICONED_ABILITIES.length + 2);
+    assert.equal(Object.keys(ABILITY_CATALOGUE_ICONS).length, ICONED_ABILITIES.length + 1);
     for (const ability of ICONED_ABILITIES) {
         const iconPath = getAbilityCatalogueIcon(ability.id);
         const iconFilename = `${LEGACY_ICON_FILENAMES[ability.name] ?? ability.name}.webp`;
@@ -37,7 +37,6 @@ test("every registered ability has one generated catalogue icon", () => {
     }
     assert.equal(getAbilityCatalogueIcon(19), "/assets/ability-list/icons/dash.webp");
     assert.equal(existsSync(`${ICON_DIRECTORY}dash.webp`), true);
-    assert.match(getAbilityCatalogueIcon(20), /crosshair\.png$/);
     for (const id of ICONLESS_WEAPON_IDS) assert.equal(getAbilityCatalogueIcon(id), null, id);
 });
 

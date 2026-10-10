@@ -1,6 +1,6 @@
-import { activeRemainingMs } from "../gameconfig/AbilityState.js";
-import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
-import { triggerView } from "../ecs/contracts/AbilityContracts.js";
+import { activeRemainingMs } from "../../../../shared/engine/gameconfig/AbilityState.js";
+import { ABILITIES } from "../../../../shared/engine/gameconfig/AbilityRegistry.js";
+import { triggerView } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 
 function freezeDefinition(value) {
     if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -26,7 +26,6 @@ const settingsByType = {
         activeRay: { height: 40, muzzleFlash: true, rayFrames: "rail_shot" },
     },
     stun: { visualPriority: 3 },
-    lockOn: { visualPriority: 4 },
     heavySlash: { visualPriority: 5, sizingHitboxAbilityId: 1 },
     pistol: { visualPriority: 7, activeRay: { height: 14, muzzleFlash: true } },
     concussiveShot: { visualPriority: 8, activeRay: { height: 76, muzzleFlash: true } },
@@ -40,7 +39,6 @@ const settingsByType = {
     disruptorDart: { visualPriority: 16, ray: { color: 0x22d3ee, fallbackRange: 500, fallbackWidth: 5, muzzleFlash: true } },
     vampiricBeam: { visualPriority: 17, ray: { color: 0xef4444, fallbackRange: 500, fallbackWidth: 5, muzzleFlash: true } },
     overclock: { visualPriority: 18, periodMs: 100, pulse: 0.18 },
-    basicStrike: { visualPriority: 19, ray: { color: 0xf8fafc, fallbackRange: 80, fallbackWidth: 6 } },
     // Placeholder weapon visuals: sized from each contract hitbox, driven only by
     // the ability's wind-up and active stages (abilityState).
     thrust: {

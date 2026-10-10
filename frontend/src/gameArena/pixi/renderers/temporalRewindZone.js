@@ -1,4 +1,4 @@
-import { visualProgress } from "../../gameconfig/visualState.js";
+import { visualProgress } from "../../../../../shared/engine/gameconfig/visualState.js";
 
 /** Rewind: a pulse at the point the bot will return to, driven by the bot's rewind timer fields. */
 export default Object.freeze({

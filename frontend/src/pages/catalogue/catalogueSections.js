@@ -1,17 +1,11 @@
-import { RETIRED_ABILITY_IDS, STANDARD_ABILITY_IDS } from "../../gameArena/loadout/BotLoadout.js";
+import { STANDARD_ABILITY_IDS } from "../../../../shared/engine/loadout/BotLoadout.js";
 
 export const WEAPONS_SECTION = "weapons";
 export const MOVEMENT_SECTION = "movement";
 /** Weapons first, then movement, then the draft tiers (catalogue `round` 1-3). */
 export const SECTION_KEYS = Object.freeze([WEAPONS_SECTION, MOVEMENT_SECTION, 1, 2, 3]);
 
-const RETIRED = new Set(RETIRED_ABILITY_IDS);
 const MOVEMENT_ABILITY_IDS = new Set(STANDARD_ABILITY_IDS);
-
-/** Lock On and Basic Strike left the base kit; they stay defined for old replays but are never listed. */
-export function isListedAbility(ability) {
-    return !RETIRED.has(ability.id);
-}
 
 export function sectionOf(ability) {
     if (ability.category === "weapon") return WEAPONS_SECTION;

@@ -1,7 +1,7 @@
 package com.example.botfight.service.match.model;
 
 import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
-import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.match.MatchTimingPolicy;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -38,19 +38,16 @@ public record MatchPlayer(
         clockRemainingMs = Math.max(0, clockRemainingMs);
     }
 
-    /** Fixture constructor: a 1v1 player on the default clock. */
-    public MatchPlayer(
-            UUID userId,
-            String username,
-            String principalName,
-            int slot,
-            int teamNumber,
-            boolean finished,
-            UUID botSubmissionId,
-            int roundWins,
-            String selectedLoadout,
-            boolean loadoutSelected) {
-        this(
+    public static String normalizeTimeoutFallback(String value) {
+        return TIMEOUT_FALLBACK_PREVIOUS.equals(value) ? TIMEOUT_FALLBACK_PREVIOUS : TIMEOUT_FALLBACK_CURRENT;
+    }
+
+    public static boolean isTimeoutFallback(String value) {
+        return TIMEOUT_FALLBACK_CURRENT.equals(value) || TIMEOUT_FALLBACK_PREVIOUS.equals(value);
+    }
+
+    public MatchPlayer withClock(long nextClockRemainingMs, Instant nextBuildEndsAt) {
+        return new MatchPlayer(
                 userId,
                 username,
                 principalName,
@@ -61,51 +58,26 @@ public record MatchPlayer(
                 roundWins,
                 selectedLoadout,
                 loadoutSelected,
-                MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L,
-                TIMEOUT_FALLBACK_CURRENT,
-                null);
+                nextClockRemainingMs,
+                timeoutFallback,
+                nextBuildEndsAt);
     }
 
-    /** Backward-compatible constructor for existing 1v1 callers and fixtures. */
-    public MatchPlayer(
-            UUID userId,
-            String username,
-            String principalName,
-            int slot,
-            boolean finished,
-            UUID botSubmissionId,
-            int roundWins,
-            String selectedLoadout,
-            boolean loadoutSelected) {
-        this(
+    public MatchPlayer withTimeoutFallback(String nextTimeoutFallback) {
+        return new MatchPlayer(
                 userId,
                 username,
                 principalName,
                 slot,
-                slot <= 2 ? slot : 1,
+                teamNumber,
                 finished,
                 botSubmissionId,
                 roundWins,
                 selectedLoadout,
-                loadoutSelected);
-    }
-
-    public static String normalizeTimeoutFallback(String value) {
-        return TIMEOUT_FALLBACK_PREVIOUS.equals(value) ? TIMEOUT_FALLBACK_PREVIOUS : TIMEOUT_FALLBACK_CURRENT;
-    }
-
-    public static boolean isTimeoutFallback(String value) {
-        return TIMEOUT_FALLBACK_CURRENT.equals(value) || TIMEOUT_FALLBACK_PREVIOUS.equals(value);
-    }
-
-    public MatchPlayer withClock(long nextClockRemainingMs, Instant nextBuildEndsAt) {
-        return new MatchPlayer(userId, username, principalName, slot, teamNumber, finished, botSubmissionId,
-                roundWins, selectedLoadout, loadoutSelected, nextClockRemainingMs, timeoutFallback, nextBuildEndsAt);
-    }
-
-    public MatchPlayer withTimeoutFallback(String nextTimeoutFallback) {
-        return new MatchPlayer(userId, username, principalName, slot, teamNumber, finished, botSubmissionId,
-                roundWins, selectedLoadout, loadoutSelected, clockRemainingMs, nextTimeoutFallback, buildEndsAt);
+                loadoutSelected,
+                clockRemainingMs,
+                nextTimeoutFallback,
+                buildEndsAt);
     }
 
     /**
@@ -121,10 +93,6 @@ public record MatchPlayer(
     }
 
     public MatchmakingPlayerDTO toDto() {
-        return toDto(false);
-    }
-
-    public MatchmakingPlayerDTO toDto(boolean entityPlacementSubmitted) {
         return new MatchmakingPlayerDTO(
                 userId,
                 username,
@@ -134,7 +102,6 @@ public record MatchPlayer(
                 roundWins,
                 selectedLoadout,
                 loadoutSelected,
-                entityPlacementSubmitted,
                 clockRemainingMs,
                 buildEndsAt,
                 timeoutFallback);

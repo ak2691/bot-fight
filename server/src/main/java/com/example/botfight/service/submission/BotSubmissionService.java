@@ -1,5 +1,7 @@
 package com.example.botfight.service.submission;
 
+import java.util.HexFormat;
+
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.limits.SlidingWindowRateLimiter;
 import com.example.botfight.service.match.MatchService;
@@ -192,7 +194,7 @@ public class BotSubmissionService {
             }
             byte[] serializedPayload = jsonMapper.writeValueAsString(fingerprintPayload)
                     .getBytes(StandardCharsets.UTF_8);
-            return java.util.HexFormat.of().formatHex(
+            return HexFormat.of().formatHex(
                     MessageDigest.getInstance("SHA-256").digest(serializedPayload));
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is unavailable", ex);

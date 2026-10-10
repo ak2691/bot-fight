@@ -1,0 +1,45 @@
+{
+  "rule": "Status variables name an allowed status effect.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "loadout": {
+      "abilities": []
+    },
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedStatusEffectActive",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "my_bot",
+                "statusEffect": "frozen-solid"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

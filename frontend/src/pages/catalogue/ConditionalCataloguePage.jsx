@@ -4,7 +4,7 @@ import ArenaDegreesCompass from "../../components/ArenaDegreesCompass";
 import {
     VISIBLE_STATE_VARIABLES,
     VARIABLE_SELECTABLE_TYPES,
-} from "../../gameArena/botlogic/code/BotCode";
+} from "../../../../shared/engine/botlogic/code/BotCode.js";
 import { useSectionSpy } from "./useSectionSpy.js";
 
 // Group ids come from the variable contract; this is only how a group reads on the page.

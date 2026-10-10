@@ -1,0 +1,13 @@
+{
+  "description": "Editor positions are bounded metadata.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "nodePositions": {
+      "rootNode:root-1": {
+        "x": 10.5,
+        "y": 20
+      }
+    }
+  }
+}

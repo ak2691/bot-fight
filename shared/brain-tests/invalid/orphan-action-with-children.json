@@ -1,0 +1,18 @@
+{
+  "rule": "An orphan action cannot contain a subtree.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [],
+    "orphans": [
+      {
+        "id": "a",
+        "kind": "action",
+        "action": "move_walk",
+        "movementMode": "target",
+        "movementDirection": 0,
+        "children": []
+      }
+    ]
+  }
+}

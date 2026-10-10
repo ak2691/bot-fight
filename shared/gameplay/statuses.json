@@ -7,34 +7,32 @@
       "carriesSourceSlot": true,
       "clearsVelocity": false,
       "effects": [
-        { "type": "damage", "mode": "tick", "amount": "$amount", "multiplier": "$damageMultiplier", "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
+        { "type": "damage", "mode": "tick", "amount": "$amount", "multiplier": "$damageMultiplier" }
       ]
     },
     "silence": {
       "presenceWhenInside": true,
-      "tickIntervalDefaultMs": null,
       "carriesSourceSlot": false,
       "clearsVelocity": false,
-      "effects": [
-        { "type": "silence", "mode": "constant", "amount": null, "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
-      ]
+      "effects": [{ "type": "silence", "mode": "constant" }]
     },
     "stun": {
       "presenceWhenInside": false,
-      "tickIntervalDefaultMs": null,
       "carriesSourceSlot": false,
       "clearsVelocity": true,
-      "effects": [
-        { "type": "stun", "mode": "constant", "amount": null, "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
-      ]
+      "effects": [{ "type": "stun", "mode": "constant" }]
     },
     "slow": {
       "presenceWhenInside": false,
-      "tickIntervalDefaultMs": null,
       "carriesSourceSlot": false,
       "clearsVelocity": false,
       "effects": [
-        { "type": "movement_modifier", "mode": "constant", "amount": null, "multiplier": null, "movementMultiplier": 0.5, "rotationMultiplier": 0.5, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
+        {
+          "type": "movement_modifier",
+          "mode": "constant",
+          "movementMultiplier": 0.5,
+          "rotationMultiplier": 0.5
+        }
       ]
     },
     "shock": {
@@ -43,8 +41,8 @@
       "carriesSourceSlot": true,
       "clearsVelocity": false,
       "effects": [
-        { "type": "damage", "mode": "tick", "amount": "$amount", "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null },
-        { "type": "movement_lock", "mode": "tick", "amount": null, "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": "$movementLockMs", "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
+        { "type": "damage", "mode": "tick", "amount": "$amount" },
+        { "type": "movement_lock", "mode": "tick", "durationMs": "$movementLockMs" }
       ]
     },
     "bleed": {
@@ -53,8 +51,14 @@
       "carriesSourceSlot": true,
       "clearsVelocity": false,
       "effects": [
-        { "type": "damage", "mode": "tick", "amount": "$amount", "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null },
-        { "type": "incoming_damage_modifier", "mode": "constant", "amount": null, "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": 0.25, "rounding": "truncate_tenths", "excludedDamageSourceTypes": ["bleed"] }
+        { "type": "damage", "mode": "tick", "amount": "$amount" },
+        {
+          "type": "incoming_damage_modifier",
+          "mode": "constant",
+          "damageModifier": 0.25,
+          "rounding": "truncate_tenths",
+          "excludedDamageSourceTypes": ["bleed"]
+        }
       ]
     }
   }

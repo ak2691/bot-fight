@@ -5,7 +5,7 @@ import { after, before, test } from "node:test";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
-import { CUSTOM_VARIABLE_OPERATIONS, SELECTABLE_TYPES } from "../botlogic/code/BotCode.js";
+import { CUSTOM_VARIABLE_OPERATIONS, SELECTABLE_TYPES } from "../../../../shared/engine/botlogic/code/BotCode.js";
 import {
     VARIABLE_OPERATOR_OPTIONS,
     nextVariableOperatorMenuIndex,

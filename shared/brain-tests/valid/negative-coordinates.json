@@ -1,0 +1,21 @@
+{
+  "description": "Coordinates are centered: -600 to 600.",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "branches": [
+          {
+            "action": "move_walk",
+            "movementMode": "coordinates",
+            "movementDirection": 0,
+            "targetMode": "coordinates",
+            "targetX": -600,
+            "targetY": 600,
+            "conditions": []
+          }
+        ]
+      }
+    ]
+  }
+}

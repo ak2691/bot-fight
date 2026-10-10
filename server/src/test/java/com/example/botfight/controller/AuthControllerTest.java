@@ -1,5 +1,8 @@
 package com.example.botfight.controller;
 
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -49,7 +52,7 @@ class AuthControllerTest {
         AuthRequestDTO duplicateEmailRequest = registrationRequest("existing@example.test", "existing-pilot");
 
         doThrow(new AuthException("email is already registered"))
-                .when(authService).register(org.mockito.ArgumentMatchers.argThat(
+                .when(authService).register(ArgumentMatchers.argThat(
                         candidate -> "existing@example.test".equals(candidate.getEmail())));
 
         var newEmail = controller.register(newEmailRequest, mock(HttpServletRequest.class));
@@ -65,9 +68,9 @@ class AuthControllerTest {
 
         queuedWork.forEach(Runnable::run);
 
-        verify(authService).register(org.mockito.ArgumentMatchers.argThat(
+        verify(authService).register(ArgumentMatchers.argThat(
                 candidate -> "new@example.test".equals(candidate.getEmail())));
-        verify(authService).register(org.mockito.ArgumentMatchers.argThat(
+        verify(authService).register(ArgumentMatchers.argThat(
                 candidate -> "existing@example.test".equals(candidate.getEmail())));
     }
 
@@ -104,7 +107,9 @@ class AuthControllerTest {
                 googleAuthService,
                 new TokenBucketRateLimiter<>(fixedClock, 30, Duration.ofSeconds(1)),
                 new TokenBucketRateLimiter<>(fixedClock, 5, Duration.ofSeconds(30)),
-                new TokenBucketRateLimiter<>(fixedClock, 1, Duration.ofSeconds(1)));
+                new TokenBucketRateLimiter<>(fixedClock, 1, Duration.ofSeconds(1)),
+                Mockito.mock(PasswordResetService.class),
+                new org.springframework.core.task.SyncTaskExecutor());
 
         HttpServletRequest request = mock(HttpServletRequest.class);
         assertThat(controller.me(authentication, request).getBody()).isSameAs(currentUser);
@@ -124,7 +129,9 @@ class AuthControllerTest {
                 googleAuthService,
                 new TokenBucketRateLimiter<>(fixedClock, 30, Duration.ofSeconds(1)),
                 new TokenBucketRateLimiter<>(fixedClock, 5, Duration.ofSeconds(30)),
-                new TokenBucketRateLimiter<>(fixedClock, 1, Duration.ofSeconds(1)));
+                new TokenBucketRateLimiter<>(fixedClock, 1, Duration.ofSeconds(1)),
+                Mockito.mock(PasswordResetService.class),
+                new org.springframework.core.task.SyncTaskExecutor());
 
         HttpServletRequest staleRequest = mock(HttpServletRequest.class);
         when(staleRequest.isRequestedSessionIdFromCookie()).thenReturn(true);
@@ -222,7 +229,7 @@ class AuthControllerTest {
     void passwordChangeRotatesTheCurrentSessionIdAfterSuccess() {
         AuthService authService = mock(AuthService.class);
         AuthUserDTO updatedUser = new AuthUserDTO();
-        when(authService.changePassword(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        when(authService.changePassword(ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(updatedUser);
         AuthController controller = controller(
                 authService,
@@ -252,7 +259,7 @@ class AuthControllerTest {
         var response = controller.resetPassword(new PasswordResetPasswordRequestDTO(), request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(passwordResetService).resetPassword(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.same(request));
+        verify(passwordResetService).resetPassword(ArgumentMatchers.any(), ArgumentMatchers.same(request));
         verify(session).invalidate();
     }
 

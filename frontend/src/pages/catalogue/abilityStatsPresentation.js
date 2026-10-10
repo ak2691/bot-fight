@@ -1,4 +1,4 @@
-import { phaseDisplayRows, phaseSections } from "./abilityCatalogueDisplay.js";
+import { entityContractForAbility, phaseEffects } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 
 const STATUS_STAT_KEYS = Object.freeze({
     burn: { damage: "burnDamage", interval: "burnTickMs", duration: "burnDurationMs" },
@@ -75,6 +75,35 @@ function pullRows(ability, stats) {
         .map((effect) => effect.perTick ?? effect.amount ?? stats.pullPerTick ?? stats.pull)
         .filter((strength) => Number.isFinite(Number(strength)))
         .map((strength) => ({ label: "Pull strength", value: `${number(strength)} units per tick` }));
+}
+
+/**
+ * The phases of the entity an ability spawns, as display sections read from shared/gameplay/abilities.json:
+ * hitbox, speed, damage and pull per phase. Abilities that spawn nothing (or one phase) have none.
+ */
+function phaseSections(abilityId) {
+    const phases = entityContractForAbility(abilityId)?.phases ?? [];
+    if (phases.length < 2) return [];
+    return phases.map((phase) => {
+        const rows = [];
+        const { hitbox, movement } = phase;
+        if (hitbox?.width != null && hitbox?.length != null) {
+            rows.push({ label: "Hitbox width", value: `${number(hitbox.width)} units` }, { label: "Hitbox length", value: `${number(hitbox.length)} units` });
+        } else if (hitbox?.radius != null) rows.push({ label: "Radius", value: `${number(hitbox.radius)} units` });
+        if (movement?.unitsPerTick != null) rows.push({ label: "Speed", value: `${number(movement.unitsPerTick)} units per tick` });
+        for (const effect of phaseEffects(phase)) {
+            if (effect.type === "damage" && effect.falloff) {
+                rows.push({ label: "Min damage", value: number(effect.falloff.minAmount) }, { label: "Max damage", value: number(effect.falloff.maxAmount) },
+                    { label: "Falloff ends", value: `${number(effect.falloff.falloffEnd)} units` });
+            } else if (effect.type === "damage") rows.push({ label: "Damage", value: number(effect.amount) });
+            else if (effect.type === "pull") rows.push({ label: "Pull strength", value: `${number(effect.perTick ?? effect.amount)} units per tick` });
+        }
+        return { section: `${titleCaseId(phase.id)} phase`, rows };
+    });
+}
+
+function phaseDisplayRows(abilityId) {
+    return phaseSections(abilityId).flatMap(({ section, rows }) => rows.map((entry) => ({ ...entry, section })));
 }
 
 export function abilityStatsForDisplay(ability) {
@@ -271,7 +300,7 @@ function phaseStep(sectionName, rows, index) {
     } else if (key === "return") {
         line = speed ? `Returns at ${shortUnits(speed)}` : "Returns";
         detail = pull ? `Pull ${shortUnits(pull)}` : null;
-    } else if (/^(impact|on destruction)$/.test(key)) {
+    } else if (/^(impact|active|destroyed)$/.test(key)) {
         line = radius ? `${shortUnits(radius)} blast` : "Hits";
         if (minDamage && maxDamage) {
             detail = `${maxDamage} at centre → ${minDamage}${falloffEnd ? ` by ${shortUnits(falloffEnd)}` : " at the edge"}`;

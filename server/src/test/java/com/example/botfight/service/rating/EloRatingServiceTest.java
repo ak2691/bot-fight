@@ -1,5 +1,7 @@
 package com.example.botfight.service.rating;
 
+import org.mockito.Mockito;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -24,7 +26,7 @@ import org.junit.jupiter.api.Test;
 class EloRatingServiceTest {
 
     private final PlayerRatingRepository repository = mock(PlayerRatingRepository.class);
-    private final EloRatingService service = new EloRatingService(repository);
+    private final EloRatingService service = new EloRatingService(repository, Mockito.mock(MatchParticipantRepository.class));
 
     @Test
     void equalProvisionalOneVOneRatingsMoveSymmetricallyByTwenty() {

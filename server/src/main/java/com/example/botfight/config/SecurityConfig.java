@@ -101,7 +101,7 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/health/**",
                                 "/ws/**").permitAll()
-                        .requestMatchers("/api/admin/puzzles/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated());
 
         if (securityProperties.isRequireHttps()) {
@@ -129,6 +129,7 @@ public class SecurityConfig {
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
         config.setAllowCredentials(true);
+        config.setExposedHeaders(List.of("X-Build-Version"));
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

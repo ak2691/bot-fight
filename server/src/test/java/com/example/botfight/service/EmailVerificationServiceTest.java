@@ -1,5 +1,8 @@
 package com.example.botfight.service;
 
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
+
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.EmailVerificationService;
 
@@ -30,9 +33,9 @@ class EmailVerificationServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-02T12:00:00Z");
     private static final Pattern CODE_PATTERN = Pattern.compile("\\b(\\d{6})\\b");
 
-    private final EmailVerificationRepository repository = org.mockito.Mockito.mock(EmailVerificationRepository.class);
+    private final EmailVerificationRepository repository = Mockito.mock(EmailVerificationRepository.class);
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-    private final JavaMailSender mailSender = org.mockito.Mockito.mock(JavaMailSender.class);
+    private final JavaMailSender mailSender = Mockito.mock(JavaMailSender.class);
     private final EmailVerificationService service = new EmailVerificationService(
             repository,
             passwordEncoder,
@@ -47,9 +50,9 @@ class EmailVerificationServiceTest {
 
         Instant expiresAt = service.sendVerificationCode(user, false);
 
-        var saved = org.mockito.ArgumentCaptor.forClass(EmailVerification.class);
+        var saved = ArgumentCaptor.forClass(EmailVerification.class);
         verify(repository).save(saved.capture());
-        var message = org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
+        var message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
 
         Matcher matcher = CODE_PATTERN.matcher(message.getValue().getText());

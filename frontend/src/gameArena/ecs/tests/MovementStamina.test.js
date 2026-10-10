@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
-import { initialMovementState } from "../../gameconfig/StaminaSystem.js";
-import { abilityCooldownMs, abilityReady } from "../../botlogic/code/runtime/actionRuntime.js";
-import { evaluateCondition, normalizeAbilityStrategyConfiguration } from "../../botlogic/code/BotCode.js";
-import { ACTION_BY_ID, STATE_VARIABLE_BY_ID } from "../../botlogic/code/contracts/BotLogicContracts.js";
-import { stateFromPayload } from "../../botlogic/code/runtime/runtimeState.js";
-import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
-import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../botlogic/planner/ArenaActionPlanner.js";
+import { MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../../../../shared/engine/gameconfig/MovementConfig.js";
+import { initialMovementState } from "../../../../../shared/engine/gameconfig/StaminaSystem.js";
+import { abilityCooldownMs, abilityReady } from "../../../../../shared/engine/botlogic/code/runtime/actionRuntime.js";
+import { evaluateCondition, normalizeAbilityStrategyConfiguration } from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { ACTION_BY_ID, STATE_VARIABLE_BY_ID } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { stateFromPayload } from "../../../../../shared/engine/botlogic/code/runtime/runtimeState.js";
+import { buildStatePayload } from "../../../../../shared/engine/modelPayloads/strategyStatePayload.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
 import { actionIdsForLoadoutConfiguration } from "../../gameconfig/CombatLoadouts.js";
 import { resetBotShape } from "../../modelPayloads/arenaShapes.js";
 import { actionPickerDescription } from "../../coding/nodes/pickerSupport.js";
-import { STATUS_EFFECT_APPLICATIONS } from "../contracts/StatusContracts.js";
-import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
+import { STATUS_EFFECT_APPLICATIONS } from "../../../../../shared/engine/ecs/contracts/StatusContracts.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import { applyBotAction } from "../../testing/pureTicks.js";
-import { preparingAbilityId, preparingRemainingMs, cooldownRemainingMs, activeRemainingMs } from "../../gameconfig/AbilityState.js";
+import { preparingAbilityId, preparingRemainingMs, cooldownRemainingMs, activeRemainingMs } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 
 // The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
 const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);

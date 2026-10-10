@@ -1,5 +1,5 @@
-import { ACTION_TYPES, actionExecutionHead } from "../botlogic/code/BotCode.js";
-import { CHAIN_ACTION_TYPES } from "../botlogic/code/contracts/BotLogicContracts.js";
+import { ACTION_TYPES, actionExecutionHead } from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { CHAIN_ACTION_TYPES } from "../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 
 // Editor adapters expose root actions and disconnected subtrees through the same
 // branch editing paths. These wrappers never enter the submitted brain.

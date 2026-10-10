@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://botfight.dev/schemas/simulation-response.schema.json",
+  "title": "Botfight simulation response",
+  "description": "What the simulator returns for one request: a small typed result Spring acts on, and the replay already cut into one-second batches (what MatchReplayService.prepareBatches produces today). Spring reads only sequence, endMs and terminal of a batch and keeps its frames as raw JSON; the frame shape is the render frame of the engine.",
+  "type": "object",
+  "required": [
+    "result",
+    "replay"
+  ],
+  "properties": {
+    "result": {
+      "$ref": "#/$defs/result"
+    },
+    "replay": {
+      "$ref": "#/$defs/replay"
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": [
+        "stateHashes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stateHashes": {
+          "type": "array",
+          "maxItems": 1200,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}$"
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "result": {
+      "type": "object",
+      "required": [
+        "engineVersion",
+        "outcome",
+        "endReason",
+        "winnerTeam",
+        "teamHp",
+        "segmentEndMs"
+      ],
+      "properties": {
+        "engineVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "outcome": {
+          "description": "CONTINUES while the match goes on after this segment; BOT_WIN or DRAW when it ended (equal HP, or a simultaneous death, is a draw).",
+          "enum": [
+            "CONTINUES",
+            "BOT_WIN",
+            "DRAW"
+          ]
+        },
+        "endReason": {
+          "description": "KO: a team died. HP_DECISION: after the last round the team with more total HP wins. SEGMENT_END: the segment ended and the match continues.",
+          "enum": [
+            "KO",
+            "HP_DECISION",
+            "SEGMENT_END"
+          ]
+        },
+        "winnerTeam": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "teamHp": {
+          "description": "Total HP left per team at the end of the segment.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "required": [
+              "teamNumber",
+              "hp"
+            ],
+            "properties": {
+              "teamNumber": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16
+              },
+              "hp": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "segmentEndMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        },
+        "endState": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object"
+          }
+        },
+        "puzzleStatus": {
+          "enum": [
+            "solved",
+            "failed"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "BOT_WIN"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "winnerTeam": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "CONTINUES",
+                  "DRAW"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "winnerTeam": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "CONTINUES"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "endReason": {
+                "const": "SEGMENT_END"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "replay": {
+      "type": "object",
+      "required": [
+        "initialState",
+        "batches"
+      ],
+      "properties": {
+        "initialState": {
+          "type": "object"
+        },
+        "batches": {
+          "type": "array",
+          "maxItems": 600,
+          "items": {
+            "$ref": "#/$defs/batch"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "batch": {
+      "type": "object",
+      "required": [
+        "sequence",
+        "endMs",
+        "terminal",
+        "frames"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600
+        },
+        "endMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        },
+        "terminal": {
+          "type": "boolean"
+        },
+        "frames": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/frame"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "frame": {
+      "description": "One tick of the engine render frame. The batch cut needs only elapsedMs; the rest is the format of the engine.",
+      "type": "object",
+      "required": [
+        "elapsedMs"
+      ],
+      "properties": {
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        }
+      }
+    }
+  }
+}

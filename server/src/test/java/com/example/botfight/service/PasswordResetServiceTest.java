@@ -1,5 +1,8 @@
 package com.example.botfight.service;
 
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
+
 import com.example.botfight.DTO.auth.PasswordResetPasswordRequestDTO;
 import com.example.botfight.DTO.auth.PasswordResetStatusDTO;
 import com.example.botfight.domain.auth.AppUser;
@@ -36,10 +39,10 @@ class PasswordResetServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-29T12:00:00Z");
     private static final Pattern CODE_PATTERN = Pattern.compile("\\b(\\d{6})\\b");
 
-    private final UserRepository userRepository = org.mockito.Mockito.mock(UserRepository.class);
-    private final PasswordResetRequestRepository resetRepository = org.mockito.Mockito.mock(PasswordResetRequestRepository.class);
+    private final UserRepository userRepository = Mockito.mock(UserRepository.class);
+    private final PasswordResetRequestRepository resetRepository = Mockito.mock(PasswordResetRequestRepository.class);
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-    private final JavaMailSender mailSender = org.mockito.Mockito.mock(JavaMailSender.class);
+    private final JavaMailSender mailSender = Mockito.mock(JavaMailSender.class);
     private final PasswordResetService service = new PasswordResetService(
             userRepository,
             resetRepository,
@@ -56,7 +59,7 @@ class PasswordResetServiceTest {
     void setUp() {
         user = user(passwordEncoder.encode("old-password"));
         session = new MockHttpSession();
-        request = org.mockito.Mockito.mock(HttpServletRequest.class);
+        request = Mockito.mock(HttpServletRequest.class);
         when(request.getSession(true)).thenReturn(session);
         when(request.getSession(false)).thenReturn(session);
     }
@@ -68,9 +71,9 @@ class PasswordResetServiceTest {
 
         service.requestPasswordReset(" PILOT@example.com ");
 
-        var saved = org.mockito.ArgumentCaptor.forClass(PasswordResetRequest.class);
+        var saved = ArgumentCaptor.forClass(PasswordResetRequest.class);
         verify(resetRepository).save(saved.capture());
-        var message = org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
+        var message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
         Matcher matcher = CODE_PATTERN.matcher(message.getValue().getText());
 

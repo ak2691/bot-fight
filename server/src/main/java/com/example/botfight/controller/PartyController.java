@@ -1,5 +1,7 @@
 package com.example.botfight.controller;
 
+import java.util.List;
+
 import com.example.botfight.DTO.notification.NotificationEventDTO;
 import com.example.botfight.DTO.party.PartyDTO;
 import com.example.botfight.DTO.party.PartyInviteCreateRequestDTO;
@@ -64,16 +66,7 @@ public class PartyController {
                 created.recipientPrincipalName(),
                 created.recipientUserId(),
                 created.actorUserId(),
-                new NotificationEventDTO(
-                        "PARTY_INVITE_RECEIVED",
-                        created.invite().inviteId(),
-                        created.invite().inviteId(),
-                        created.actorUsername(),
-                        created.actorUsername() + " invited you to a party.",
-                        created.invite().createdAt() == null ? Instant.now() : created.invite().createdAt(),
-                        created.invite().expiresAt(),
-                        null,
-                        created.invite().partyId()));
+                new NotificationEventDTO("PARTY_INVITE_RECEIVED", created.invite().inviteId(), created.invite().inviteId(), created.actorUsername(), created.actorUsername() + " invited you to a party.", created.invite().createdAt() == null ? Instant.now() : created.invite().createdAt(), created.invite().expiresAt(), null, created.invite().partyId(), null));
         return created.invite();
     }
 
@@ -109,7 +102,7 @@ public class PartyController {
 
         if (result.removedRecipient() != null) {
             partyStatePublisher.send(
-                    java.util.List.of(result.removedRecipient()),
+                    List.of(result.removedRecipient()),
                     new PartyStateEventDTO(
                             "PARTY_STATE_UPDATED",
                             result.partyId(),

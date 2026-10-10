@@ -1,17 +1,13 @@
 package com.example.botfight.service.party;
 
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 import com.example.botfight.DTO.party.PartyDTO;
 import com.example.botfight.DTO.party.PartyInviteDTO;
 import com.example.botfight.DTO.party.PartyMemberDTO;
 import com.example.botfight.domain.auth.AppUser;
-import com.example.botfight.domain.party.Party;
-import com.example.botfight.domain.party.PartyInvite;
-import com.example.botfight.domain.party.PartyInviteStatus;
-import com.example.botfight.domain.party.PartyMember;
-import com.example.botfight.domain.party.PartyStatus;
-import com.example.botfight.repository.PartyInviteRepository;
-import com.example.botfight.repository.PartyMemberRepository;
-import com.example.botfight.repository.PartyRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
@@ -44,9 +40,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Owns the live party boundary. Party membership is deliberately process
  * memory only: a party exists until its members leave or the process restarts.
  * A disconnected member remains in the transient roster as offline so the
- * party can resume when that member reconnects. The JPA party types remain
- * DTO/domain compatibility carriers, but this service never reads or writes
- * party membership rows.
+ * party can resume when that member reconnects. Party carriers live in this
+ * service package and have no persistence mapping.
  */
 @Service
 public class PartyService {
@@ -74,9 +69,6 @@ public class PartyService {
     public PartyService(
             CurrentUserService currentUserService,
             UserRepository userRepository,
-            PartyRepository partyRepository,
-            PartyMemberRepository partyMemberRepository,
-            PartyInviteRepository partyInviteRepository,
             MatchService matchService,
             @Qualifier("partyInviteRateLimiter") TokenBucketRateLimiter<UUID> inviteRateLimiter,
             Clock clock,
@@ -91,52 +83,6 @@ public class PartyService {
         this.socketRegistry = socketRegistry;
     }
 
-    /** Compatibility constructor for unit fixtures without a socket registry. */
-    public PartyService(
-            CurrentUserService currentUserService,
-            UserRepository userRepository,
-            PartyRepository partyRepository,
-            PartyMemberRepository partyMemberRepository,
-            PartyInviteRepository partyInviteRepository,
-            MatchService matchService,
-            TokenBucketRateLimiter<UUID> inviteRateLimiter,
-            Clock clock,
-            BlockLookup blockLookup) {
-        this(
-                currentUserService,
-                userRepository,
-                partyRepository,
-                partyMemberRepository,
-                partyInviteRepository,
-                matchService,
-                inviteRateLimiter,
-                clock,
-                blockLookup,
-                null);
-    }
-
-    public PartyService(
-            CurrentUserService currentUserService,
-            UserRepository userRepository,
-            PartyRepository partyRepository,
-            PartyMemberRepository partyMemberRepository,
-            PartyInviteRepository partyInviteRepository,
-            MatchService matchService,
-            TokenBucketRateLimiter<UUID> inviteRateLimiter,
-            Clock clock) {
-        this(
-                currentUserService,
-                userRepository,
-                partyRepository,
-                partyMemberRepository,
-                partyInviteRepository,
-                matchService,
-                inviteRateLimiter,
-                clock,
-                BlockLookup.none(),
-                null);
-    }
-
     /** Binds a party member to the socket that authenticated the party session. */
     public synchronized void registerSocket(String principalName, String socketSessionId) {
         if (principalName == null || principalName.isBlank()
@@ -149,7 +95,7 @@ public class PartyService {
                         && principalName.equals(member.getUser().getEmail()))
                 .findFirst()
                 .ifPresent(member -> socketSessionIdsByUserId
-                        .computeIfAbsent(member.getUser().getId(), ignored -> new java.util.HashSet<>())
+                        .computeIfAbsent(member.getUser().getId(), ignored -> new HashSet<>())
                         .add(socketSessionId));
     }
 
@@ -459,11 +405,7 @@ public class PartyService {
             registeredSockets.remove(socketSessionId);
             if (registeredSockets.isEmpty()) socketSessionIdsByUserId.remove(userId);
         }
-        if (socketRegistry != null && socketRegistry.hasActiveSessionForPrincipal(principalName)) {
-            return new LeaveResult(null, null, List.of());
-        }
-        if (socketRegistry == null
-                && !socketSessionIdsByUserId.getOrDefault(userId, Set.of()).isEmpty()) {
+        if (socketRegistry.hasActiveSessionForPrincipal(principalName)) {
             return new LeaveResult(null, null, List.of());
         }
         return new LeaveResult(toDTO(party), party.getId(), recipientsFor(party));
@@ -478,14 +420,14 @@ public class PartyService {
             Collection<UUID> matchUserIds) {
         Set<UUID> entrants = matchUserIds == null
                 ? Set.of()
-                : matchUserIds.stream().filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+                : matchUserIds.stream().filter(Objects::nonNull).collect(Collectors.toSet());
         List<CustomMatchPartyChange> changes = new ArrayList<>();
         for (Party party : List.copyOf(activePartiesById.values())) {
             List<PartyMember> members = membersFor(party);
             Set<UUID> partyUserIds = members.stream()
                     .filter(member -> member.getUser() != null && member.getUser().getId() != null)
                     .map(member -> member.getUser().getId())
-                    .collect(java.util.stream.Collectors.toSet());
+                    .collect(Collectors.toSet());
             if (partyUserIds.isEmpty() || entrants.containsAll(partyUserIds)) {
                 continue;
             }
@@ -562,19 +504,14 @@ public class PartyService {
         String principalName = requester ? requesterPrincipalName : user.getEmail();
         String liveSocket = currentSocketForPrincipal(principalName);
         String socketSessionId;
-        if (socketRegistry != null) {
+
             // The registry is authoritative. A cached socket id must never
             // keep a disconnected member eligible for a new match.
             if (liveSocket == null || liveSocket.isBlank()) {
                 throw new AuthException("every party member must have an active socket connection");
             }
             socketSessionId = liveSocket;
-        } else {
-            Set<String> registeredSockets = socketSessionIdsByUserId.getOrDefault(user.getId(), Set.of());
-            socketSessionId = requester
-                    ? requesterSocketSessionId
-                    : registeredSockets.stream().findFirst().orElse(null);
-        }
+
         if (socketSessionId == null || socketSessionId.isBlank()) {
             throw new AuthException("every party member must have an active socket connection");
         }
@@ -583,7 +520,7 @@ public class PartyService {
         }
         if (socketSessionId != null && !socketSessionId.isBlank()) {
             socketSessionIdsByUserId
-                    .computeIfAbsent(user.getId(), ignored -> new java.util.HashSet<>())
+                    .computeIfAbsent(user.getId(), ignored -> new HashSet<>())
                     .add(socketSessionId);
         }
         return new MatchEntrant(
@@ -625,7 +562,7 @@ public class PartyService {
                 members.stream()
                         .filter(member -> !userId.equals(member.getUser().getId()))
                         .sorted(Comparator.comparingInt(PartyMember::getSlot))
-                        .collect(java.util.stream.Collectors.toCollection(ArrayList::new)));
+                        .collect(Collectors.toCollection(ArrayList::new)));
         partyIdsByUserId.remove(userId, party.getId());
         socketSessionIdsByUserId.remove(userId);
         List<PartyMember> remaining = membersFor(party);
@@ -654,14 +591,12 @@ public class PartyService {
     private void bindCurrentSocket(AppUser user) {
         String socket = currentSocketForPrincipal(user == null ? null : user.getEmail());
         if (socket != null) socketSessionIdsByUserId
-                .computeIfAbsent(user.getId(), ignored -> new java.util.HashSet<>())
+                .computeIfAbsent(user.getId(), ignored -> new HashSet<>())
                 .add(socket);
     }
 
     private String currentSocketForPrincipal(String principalName) {
-        return socketRegistry == null
-                ? null
-                : socketRegistry.currentSessionIdForPrincipal(principalName);
+        return socketRegistry.currentSessionIdForPrincipal(principalName);
     }
 
     private Party activePartyForUser(UUID userId) {
@@ -842,10 +777,9 @@ public class PartyService {
         if (member == null || member.getUser() == null || member.getUser().getId() == null) {
             return false;
         }
-        if (socketRegistry != null) {
+
             return socketRegistry.hasActiveSessionForPrincipal(member.getUser().getEmail());
-        }
-        return !socketSessionIdsByUserId.getOrDefault(member.getUser().getId(), Set.of()).isEmpty();
+
     }
 
     private boolean userIsGuest(UUID userId) {

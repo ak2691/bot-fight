@@ -1,5 +1,8 @@
 package com.example.botfight.service;
 
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -14,7 +17,7 @@ class NotificationPublisherBlockVisibilityTest {
 
     @Test
     void blockedActorNotificationIsNotDeliveredToTheBlocker() {
-        SimpMessagingTemplate template = org.mockito.Mockito.mock(SimpMessagingTemplate.class);
+        SimpMessagingTemplate template = Mockito.mock(SimpMessagingTemplate.class);
         UUID blockerId = UUID.randomUUID();
         UUID blockedId = UUID.randomUUID();
         NotificationPublisher publisher = new NotificationPublisher(
@@ -28,14 +31,14 @@ class NotificationPublisherBlockVisibilityTest {
                 event());
 
         verify(template, never()).convertAndSendToUser(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any());
+                ArgumentMatchers.anyString(),
+                ArgumentMatchers.anyString(),
+                ArgumentMatchers.any());
     }
 
     @Test
     void unrelatedNotificationStillUsesTheNormalUserDestination() {
-        SimpMessagingTemplate template = org.mockito.Mockito.mock(SimpMessagingTemplate.class);
+        SimpMessagingTemplate template = Mockito.mock(SimpMessagingTemplate.class);
         NotificationPublisher publisher = new NotificationPublisher(
                 template,
                 (viewerId, actorId) -> false);
@@ -43,20 +46,12 @@ class NotificationPublisherBlockVisibilityTest {
         publisher.sendIfVisible("alice@example.test", UUID.randomUUID(), UUID.randomUUID(), event());
 
         verify(template).convertAndSendToUser(
-                org.mockito.ArgumentMatchers.eq("alice@example.test"),
-                org.mockito.ArgumentMatchers.eq("/queue/notifications"),
-                org.mockito.ArgumentMatchers.any(NotificationEventDTO.class));
+                ArgumentMatchers.eq("alice@example.test"),
+                ArgumentMatchers.eq("/queue/notifications"),
+                ArgumentMatchers.any(NotificationEventDTO.class));
     }
 
     private static NotificationEventDTO event() {
-        return new NotificationEventDTO(
-                "TEST",
-                UUID.randomUUID(),
-                null,
-                "bob",
-                "hello",
-                Instant.parse("2026-08-22T12:00:00Z"),
-                null,
-                null);
+        return new NotificationEventDTO("TEST", UUID.randomUUID(), null, "bob", "hello", Instant.parse("2026-08-22T12:00:00Z"), null, null, null, null);
     }
 }

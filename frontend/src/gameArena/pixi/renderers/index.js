@@ -1,7 +1,6 @@
 import { BOT_ABILITY_PRESENTATIONS } from "../botAbilityPresentationDefinitions.js";
 import absoluteGuard from "./absoluteGuard.js";
 import basicHeal from "./basicHeal.js";
-import basicStrike from "./basicStrike.js";
 import cleave from "./cleave.js";
 import concussiveShot from "./concussiveShot.js";
 import dash from "./dash.js";
@@ -9,7 +8,6 @@ import disruptorDart from "./disruptorDart.js";
 import frostRing from "./frostRing.js";
 import gun from "./gun.js";
 import heavySlash from "./heavySlash.js";
-import lockOn from "./lockOn.js";
 import meleeSlash from "./meleeSlash.js";
 import overclock from "./overclock.js";
 import phaseStrike from "./phaseStrike.js";
@@ -36,7 +34,6 @@ import vampiricBeam from "./vampiricBeam.js";
 export const BOT_ABILITY_RENDERERS = Object.freeze({
     absoluteGuard,
     basicHeal,
-    basicStrike,
     cleave,
     concussiveShot,
     dash,
@@ -44,7 +41,6 @@ export const BOT_ABILITY_RENDERERS = Object.freeze({
     frostRing,
     gun,
     heavySlash,
-    lockOn,
     meleeSlash,
     overclock,
     phaseStrike,

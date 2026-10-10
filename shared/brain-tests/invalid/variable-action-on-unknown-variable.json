@@ -1,0 +1,34 @@
+{
+  "rule": "Variable actions write declared custom variables.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "variable",
+                "variableId": "custom.ghost",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,16 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, BASE_BOT_STATS, STANDARD_ABILITY_IDS, abilityDefinition, actionIdsForLoadout, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout, SELECTABLE_BOT_ABILITIES, statusEffectDefinitionsForAbilities } from "./BotLoadout.js";
+import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, BASE_BOT_STATS, STANDARD_ABILITY_IDS, abilityDefinition, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout, SELECTABLE_BOT_ABILITIES, statusEffectDefinitionsForAbilities } from "../../../../shared/engine/loadout/BotLoadout.js";
 
-test("Dash is the only standard ability; Basic Strike is retired but still resolves for old replays", () => {
+test("Dash is the only standard ability and unknown ability IDs drop out of a loadout", () => {
     assert.deepEqual(STANDARD_ABILITY_IDS, [19]);
-    assert.equal(abilityDefinition(34).label, "Basic Strike");
-    assert.deepEqual(abilityDefinition(34).effects.map(({ type }) => type), ["damage"]);
-    assert.equal(actionIdsForLoadout({ abilities: [] }).includes(34), false);
-    assert.equal(SELECTABLE_BOT_ABILITIES.some(({ id }) => id === 34), false);
+    assert.equal(abilityDefinition(34), null);
     assert.deepEqual(normalizedBotLoadout({ abilities: [34, 1] }), { abilities: [1] });
-    assert.equal(abilityDefinition(34).stats.damage, 8);
-    assert.equal(abilityDefinition(34).stats.range, 80);
 });
 
 test("Basic Heal catalogue copy matches its 25 HP self-heal", () => {

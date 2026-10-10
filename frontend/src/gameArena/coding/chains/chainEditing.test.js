@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ACTION_TYPES, BOT_CODE_ACTIONS, SELECTABLE_TYPES, STATE_VARIABLES, actionSupportsTarget } from "../../botlogic/code/BotCode.js";
-import { ACTION_BY_ID, CHAIN_ACTION_TYPES } from "../../botlogic/code/contracts/BotLogicContracts.js";
-import { MAX_CHAIN_STEPS } from "../../botlogic/code/configuration/constants.js";
+import { ACTION_TYPES, BOT_CODE_ACTIONS, SELECTABLE_TYPES, STATE_VARIABLES, actionSupportsTarget } from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { ACTION_BY_ID, CHAIN_ACTION_TYPES } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { MAX_CHAIN_STEPS } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
 import {
     BODY,
     BRANCH,
@@ -321,8 +321,8 @@ import {
     addLooseBlock, chooseDropGap, dropBlockReason, placeBlockInStack, removeStepPath, stepAtPath, updateStepPath,
     hasUnboundExit, repeatDepthOf,
 } from "./chainEditing.js";
-import { normalizeAbilityStrategyConfiguration, countActionSlots as countSlots } from "../../botlogic/code/BotCode.js";
-import { validateChains } from "../../botlogic/code/configuration/chainValidation.js";
+import { normalizeAbilityStrategyConfiguration, countActionSlots as countSlots } from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { validateChains } from "../../../../../shared/engine/botlogic/code/configuration/chainValidation.js";
 
 const stackStep = (type, extra = {}) => ({ type, ...extra });
 const stackChain = (steps, loose) => ({ id: "chain.a", name: "A", steps, ...(loose ? { loose } : {}) });

@@ -5,7 +5,7 @@ import {
     truncateToNumberPrecision,
     MAX_CUSTOM_VARIABLE_SLOTS,
     countVariableSlots,
-} from "../../botlogic/code/BotCode.js";
+} from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { filterCustomVariableEntries } from "../utils/customVariableSearch.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";

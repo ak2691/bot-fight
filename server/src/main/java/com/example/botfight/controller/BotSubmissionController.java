@@ -4,6 +4,7 @@ import com.example.botfight.DTO.submission.BotSubmissionPayloadDTO;
 import com.example.botfight.DTO.submission.BotSubmissionValidationResponseDTO;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.submission.BotSubmissionService;
+import com.example.botfight.service.submission.SubmissionJsonReader;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,15 +24,19 @@ public class BotSubmissionController {
 
     private static final Logger log = LoggerFactory.getLogger(BotSubmissionController.class);
     private final BotSubmissionService botSubmissionService;
+    private final SubmissionJsonReader submissionJson;
 
-    public BotSubmissionController(BotSubmissionService botSubmissionService) {
+    public BotSubmissionController(BotSubmissionService botSubmissionService, SubmissionJsonReader submissionJson) {
         this.botSubmissionService = botSubmissionService;
+        this.submissionJson = submissionJson;
     }
 
+    /** The body is read here, not by Spring, so the brain's nesting depth is capped before anything is parsed into nodes. */
     @PostMapping
     public ResponseEntity<BotSubmissionValidationResponseDTO> submitBot(
-            @RequestBody BotSubmissionPayloadDTO payload,
+            @RequestBody String body,
             Authentication authentication) {
+        BotSubmissionPayloadDTO payload = submissionJson.read(body);
         BotSubmissionValidationResponseDTO validation = botSubmissionService.submit(payload, authentication);
 
         log.info(

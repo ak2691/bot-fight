@@ -1,0 +1,1036 @@
+{
+  "rule": "At most 300 conditions in the whole brain.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b0",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          },
+          {
+            "id": "b1",
+            "priority": 2,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          },
+          {
+            "id": "b2",
+            "priority": 3,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          },
+          {
+            "id": "b3",
+            "priority": 4,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

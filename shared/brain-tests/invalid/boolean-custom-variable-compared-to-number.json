@@ -1,0 +1,48 @@
+{
+  "rule": "A custom variable is compared with its own type.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-tree-v2",
+    "customVariables": [
+      {
+        "id": "custom.flag",
+        "name": "FLAG",
+        "valueType": "boolean",
+        "initialValue": false
+      }
+    ],
+    "roots": [
+      {
+        "id": "root-1",
+        "name": "Root",
+        "priority": 1,
+        "branches": [
+          {
+            "id": "b1",
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "custom.flag",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 1
+                }
+              }
+            ],
+            "children": [],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "target",
+                "movementDirection": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

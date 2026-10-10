@@ -84,10 +84,6 @@ export function variableCategoryLabel(category) {
     return VARIABLE_CATEGORY_LABELS[category] ?? { chip: category, title: category };
 }
 
-export function matchCountLabel(count) {
-    return `${count} ${count === 1 ? "match" : "matches"}`;
-}
-
 const ACTION_HEAD_GROUPS = Object.freeze([
     { head: "movement", title: "Movement" },
     { head: "rotation", title: "Rotation" },
