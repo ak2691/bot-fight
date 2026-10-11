@@ -33,8 +33,6 @@ export function createEntity({
     entityKey,
     patternAngle,
     patternLateral,
-    bindToCast,
-    boundActivation,
 }) {
     const entityId = id ?? `${type}-${owner.id}-${nextEntityId++}`;
     return {
@@ -75,8 +73,6 @@ export function createEntity({
         entityKey,
         patternAngle,
         patternLateral,
-        bindToCast,
-        boundActivation,
         tickStartHp: null,
         damageTakenThisTick: 0,
         damageTakenLastTick: 0,
@@ -199,9 +195,6 @@ function buildEntityOptions(bot, contract, context) {
         entityKey: contract.entityType,
         patternAngle: placement.angle,
         patternLateral: placement.lateral,
-        // A bound entity lives only while the activation that made it is still the ability's active stage.
-        bindToCast: Boolean(contract.bindToCast),
-        boundActivation: contract.bindToCast ? Number(context.activationSerial ?? 0) : null,
     };
 }
 

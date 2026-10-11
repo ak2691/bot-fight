@@ -26,6 +26,9 @@ document is stale.
   current area keeps, replaces or removes for that design, and the phase order.
 - [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md): the six-round
   format design and its rationale.
+- [`FIXED_KIT_FORMAT.md`](FIXED_KIT_FORMAT.md): 2026-10-10 proposal amending
+  it: fixed kits (weapon + one ability per tier), alternating unlock and gap
+  rounds, saved brains and snippets. Not built.
 - [`MATCH_TIMING.md`](MATCH_TIMING.md): server deadlines, client clock
   conversion, and the round-transition checklist.
 
@@ -36,6 +39,12 @@ document is stale.
 - [`SPRING_CLEANUP_PROMPTS.md`](SPRING_CLEANUP_PROMPTS.md): the 2026-10-09
   server audit and the queued Sonnet cleanup runs (A, B, C). Read it before
   refactoring match, matchmaking, party or puzzle services.
+
+## Explorations
+
+- [`realtime-mode/`](realtime-mode/README.md): 2026-10-10 exploration of a
+  real-time mode ("Hotfix") in which players patch their crew's brain during
+  the match. Nothing decided or built.
 
 ## Maintaining docs
 

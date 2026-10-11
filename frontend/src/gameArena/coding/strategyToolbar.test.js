@@ -326,7 +326,7 @@ test("main canvas pins arm and connect by clicks, with explicit cancellation and
     assert.match(board, /Tap an input to connect\. Tap empty space to cancel\./);
     assert.match(board, /if \(!current.moved && !current.pinch && current.empty/);
     assert.match(board, /previewEdge && !armedWire\?\.touch/);
-    assert.match(board, /disconnectNode\(roots, child\)/);
+    assert.match(board, /disconnectNode\(roots, node, copy\)/);
     assert.match(read(PANEL_PATH), /aria-label="Add node"/);
 });
 
@@ -343,7 +343,7 @@ test("pin bars sit flush inside the frame, actions get the same frame and bar, a
     assert.match(css, /max\(16px, min\(calc\(34px \/ var\(--code-zoom, 1\)\), 34%\)\)/);
 
     // The action node keeps its green content in a core inside the framed node, with the shared input bar.
-    assert.match(nodes, /<PinBar direction="input" disabled=\{disabled\} valid=\{validInput\} blockedReason=\{blockedReason\} onActivate=\{onInput\} onPress=\{onInputPress\} \/>\s*\{node\.orphan && <span className="code-orphan-label">Not connected<\/span>\}\s*<div className="code-bt-task-core code-an">/);
+    assert.match(nodes, /<PinBar direction="input" disabled=\{disabled\} valid=\{validInput\} blockedReason=\{blockedReason\} label=\{node\.parents\?\.length > 1 \? inputBarBehavior\(node\.parents\.length\)\.message : null\} onActivate=\{onInput\} onPress=\{onInputPress\} \/>\s*\{node\.orphan && <span className="code-orphan-label">Not connected<\/span>\}\s*<div className="code-bt-task-core code-an">/);
 
     // Every node is a gray frame around a core node; the kind and the order badge live in the core's header
     // (no action count, no footer title).

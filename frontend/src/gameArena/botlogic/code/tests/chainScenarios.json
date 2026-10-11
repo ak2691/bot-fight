@@ -1327,7 +1327,7 @@
     ]
   },
   {
-    "name": "cooldown skips Use and processes the next step next tick",
+    "name": "cooldown ends the chain when a Use step cannot act",
     "abilities": [
       37
     ],
@@ -1394,12 +1394,12 @@
       "twice@0 | - - - -",
       "twice@0 | - - - -",
       "twice@0 | - - - -",
-      "twice@2 | - - - -",
-      "twice@2 | - E - -",
-      "twice@2 | - E - -",
-      "twice@2 | - E - -",
-      "twice@2 | - E - -",
-      "idle | - E - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
       "idle | - - - -"
     ]
   },
@@ -2031,7 +2031,7 @@
     ]
   },
   {
-    "name": "unavailable ability preserves the caller and returns normally",
+    "name": "unavailable ability ends the whole chain including its callers",
     "abilities": [
       37
     ],
@@ -2115,9 +2115,498 @@
       "outer@0>inner@0 | - - - -",
       "outer@0>inner@0 | - - - -",
       "outer@0>inner@0 | - - - -",
-      "outer@0>inner@2 | - - - -",
-      "outer@0>inner@2 | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "higher-priority root claims the chain's first category: the chain never starts and its variable writes are discarded",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 12,
+    "customVariables": [
+      {
+        "id": "custom.flag",
+        "name": "Flag",
+        "valueType": "number",
+        "initialValue": 0
+      }
+    ],
+    "chains": [
+      {
+        "id": "chain.blocked",
+        "name": "blocked",
+        "steps": [
+          {
+            "type": "action",
+            "action": "variable",
+            "variableId": "custom.flag",
+            "terms": [
+              {
+                "operator": "set",
+                "operand": {
+                  "type": "number",
+                  "value": 1
+                }
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 500
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 270
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 2,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.blocked"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 3,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "custom.flag",
+                "comparator": "eq",
+                "right": {
+                  "type": "number",
+                  "value": 1
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": 37,
+                "selectable": "opponent_1"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
       "idle | - W - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "first ability not ready: the chain does not start and lower roots act",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 12,
+    "customVariables": [
+      {
+        "id": "custom.flag",
+        "name": "Flag",
+        "valueType": "number",
+        "initialValue": 0
+      }
+    ],
+    "chains": [
+      {
+        "id": "chain.again",
+        "name": "again",
+        "steps": [
+          {
+            "type": "action",
+            "action": "variable",
+            "variableId": "custom.flag",
+            "terms": [
+              {
+                "operator": "set",
+                "operand": {
+                  "type": "number",
+                  "value": 1
+                }
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 500
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": 37,
+                "selectable": "opponent_1"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 2,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "gte",
+                "right": {
+                  "type": "number",
+                  "value": 0.3
+                }
+              },
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.5
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.again"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 3,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "custom.flag",
+                "comparator": "eq",
+                "right": {
+                  "type": "number",
+                  "value": 1
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 270
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 4,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "idle | 37 E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -",
+      "idle | - E - -"
+    ]
+  },
+  {
+    "name": "mid-chain ability not ready ends the chain and later steps never run",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 18,
+    "chains": [
+      {
+        "id": "chain.twice",
+        "name": "twice",
+        "steps": [
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 300
+          },
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 500
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.twice"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "twice@0 | 37 - - -",
+      "twice@0 | - - - -",
+      "twice@0 | - - - -",
+      "twice@0 | - - - -",
+      "twice@0 | - - - -",
+      "twice@0 | - - - -",
+      "twice@1 | - E - -",
+      "twice@1 | - E - -",
+      "idle | - E - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "Wait until Smash is ready before a ready Smash: no delay, it fires the same tick",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 8,
+    "chains": [
+      {
+        "id": "chain.eager",
+        "name": "eager",
+        "steps": [
+          {
+            "type": "wait",
+            "untilConditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityReady",
+                "ability": 37,
+                "selectable": "my_bot",
+                "leftSelectable": "my_bot",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                }
+              }
+            ],
+            "maxMs": 1000
+          },
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.eager"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "eager@1 | 37 - - -",
+      "eager@1 | - - - -",
+      "eager@1 | - - - -",
+      "eager@1 | - - - -",
+      "eager@1 | - - - -",
+      "eager@1 | - - - -",
+      "idle | - - - -",
       "idle | - - - -"
     ]
   }

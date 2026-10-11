@@ -1,3 +1,4 @@
+import { linkedActionDiscount } from "./linkedActions.js";
 import { stepConditionLists, walkChainStepsWithLoose } from "./chainSteps.js";
 
 export function actionEntryCost(entry) {
@@ -21,7 +22,8 @@ export function countActionSlots(configuration) {
         .reduce((total, step) => total + (step?.type === "action" ? actionEntryCost(step) : 1), 0);
     return (configuration?.roots ?? []).reduce((total, root) => total + countBranches(root?.branches)
         + (root?.actions ?? []).reduce((sum, entry) => sum + actionEntryCost(entry), 0), 0)
-        + (Array.isArray(configuration?.orphans) ? configuration.orphans : []).reduce((total, node) => total + (node?.kind === "action" ? actionEntryCost(node) : countBranches([node])), 0) + chainCost;
+        + (Array.isArray(configuration?.orphans) ? configuration.orphans : []).reduce((total, node) => total + (node?.kind === "action" ? actionEntryCost(node) : countBranches([node])), 0) + chainCost
+        - linkedActionDiscount(configuration, actionEntryCost);
 }
 
 export function countVariableSlots(configuration) {

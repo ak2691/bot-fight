@@ -109,12 +109,12 @@ Decide which one you're designing first.
   "Angle To", not "Entity HP" / "Distance Between Entities"). Change labels,
   never ids.
 - Abbreviate entities where space is tight: Me, Opp 1, Ally 2.
-- Naming (accepted 2026-10-04, ref docs/previews/entity-naming.html): "Entity"
+- Naming (accepted 2026-10-04): "Entity"
   is anything a bot can pick. Bots (Me, Opponent, Ally) and "Objects" (the
   things abilities create: fireballs, mines, zones, drones) are its two
   groups. Never call ability objects "entities". Pair rows read From / To,
   not "Moving entity" / "Target entity"; "Bot entity" is just "Bot".
-- Help dialogs (angle guides etc.) follow docs/previews/angle-guide-dialog.html:
+- Help dialogs (angle guides etc.) follow AngleGuideDialog.jsx:
   sentence-case title, no eyebrow tag, an interactive mini arena over static
   diagrams where motion is the point.
 - Help text goes behind an ⓘ, not in permanent paragraphs.
@@ -155,7 +155,7 @@ Decide which one you're designing first.
 
 ## Logic-editor rules that affect UI
 
-- Conditionals are AND-only; OR is a sibling ELSE IF with the same actions.
+- Conditionals are AND-only; OR is a sibling ELSE IF whose action is shared with the first (an action can have several parents; roots and conditionals keep one). Wiring an output to an action that already has a parent adds a parent, the input bar of a shared action lifts nothing ("Connected to N nodes. Select a wire to disconnect it."), Delete on a selected wire cuts just that parent, deleting a shared action asks first ("This action is used by N branches."), and its side panel has a "Used by" row (yellow IF / ELSE IF / ROOT label, then root name, like "Used in" in CustomVariablesModal). Saved as one copy per parent with a shared `linkId`; docs/CODE_WORKSPACE_REDESIGN.md sections 1-2.
 - Comparator sits between the two operands; comparators may show as words.
 - Pins and wires (accepted 2026-10-03, see docs/CODE_WORKSPACE_REDESIGN.md
   section 2; supersedes the IF tab on top, the root "+ Conditional", hanging
@@ -166,7 +166,7 @@ Decide which one you're designing first.
   connect, or press-and-hold an output bar and release on a node (never
   connect on hover or pass-over: owner worried about accidental
   connections); clicking empty canvas cancels.
-- Action nodes (accepted 2026-10-03, §2, ref docs/previews/node-anatomy.html):
+- Action nodes (accepted 2026-10-03, §2):
   up to three rows, yellow category label row, action name on darker green,
   settings description on darkest green; identical in main brain and chains
   (chains add the step number). Chain C-blocks: header and foot ("end if")
@@ -177,7 +177,7 @@ Decide which one you're designing first.
   light blue body (#286583), darker blue condition strips (#0d2f50), yellow
   IF / ELSE IF / ELSE label. Same header and strips in the main brain (in its
   pin frame) and in chain C-blocks. Owner liked this better than the IF tab.
-- Side panels (accepted 2026-10-03, §4, ref docs/previews/compact-side-panel.html):
+- Side panels (accepted 2026-10-03, §4):
   compact ~32px rows, label left, control right. NO indentation (owner: harder
   to read). Controls only as wide as their content (no stretched empty
   space); numbers a fixed 5-digit box with the unit outside; segmented
@@ -192,8 +192,8 @@ Decide which one you're designing first.
   with a cyan insertion line, loose blocks stay where dropped. Chain If
   headers are plain rows (yellow IF, then yellow AND rows), no strip
   container; mouth always has its solid left edge; blocks keep their own
-  width and nested ones overhang the parent (don't squeeze right edges); ref
-  docs/previews/chain-stack-blocks.html. "+ Condition" is a dashed row inside
+  width and nested ones overhang the parent (don't squeeze right edges).
+  "+ Condition" is a dashed row inside
   the conditional. Owner disliked: controls that only appear on selection and
   change the node's outline.
 - Action chains (accepted 2026-10-02, "node column"): opening a chain switches

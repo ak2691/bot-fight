@@ -120,6 +120,23 @@ test("Approach Angle reflects knockback toward or away from My Bot", () => {
     assert.equal(isAngle(numberVariable(pushedAway, "selectable.approachAngle"), 180), true);
 });
 
+test("Move Direction follows the real last-tick displacement, not velocity", () => {
+    const none = { velocityX: 0, velocityY: 0, movementVelocityX: 0, movementVelocityY: 0 };
+    // Knockback on a standing bot: +x is heading 90.
+    const pushed = [main(), opponent({ ...none, x: 720, movementStartX: 600, movementStartY: 400 })];
+    assert.equal(numberVariable(pushed, "selectable.movementDirection")("eq", 90), true);
+    // Knockback on a walking bot: the walk velocity points up (0), the real displacement points +x (90).
+    const walkingPushed = [main(), opponent({ x: 720, movementStartX: 600, movementStartY: 400, velocityX: 0, velocityY: -4, movementVelocityX: 0, movementVelocityY: -4 })];
+    assert.equal(numberVariable(walkingPushed, "selectable.movementDirection")("eq", 90), true);
+    assert.equal(numberVariable(walkingPushed, "selectable.movementDirection")("eq", 0), false);
+    // Pull toward a source on the left: heading -90 (signed range).
+    const pulled = [main(), opponent({ ...none, x: 560, movementStartX: 600, movementStartY: 400 })];
+    assert.equal(numberVariable(pulled, "selectable.movementDirection")("eq", -90), true);
+    // Standing still: no comparison matches, including not-equal.
+    const still = numberVariable([main(), opponent({ movementStartX: 600, movementStartY: 400 })], "selectable.movementDirection");
+    for (const comparator of ["eq", "neq", "lt", "gt", "lte", "gte"]) assert.equal(still(comparator, 0), false, comparator);
+});
+
 test("Any Ability Winding Up is true only while a wind-up is counting down", () => {
     assert.equal(boolVariable([main(), opponent()], "bot.anyAbilityPreparing"), false);
     assert.equal(boolVariable([main(), opponent({ abilityState: { 36: { stage: "windup", remainingMs: 300 } } })], "bot.anyAbilityPreparing"), true);

@@ -4,6 +4,7 @@ const LIFECYCLE_COMPONENTS = Object.freeze([
     Object.freeze({ field: "abilityVisual", mode: "nestedCountdown", timerField: "ms" }),
     Object.freeze({ field: "triggeredAbility", mode: "reset", value: null }),
     Object.freeze({ field: "abilitySpawn", mode: "reset", value: [] }),
+    Object.freeze({ field: "dueSteps", mode: "reset", value: [] }),
     Object.freeze({ field: "entityHitIds", mode: "reset", value: [] }),
     Object.freeze({ field: "damageTakenThisTick", mode: "reset", value: 0 }),
 ]);

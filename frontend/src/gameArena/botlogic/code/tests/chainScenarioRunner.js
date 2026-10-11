@@ -34,7 +34,7 @@ export function traceScenario(scenario, onTick = null) {
             : { ...shape, x: scenario.defenderX, y: MAIN_Y, rotation: 270 };
         return { ...placed, abilities: shape.id === "main" ? scenario.abilities : [], combatLoadout: loadout };
     });
-    const configuration = normalizeAbilityStrategyConfiguration({ version: "bot-logic-tree-v1", roots: scenario.roots, chains: scenario.chains });
+    const configuration = normalizeAbilityStrategyConfiguration({ version: "bot-logic-tree-v1", roots: scenario.roots, chains: scenario.chains, customVariables: scenario.customVariables ?? [] });
     const lines = [];
     for (let tick = 0; tick < scenario.ticks; tick += 1) {
         shapes = advanceArenaPreviewTick(shapes, {

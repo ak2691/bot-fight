@@ -16,6 +16,7 @@ function botAtStartingState(shape, startingState = null) {
         pendingHealing: 0,
         lastPredictedAction: null,
         abilitySpawn: [],
+        dueSteps: [],
         triggeredAbility: null,
         abilityVisual: null,
         temporalRewindMs: 0,

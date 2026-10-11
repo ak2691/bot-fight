@@ -32,20 +32,32 @@ export function cloneChainStack(stack) {
 }
 
 /**
- * Applies chain control from the roots selected this tick: the
- * highest-priority Run chain starts only when no chain is running; a running chain is never replaced.
- * `entries` are the selected action entries in priority order.
+ * Applies chain control from the roots selected this tick: the highest-priority Run chain is
+ * pushed only when no chain is running; a running chain is never replaced. `entries` are the
+ * selected action entries in priority order. Returns true when a chain was just pushed; it has
+ * not started yet, see the starting rules on `resumeChain`.
  */
 export function applyChainControl(stack, entries, chains) {
     const run = entries.find((entry) => entry.action === BOT_CODE_ACTIONS.RUN_CHAIN);
-    if (!run || !chains.has(run.chainId)) return;
-    if (stack.length === 0) stack.push(newChainFrame(run.chainId));
+    if (!run || !chains.has(run.chainId) || stack.length > 0) return false;
+    stack.push(newChainFrame(run.chainId));
+    return true;
 }
 
 /**
  * Runs the chain from its saved step until a step issues an action or waits. Returns the
  * actions the chain issues this tick as `{ head, block }`, one per category at most.
- * `stack` is mutated in place. `ctx`: `{ state, chains, definitions, runtime }`.
+ * `stack` is mutated in place. `ctx`: `{ state, chains, definitions, runtime, start }`.
+ *
+ * Starting: `ctx.start` (`{ claimed, canAct }`) is set on the tick the chain was pushed. Instant
+ * steps (variable ops, If / Else if) run as usual until the first step that issues an action. That
+ * step competes like a root: it needs a category no higher-priority root (`claimed`) holds and
+ * `canAct(step)` (executable now, target resolved). Otherwise the chain does not start: its
+ * variable writes from this tick are discarded and the stack is left empty. A chain whose first
+ * step is a Wait claims nothing and starts normally.
+ *
+ * Once started, a Use ability / Dash step that is not executable when reached ends the whole
+ * chain (every frame). Walk / Rotate keep trying until their time or condition ends them.
  */
 export function resumeChain(stack, ctx) {
     const claims = [];
@@ -57,6 +69,7 @@ export function resumeChain(stack, ctx) {
         return claims;
     }
     const used = new Set();
+    const start = ctx.start ? { ...ctx.start, passed: false, variables: { ...player.customVariables } } : null;
     for (let guard = 0; stack.length > 0 && guard < MAX_STEPS_PER_TICK; guard += 1) {
         const frame = stack.at(-1);
         const chain = ctx.chains.get(frame.chainId);
@@ -67,7 +80,15 @@ export function resumeChain(stack, ctx) {
         const step = stepAt(chain, frame.path);
         let outcome;
         if (!step) outcome = leaveList(frame, chain);
-        else outcome = runStep(step, frame, stack, { ...ctx, used, claims });
+        else outcome = runStep(step, frame, stack, { ...ctx, used, claims, start });
+        if (outcome === "abort") {
+            // The chain never started: undo this tick's variable writes.
+            for (const key of Object.keys(player.customVariables)) delete player.customVariables[key];
+            Object.assign(player.customVariables, start.variables);
+            stack.length = 0;
+            claims.length = 0;
+            return claims;
+        }
         if (outcome === "pop") stack.pop();
         else if (outcome === "end") stack.length = 0;
         else if (outcome === "stop") break;
@@ -199,8 +220,21 @@ function runActionStep(step, frame, ctx) {
     return runTimedAction(step, frame, ctx, category);
 }
 
+/**
+ * The first step that issues an action decides whether a chain that is starting this tick starts at
+ * all. False means abort: a higher-priority root holds the category or the action cannot act now.
+ */
+function mayStart(step, ctx, category) {
+    const { start } = ctx;
+    if (!start || start.passed) return true;
+    if (start.claimed.has(category) || !start.canAct(step)) return false;
+    start.passed = true;
+    return true;
+}
+
 /** Cancel Wind-up uses the cancel category and stops the chain for this tick, so no ability starts on a cancel tick. */
 function runCancelWindup(step, frame, ctx, category) {
+    if (!mayStart(step, ctx, category)) return "abort";
     if (!ctx.used.has(category) && canCancelWindup(ctx.state.player)) {
         ctx.used.add(category);
         ctx.claims.push({ head: category, block: step });
@@ -217,12 +251,10 @@ function runUseAbility(step, frame, ctx, category) {
         advance(frame);
         return "continue";
     }
+    if (!mayStart(step, ctx, category)) return "abort";
     if (ctx.used.has(category)) return "stop";
-    // An unavailable ability is one attempted step; retry only with an explicit Wait.
-    if (!ctx.runtime.actionExecutableNow(step, ctx.state)) {
-        advance(frame);
-        return "stop";
-    }
+    // A step that cannot act ends the whole chain; wait for the ability first to hold the chain instead.
+    if (!ctx.runtime.actionExecutableNow(step, ctx.state)) return "end";
     ctx.used.add(category);
     ctx.claims.push({ head: category, block: step });
     if (step.continue === "now") {
@@ -239,6 +271,7 @@ function runTimedAction(step, frame, ctx, category) {
         advance(frame);
         return "continue";
     }
+    if (!mayStart(step, ctx, category)) return "abort";
     if (ctx.used.has(category)) return "stop";
     if (ctx.runtime.actionExecutableNow(step, ctx.state)) {
         ctx.used.add(category);

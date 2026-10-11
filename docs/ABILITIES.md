@@ -58,7 +58,7 @@ There is no attached/entity split. An ability is data:
 { id, name, label, channel, cost, timing,
   activation: { targetMode, capture, phaseFacingDefault, teleportOncePerActivation },
   onTrigger: [ verbs ],
-  entities:  { <entityType>: { spawn, targeting, lifetime, bindToCast, phases: [ ... ] } } }
+  entities:  { <entityType>: { spawn, targeting, lifetime, phases: [ ... ] } } }
 ```
 
 `onTrigger` runs in order when the wind-up ends. Anything that lives over time is an
@@ -79,7 +79,7 @@ browser previews and the Node worker.
 
 | Verb | Does | Where |
 | --- | --- | --- |
-| `hit` | Instant: query `hitbox` once from the source pose (`origin` on the owner or the entity), apply `effects` to each target of `targets` in distance order, emit its `visual`. `nearestOnly` keeps the nearest touched target, `oncePerTarget` skips targets an earlier hit verb of the same trigger affected, `aim: "seekTarget"` limits an entity's shot to the enemy it chases | trigger, entity |
+| `hit` | Instant: query `hitbox` once from the source pose (`origin` on the owner or the entity), apply `effects` to each target of `targets` in distance order, emit its `visual`. `nearestOnly` keeps the nearest touched target, `oncePerTarget` (`"step"` or `"activation"`, see the trigger timeline) skips targets already hit in that scope, `aim: "seekTarget"` limits an entity's shot to the enemy it chases | trigger, entity |
 | `applyEffects` | Apply `effects` to the owner (`targets: ["OWNER"]`: heals, buffs, Rewind) or, in an entity event, to the event's targets. `knockbackDirection` / `pullDirection` choose the push origin | trigger (owner only), entity |
 | `spawn` | Create entity `entity` (a key of this ability's `entities`), optionally with a `pattern` | trigger, entity |
 | `move` | Move the owner (a dash): `distance`, `unitsPerTick`, `trailMs`; direction from the action | trigger |
@@ -102,6 +102,19 @@ the tick.
 
 `activation.teleportOncePerActivation` (Phase Strike) makes the trigger's teleport effect
 land once, on the nearest valid target.
+
+**Trigger timeline.** A `hit`, `spawn` or `applyEffects` trigger verb may carry `atMs`, an
+offset into the ability's active time (a whole number of ticks, at most `timing.activeMs`;
+left out = the trigger tick). A delayed verb must name a `pose`: `"current"` (the bot's pose
+on the tick it fires, so a stream follows the bot as it turns) or `"captured"` (the pose
+captured at trigger; needs `activation.capture`). `move` is never delayed, and verbs are listed
+in non-decreasing `atMs` order. The ability state keeps the index of the next pending step;
+each tick fires every step whose `atMs` has been reached, in the stage that owns its verb.
+An interrupt (stun) or death cancels the remaining steps; fired steps and spawned entities
+stay. A round boundary does not cancel them. `oncePerTarget` sets the double-hit scope:
+`"step"` (once per `atMs` group, so a combo hits on each step), `"activation"` (once per
+cast, for a lingering swing), or left out (no limit). The +10 stamina hit refund stays once
+per activation; Time Since Hit updates on every step that connects.
 ## 3. One tick
 
 `shared/engine/fight.js` runs seven named stages in this order through
@@ -229,7 +242,7 @@ the cooldown after its active stage, and its readout is the generic `readyInMs`.
 ## 6. Entity phase reference
 
 An entity: `runtimeType`, `category` (`projectile`, `zone`, `trap`, `summon`), `spawn`,
-`targeting`, `lifetime`, `initialState`, `state`, `bindToCast`, `phases[]`.
+`targeting`, `lifetime`, `initialState`, `state`, `phases[]`.
 
 A phase: `id`, `type` (`projectile`, `zone`, `summon`), optional `durationMs`, `movement`,
 `hitbox`, `health`, `trigger`, `visual`, `skipOwner`, `transitionOnly`, and `on`: events,
@@ -318,9 +331,6 @@ movement and rotation. Slow is x0.5. The stronger one applies.
   nearest living enemy and move `unitsPerTick`; summons use it), `followOwner` (the
   entity's pose is the owner's pose plus the entity's `spawn` offset and rotation, every
   tick).
-- **`bindToCast: true`:** the entity is removed as soon as the owner's ability that spawned
-  it leaves its active stage, because it finished or was interrupted. Use it for swings,
-  channelled beams and multi-hit melee; it needs an ability with an active stage.
 - **Spawn:** `spawn.offset` (x right, y forward of the owner),
   `rotation` (-360..360) in `rotationSpace` `owner` or `world`;
   `targeting.position: "target"` places it at the activation target

@@ -1,4 +1,5 @@
 import { actionEntryCost } from "./configurationMetrics.js";
+import { linkBudgetKey } from "./linkedActions.js";
 import {
     conditionalIdFor,
     priorityForNode,
@@ -44,7 +45,7 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
         const actions = [];
         for (const entry of normalizedBlock.actions) {
             if (entry.action === "none") continue;
-            const cost = actionEntryCost(entry);
+            const cost = chargedCost(entry, remaining);
             if (remaining.actions < cost) break;
             actions.push(entry);
             remaining.actions -= cost;
@@ -69,12 +70,22 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
     return normalized;
 }
 
+// Identical copies of a linked action cost once; `remaining.links` remembers the copies already paid for.
+function chargedCost(entry, remaining) {
+    const cost = actionEntryCost(entry);
+    const key = linkBudgetKey(entry);
+    if (key == null || !remaining.links) return cost;
+    if (remaining.links.has(key)) return 0;
+    remaining.links.add(key);
+    return cost;
+}
+
 export function normalizeNodeActions(node, remaining, customVariables, operations) {
     const entries = operations.normalizeBlock(node, 0, customVariables).actions;
     const actions = [];
     for (const entry of entries) {
-        const cost = actionEntryCost(entry);
-        if (!cost) continue;
+        if (!actionEntryCost(entry)) continue;
+        const cost = chargedCost(entry, remaining);
         if (cost > remaining.actions) break;
         actions.push({ ...entry, ...(entry.id ? { id: entry.id } : {}) });
         remaining.actions -= cost;
@@ -103,6 +114,6 @@ function stableNodeId(value, fallback) {
 
 function withoutEntryIdentity(entry) {
     // `id` and `kind` identify the action entry, never the branch that mirrors it.
-    const { id: _id, kind: _kind, ...rest } = entry;
+    const { id: _id, kind: _kind, linkId: _linkId, ...rest } = entry;
     return rest;
 }

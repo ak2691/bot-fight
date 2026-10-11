@@ -16,6 +16,7 @@ import {
     STATUS_EFFECT_DEFINITIONS,
 } from "../../shared/engine/loadout/BotLoadout.js";
 import { actionSupportsAim, actionSupportsTarget } from "../../shared/engine/botlogic/code/runtime/actionRuntime.js";
+import { LINK_ID_PATTERN } from "../../shared/engine/botlogic/code/configuration/linkedActions.js";
 import {
     CHAIN_MS_MAX, CHAIN_MS_STEP, MAX_CHAINS, MAX_CHAIN_NAME_LENGTH, MAX_CHAIN_STEPS, MAX_LEAD_SECONDS,
     MAX_LOGIC_BLOCKS, MAX_REPEAT_COUNT, MAX_ROOT_NAME_LENGTH, MAX_ROOT_NODES, MAX_TOTAL_CONDITIONS,
@@ -463,11 +464,12 @@ function treeDefs() {
     defs.actionEntry = {
         type: "object",
         required: ["action"],
-        properties: { id: idString, action: { enum: allActionIds } },
+        // linkId: copies of one action wired under several parents (editor links; costs once in the budget).
+        properties: { id: idString, action: { enum: allActionIds }, linkId: { type: "string", pattern: LINK_ID_PATTERN.source } },
         allOf: [ref("actionFields")],
         unevaluatedProperties: false,
     };
-    defs.actions = { type: "array", maxItems: MAX_LOGIC_BLOCKS, items: ref("actionEntry") };
+    defs.actions ={ type: "array", maxItems: MAX_LOGIC_BLOCKS, items: ref("actionEntry") };
 
     // ---- tree
     const branchCore = {

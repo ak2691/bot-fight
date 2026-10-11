@@ -9,6 +9,10 @@ import { abilityChannel } from "./AbilityChannels.js";
  *   charges      only for charge-bearing abilities; absent means full
  *   reloadMs     only for charge-bearing abilities: the reload time left once empty
  *   target       only while winding up: the activation target { x, y } the wind-up was started with
+ *   steps        only while active, for an ability with delayed trigger verbs: the timeline of the activation
+ *                { next, activeMs, serial, targetX, targetY, pose, hit }: `next` is the index of the next
+ *                pending verb, `activeMs` the active time the activation was given, `pose` the captured pose
+ *                (or null), `hit` the slots its activation-scoped hits already touched
  *
  * A missing record is a ready ability. The old loose fields (preparingAbility, abilityActiveMs, ...) no
  * longer exist on a bot; `abilityStateFromLegacy` reads them back from a replay frame.
@@ -115,7 +119,7 @@ export function patchAbilityRecord(shape, abilityId, changes) {
 /** Puts an ability back to ready, keeping its charges and reload. */
 export function readyAbilityRecord(shape, abilityId) {
     return patchAbilityRecord(shape, abilityId, {
-        stage: ABILITY_STAGES.READY, remainingMs: 0, cooldownMs: undefined, target: undefined,
+        stage: ABILITY_STAGES.READY, remainingMs: 0, cooldownMs: undefined, target: undefined, steps: undefined,
     });
 }
 
@@ -128,6 +132,7 @@ export function endActiveStage(shape, abilityId) {
         stage: cooldown > 0 ? ABILITY_STAGES.COOLDOWN : ABILITY_STAGES.READY,
         remainingMs: cooldown,
         cooldownMs: undefined,
+        steps: undefined,
     });
 }
 

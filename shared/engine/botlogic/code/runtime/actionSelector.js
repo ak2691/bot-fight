@@ -36,8 +36,26 @@ export function selectStrategyActionPlan(normalized, payload, runtime) {
 
     const chains = new Map((normalized.chains ?? []).map((chain) => [chain.id, chain]));
     const chainStack = cloneChainStack(state.player.chainStack);
-    applyChainControl(chainStack, rootEntries.filter(isChainControl), chains);
-    const claims = resumeChain(chainStack, { state, chains, definitions: normalized.customVariables, runtime });
+    // A root can act when it is executable now and its target resolves.
+    const rootCanAct = (block) => {
+        if (!runtime.actionExecutableNow(block, state)) return false;
+        const action = runtime.actionById.get(block.action) ?? runtime.actionTypes[0];
+        return !(runtime.actionSupportsTarget(action)
+            && !(action.coordinateTarget && ["coordinates", "angle"].includes(block.targetMode))
+            && !runtime.resolveTarget(state, block.selectable));
+    };
+    const started = applyChainControl(chainStack, rootEntries.filter(isChainControl), chains);
+    let start = null;
+    if (started) {
+        // Roots left of the Run chain take their categories before the chain's first action.
+        const claimed = new Set();
+        for (const block of rootEntries.slice(0, rootEntries.findIndex((entry) => entry.action === BOT_CODE_ACTIONS.RUN_CHAIN))) {
+            if (block.action === BOT_CODE_ACTIONS.VARIABLE || isChainControl(block) || !rootCanAct(block)) continue;
+            claimed.add(executionHeadFor(runtime.actionById.get(block.action) ?? runtime.actionTypes[0]));
+        }
+        start = { claimed, canAct: rootCanAct };
+    }
+    const claims = resumeChain(chainStack, { state, chains, definitions: normalized.customVariables, runtime, start });
     for (const { block } of claims) placeInPlan(plan, block, runtime.actionById.get(block.action));
 
     for (const block of rootEntries) {
@@ -48,9 +66,7 @@ export function selectStrategyActionPlan(normalized, payload, runtime) {
         }
         if (isChainControl(block)) continue;
         const action = runtime.actionById.get(block.action) ?? runtime.actionTypes[0];
-        if (runtime.actionSupportsTarget(action)
-            && !(action.coordinateTarget && ["coordinates", "angle"].includes(block.targetMode))
-            && !runtime.resolveTarget(state, block.selectable)) continue;
+        if (!rootCanAct(block)) continue;
         if (plan[executionHeadFor(action)]) continue;
         placeInPlan(plan, block, action);
     }

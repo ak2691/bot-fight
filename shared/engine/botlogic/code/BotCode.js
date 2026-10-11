@@ -10,6 +10,7 @@ import { compareAngleValues, compareValues, evaluateConditionNode, evaluateCondi
 import { normalizeConfiguration } from "./configuration/normalization.js";
 import { normalizeChainActionFields } from "./configuration/chainNormalizer.js";
 import { validateChains } from "./configuration/chainValidation.js";
+import { isLinkId } from "./configuration/linkedActions.js";
 import { stateFromPayload } from "./runtime/runtimeState.js";
 import { selectPriorityCandidates as selectCandidates } from "./runtime/treeSelection.js";
 import { normalizeRoot as normalizeCodeRoot } from "./configuration/rootNormalizer.js";
@@ -83,6 +84,7 @@ export { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "./con
 export { resolveAbilityStrategySelectable } from "./runtime/targeting.js";
 export { actionSupportsAim, actionSupportsTarget } from "./runtime/actionRuntime.js";
 export { actionEntryCost, countActionSlots, countConditionSlots, countVariableSlots } from "./configuration/configurationMetrics.js";
+export * from "./configuration/linkedActions.js";
 export { insertParentLogicBranch, moveLogicRootPriority, normalizeRoots, removeLogicBranch, setLogicBranchPriority, setLogicRootPriority } from "./configuration/rootOperations.js";
 export * from "./configuration/constants.js";
 export {
@@ -215,8 +217,10 @@ function rawActionHead(action) {
 /** A chain step's action, normalized like a root action. Chains cannot run N/A or chain control. */
 function normalizeChainStepAction(raw) {
     const [entry] = normalizedBlockActions({ actions: [raw] });
-    return !entry || [BOT_CODE_ACTIONS.NONE, BOT_CODE_ACTIONS.RUN_CHAIN].includes(entry.action)
-        ? null : entry;
+    if (!entry || [BOT_CODE_ACTIONS.NONE, BOT_CODE_ACTIONS.RUN_CHAIN].includes(entry.action)) return null;
+    // Links join tree actions only; a chain step's steps stay a sequence.
+    const { linkId: _linkId, ...step } = entry;
+    return step;
 }
 
 /** Takes a normalized configuration (normalizeAbilityStrategyConfiguration); it is never normalized per call. */
@@ -581,6 +585,7 @@ function normalizedBlockActions(block) {
             normalized.push({
                 action: action.id,
                 ...(typeof normalizedEntry?.id === "string" ? { id: normalizedEntry.id } : {}),
+                ...(isLinkId(normalizedEntry?.linkId) ? { linkId: normalizedEntry.linkId } : {}),
                 selectable: normalizeSelectable(normalizedEntry?.selectable, BOT_CODE_SELECTABLES.OPPONENT),
                 ...(action.movementConfig ? {
                     movementMode,

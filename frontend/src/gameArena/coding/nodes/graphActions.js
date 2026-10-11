@@ -9,6 +9,6 @@ export function graphBranchActions(branch) {
 // replace the branch's id, so the conditional and its action would share a graph id and the wiring would tangle.
 export function setGraphActions(branch, actions) {
     const first = actions[0] ?? { action: "none", selectable: BOT_CODE_SELECTABLES.OPPONENT };
-    const { id: _actionId, ...legacyFields } = first;
+    const { id: _actionId, linkId: _linkId, ...legacyFields } = first;
     return { ...branch, actions, ...legacyFields };
 }

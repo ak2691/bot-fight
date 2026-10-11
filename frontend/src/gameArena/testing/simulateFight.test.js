@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import { createCombatLog } from "../../../../shared/engine/ecs/combatLog.js";
+import { withTestAbilities } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { cooldownRemainingMs, preparingAbilityId, preparingRemainingMs } from "../../../../shared/engine/gameconfig/AbilityState.js";
 import { batchFrames, simulateFight } from "../../../../shared/engine/simulateFight.js";
 import { BROWSER_GOLDEN_FILE, fnv1a, loadGolden, loadScenarios, stateLines } from "./goldenScenarioRunner.js";
@@ -38,10 +39,11 @@ for (const scenario of scenarioFile.scenarios) {
         const expected = golden.scenarios[scenario.id];
         const combatLog = createCombatLog();
         const hashes = [];
-        const { result } = simulateFight(requestFor(scenario), {
+        // Test-only abilities replace the shipped ones of the same id for this run, as in goldenScenarioRunner.
+        const { result } = withTestAbilities(scenario.testAbilities ?? [], () => simulateFight(requestFor(scenario), {
             combatLog,
             onTick: (fight) => hashes.push(fnv1a(stateLines([...fight.bots, ...fight.entities]).join("\n"))),
-        });
+        }));
         // A run stops at a knockout; the scenario's own run goes on to its last tick.
         assert.deepEqual(hashes, expected.hashes.slice(0, hashes.length), "per-tick state hashes");
         const lastTick = hashes.length;

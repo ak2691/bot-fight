@@ -58,7 +58,9 @@ async function start(t, options = {}) {
 
 test('all golden scenarios over real HTTP match every browser golden replay hash', async (t) => {
     const service = await start(t);
-    for (const scenario of scenarios.scenarios) {
+    // Scenarios with test-only abilities can't go over HTTP: the worker never accepts ability definitions from a
+    // request. They run in-process in frontend simulateFight.test.js instead.
+    for (const scenario of scenarios.scenarios.filter((entry) => !entry.testAbilities)) {
         await t.test(scenario.id, async () => {
             const { status, json } = await service.call({ ...requestFor(scenario), diagnostics: { stateHashes: true } });
             assert.equal(status, 200, JSON.stringify(json));

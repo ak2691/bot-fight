@@ -60,7 +60,8 @@ export function resolveStateVariable(state, condition, variableId, selectableId,
         normalizedSelectable2Id,
         operations,
     }) ?? null;
-    return typeof resolved === "number" ? truncateToNumberPrecision(resolved) : resolved;
+    // NaN means "no value" (Move Direction while not moving); truncation would turn it into 0.
+    return typeof resolved === "number" && !Number.isNaN(resolved) ? truncateToNumberPrecision(resolved) : resolved;
 }
 
 const RUNTIME_RESOLVERS = Object.freeze({
@@ -251,7 +252,11 @@ function approachAngle(selectable, target) {
     const cosine = (movement.dx * toX + movement.dy * toY) / (Math.hypot(movement.dx, movement.dy) * toLength);
     return Math.acos(Math.max(-1, Math.min(1, cosine))) * 180 / Math.PI;
 }
-function movementDirection(selectable) { const x = Number(selectable?.velocityX ?? 0); const y = Number(selectable?.velocityY ?? 0); return Math.hypot(x, y) <= .001 ? Number.NaN : signedBearing({ x: 0, y: 0 }, { x, y }); }
+/** Heading of the last-tick displacement (walking, dash, knockback, pulls); NaN when the entity did not move. */
+function movementDirection(selectable) {
+    const movement = lastTickDisplacement(selectable);
+    return movement.moved ? signedBearing({ x: 0, y: 0 }, { x: movement.dx, y: movement.dy }) : Number.NaN;
+}
 function normalizeRotation(value) { return ((Number(value ?? 0) % 360) + 360) % 360; }
 function signedAngleDelta(from, to) { return ((to - from + 540) % 360) - 180; }
 function edgeDistance(entity) {

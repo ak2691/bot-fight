@@ -14,7 +14,7 @@ export function showCachedEffect(view, slot, texture, { x = 0, y = 0, rotation =
         sprite = new Sprite({ anchor: 0.5 });
         sprite.eventMode = "none";
         view.cachedEffects.set(slot, sprite);
-        view.container.addChildAt(sprite, 1);
+        view.container.addChildAt(sprite, view.baseSprite ? view.container.getChildIndex(view.baseSprite) + 1 : 1);
     }
     sprite.texture = texture;
     sprite.anchor.set(anchorX, anchorY);

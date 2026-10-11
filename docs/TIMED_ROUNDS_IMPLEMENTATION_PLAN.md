@@ -480,8 +480,6 @@ from server/) and frontend npm test. Don't commit.
 Botfight frontend: add placeholder Pixi visuals for the weapons Thrust (35),
 Cleave (36) and Smash (37), per docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md
 section 4. Slash (1) keeps its existing meleeSwing visual unchanged.
-Reference animation (rough canvas mock of the intended look and timing):
-docs/previews/weapon-placeholder-visuals.html.
 Files: frontend/src/gameArena/pixi/botAbilityPresentationDefinitions.js,
 PixiCanvas.jsx, pixiVisualState.js.
 
