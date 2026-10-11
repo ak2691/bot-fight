@@ -741,6 +741,84 @@
         {"tick":79,"stage":"act","kind":"effect","source":"bot1","target":"bot2","abilityId":5,"effect":"damage","amount":2},
         {"tick":79,"stage":"act","kind":"status","source":null,"target":"bot2","abilityId":5,"effect":"hit-stagger","amount":300}
       ]
+    },
+    "timeline-hits-step": {
+      "hashes": ["3f566254","9ded961f","eaaaefff","8ad687b4","bfd7eca1","41408676","616b54ab","e3280a97","e3280a97","e3280a97","e3280a97","e3280a97","e3280a97","e3280a97"],
+      "log": [
+        {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":14,"effect":null,"amount":null},
+        {"tick":1,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":14,"effect":"damage","amount":5},
+        {"tick":1,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":14,"effect":"hit-stagger","amount":300},
+        {"tick":1,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10},
+        {"tick":3,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":14,"effect":"damage","amount":5},
+        {"tick":3,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":14,"effect":"hit-stagger","amount":300},
+        {"tick":5,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":14,"effect":"damage","amount":5},
+        {"tick":5,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":14,"effect":"hit-stagger","amount":300}
+      ]
+    },
+    "timeline-lingering-activation": {
+      "hashes": ["3f566254","9ded961f","1c84fc4a","29119e08","29119e08","29119e08","29119e08","29119e08"],
+      "log": [
+        {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":14,"effect":null,"amount":null},
+        {"tick":1,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":14,"effect":"damage","amount":5},
+        {"tick":1,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":14,"effect":"hit-stagger","amount":300},
+        {"tick":1,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10}
+      ]
+    },
+    "timeline-lingering-walk-in": {
+      "hashes": ["c850ebcb","3cf2268e","5a24bb49","d05baefd","6b4c695a","636cd4cf","f7d212e5","d096e814"],
+      "log": [
+        {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":14,"effect":null,"amount":null},
+        {"tick":2,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":14,"effect":"damage","amount":5},
+        {"tick":2,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":14,"effect":"hit-stagger","amount":300},
+        {"tick":2,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10}
+      ]
+    },
+    "timeline-spawn-stream-current": {
+      "hashes": ["f34cbb88","7bd23dd6","2f038521","b34d8ba5","e4177c40","c1c935cc","9d51a946","e01613c9","be00593e","14dc1d5a","06451d4f","808afcbf","7874d519","56fe572e"],
+      "log": [
+        {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":5,"effect":null,"amount":null},
+        {"tick":1,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:1","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":3,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:2","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":5,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:3","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":14,"stage":"entities","kind":"removal","source":"bot1","target":"fireball:1:1","abilityId":5,"effect":"fireball","amount":null}
+      ]
+    },
+    "timeline-spawn-stream-captured": {
+      "hashes": ["f34cbb88","7bd23dd6","4f362aff","936eac99","a9396769","4555fd53","22b7d766","25bba6ed","b626cfb0","2eacd6df","3a205985","f6d09351","7bbc1bd9","0e621da1"],
+      "log": [
+        {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":5,"effect":null,"amount":null},
+        {"tick":1,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:1","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":3,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:2","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":5,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:3","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":14,"stage":"entities","kind":"removal","source":"bot1","target":"fireball:1:1","abilityId":5,"effect":"fireball","amount":null}
+      ]
+    },
+    "timeline-stun-cancels": {
+      "hashes": ["37669294","28f39446","8dfba494","531bc2fd","29adaf76","3efe0aae","50ce7479","ede7b460","57afb0eb","f4701fda","027abfc5","3242d3dc"],
+      "log": [
+        {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":14,"effect":null,"amount":null},
+        {"tick":1,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":14,"effect":"damage","amount":5},
+        {"tick":1,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":14,"effect":"hit-stagger","amount":300},
+        {"tick":1,"stage":"settle","kind":"stamina","source":null,"target":"bot1","abilityId":null,"effect":"refund","amount":10},
+        {"tick":3,"stage":"act","kind":"trigger","source":"bot2","target":null,"abilityId":7,"effect":null,"amount":null},
+        {"tick":3,"stage":"resolveHits","kind":"effect","source":"bot1","target":"bot2","abilityId":14,"effect":"damage","amount":5},
+        {"tick":3,"stage":"resolveHits","kind":"status","source":null,"target":"bot2","abilityId":14,"effect":"hit-stagger","amount":300},
+        {"tick":3,"stage":"resolveHits","kind":"effect","source":"bot2","target":"bot1","abilityId":7,"effect":"damage","amount":10},
+        {"tick":3,"stage":"resolveHits","kind":"status","source":null,"target":"bot1","abilityId":7,"effect":"hit-stagger","amount":300},
+        {"tick":3,"stage":"resolveHits","kind":"status","source":null,"target":"bot1","abilityId":7,"effect":"stun","amount":1200},
+        {"tick":3,"stage":"settle","kind":"stamina","source":null,"target":"bot2","abilityId":null,"effect":"refund","amount":10}
+      ]
+    },
+    "timeline-delayed-fan": {
+      "hashes": ["300bbe80","300bbe80","c9cf6a61","7379797e","311f28cc","5db15423","b4688e10","06656281","d927fba5","8b98ea72"],
+      "log": [
+        {"tick":1,"stage":"act","kind":"trigger","source":"bot1","target":null,"abilityId":5,"effect":null,"amount":null},
+        {"tick":3,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:1","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":3,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:2","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":3,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:3","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":3,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:4","abilityId":5,"effect":"fireball","amount":null},
+        {"tick":3,"stage":"spawn","kind":"spawn","source":"bot1","target":"fireball:1:5","abilityId":5,"effect":"fireball","amount":null}
+      ]
     }
   }
 }

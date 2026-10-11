@@ -47,7 +47,8 @@ import {
     newTreeBranch,
     nextBranchPriority,
 } from "./nodes/GraphNodes.jsx";
-import { brainFromEditorRoots, editorRootsFor, wireBlockReason, wireNodes, disconnectNode, removeRootKeepingChildren } from "./treeWiring.js";
+import { brainFromEditorRoots, editorRootsFor, wireBlockReason, wireNodes, disconnectNode, removeRootKeepingChildren, inputBarBehavior, linkIdOf, linkedChangeBlockReason, linkedCopies, removeLinkedCopies, sharedDeletePrompt, syncLinkedActions } from "./treeWiring.js";
+import { mergeLinkedActions } from "../botlogic/code/configuration/linkedActions.js";
 import { graphEdgePath } from "./graphEdgeGeometry.js";
 import { actionOperandValueType, withActionOperand, withActionOperandVariable } from "./nodes/actionOperandEdits.js";
 import { chainsOf, createChain } from "./chains/chainEditing.js";
@@ -178,7 +179,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         onSearchCloseRef.current = onSearchClose;
         onCloseExternalConfigurationRef.current = onCloseExternalConfiguration;
     }, [onCloseExternalConfiguration, onSearchClose]);
-    const roots = useMemo(() => normalizeRoots(editorRootsFor(configuration)), [configuration]);
+    const roots = useMemo(() => normalizeRoots(editorRootsFor(mergeLinkedActions(configuration))), [configuration]);
     // Chains can be run from the main canvas only where the workspace can also open them.
     const chainsEnabled = Boolean(onOpenChain);
     const chains = useMemo(() => chainsOf(configuration), [configuration]);
@@ -360,7 +361,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         || (node.path && Boolean(treeBranchAt(roots[node.rootIndex]?.branches, node.path)?.conditions?.length)));
     const commitConfiguration = (nextConfiguration, preserveGraphPositions = true, positionOverrides = {}) => {
         const clean = { ...nextConfiguration, roots: nextConfiguration.roots === configuration.roots ? roots : nextConfiguration.roots };
-        if (Array.isArray(clean.roots)) clean.roots = normalizeRoots(clean.roots);
+        if (Array.isArray(clean.roots)) clean.roots = syncLinkedActions(roots, normalizeRoots(clean.roots));
         if (clean.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION) clean.editorGraph = sanitizeCodeEditorGraph(clean.editorGraph);
         if (Array.isArray(clean.roots)) {
             const nextGraph = buildLogicGraph(clean.roots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables, configuration.chains);
@@ -662,6 +663,8 @@ const clampPan = (nextPan, nextZoom = zoom) => {
             removeRootNode(rootIndex);
             return;
         }
+        const shared = graph.actions.find((node) => node.rootIndex === rootIndex && sameGraphPath(node.path, path) && node.actionIndex === actionIndex);
+        if (shared && sharedDeletePrompt(roots, shared)) { removeSelectedNodes([shared.id]); return; }
         updateBranch(rootIndex, path, (current) => setGraphActions(current, graphBranchActions(current).filter((_, index) => index !== actionIndex)));
     };
     const commitReorder = (result) => {
@@ -795,7 +798,12 @@ const clampPan = (nextPan, nextZoom = zoom) => {
             if (previous && currentPositions[previous.id]) overrides[nextNode.id] = currentPositions[previous.id];
         }
         const item = child.actionIndex != null ? graph.actions.find((node) => node.id === child.id) : child;
-        if (item && currentPositions[child.id]) {
+        // Wiring an action that already has a parent links it; the node stays where it was even when the new
+        // parent's copy is the first in tree order.
+        const linkId = child.actionIndex != null ? linkIdOf(nextRoots, child) : null;
+        const linkedNode = linkId ? graphNodesForGraph(nextGraph).find((node) => node.linkId === linkId) : null;
+        if (linkedNode && currentPositions[child.id]) overrides[linkedNode.id] = currentPositions[child.id];
+        else if (item && currentPositions[child.id]) {
             const nextNode = graphNodesForGraph(nextGraph).find((node) => node.id === child.id || (child.actionIndex == null && node.branchId === child.branchId));
             if (nextNode) overrides[nextNode.id] = currentPositions[child.id];
         }
@@ -805,15 +813,38 @@ const clampPan = (nextPan, nextZoom = zoom) => {
     // Press and hold: moving more than a few px from an output bar drags a wire; releasing over a node connects
     // (refusals toast like clicks), anywhere else drops it. No movement leaves the press to click-to-arm.
     // Lifting a wire (input mode) and then letting go on empty space disconnects it: the child becomes an orphan.
+    // Cuts one wire into `node`; `copy` says which parent's wire when an action has several.
+    const cutWire = (node, copy = null) => {
+        const next = disconnectNode(roots, node, copy);
+        if (!next) return;
+        const overrides = {};
+        const linkId = node.actionIndex != null ? linkIdOf(roots, node) : null;
+        if (linkId) {
+            // When the drawn copy goes, the node carries on from the next copy, at the same place.
+            const survivors = new Set(linkedCopies(roots, linkId).map((candidate) => candidate.entry.id).filter((id) => id !== node.id));
+            const successor = graphNodesForGraph(buildLogicGraph(next, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables, configuration.chains))
+                .find((candidate) => survivors.has(candidate.id) && !graphNodeById.has(candidate.id));
+            const position = nodePositionsForGraph(graphNodes, nodeOffsetsRef.current)[node.id];
+            if (successor && position) overrides[successor.id] = position;
+        }
+        commitConfiguration({ ...configuration, roots: next }, true, overrides);
+    };
     const disconnectIfWired = (node) => {
-        if (!node || !graph.edges.some((edge) => edge.toId === node.id)) return;
-        const next = disconnectNode(roots, node);
-        if (next) commitConfiguration({ ...configuration, roots: next });
+        const wires = node ? graph.edges.filter((edge) => edge.toId === node.id) : [];
+        if (!wires.length) return;
+        if (wires.length > 1) {
+            // Several parents: only a selected wire can be cut.
+            const wire = wires.find((edge) => edge.id === selectedWire);
+            if (wire) { cutWire(node, wire.copy); setSelectedWire(null); } else setWireToast(inputBarBehavior(wires.length).message);
+            return;
+        }
+        cutWire(node);
         setSelectedWire(null);
     };
     const dropLiftedWire = () => { if (armedWire?.mode === "input") disconnectIfWired(graphNodeById.get(armedWire.id)); };
     const beginWireHold = (event, node, mode = "output") => {
         if (disabled || event.button !== 0) return;
+        if (mode === "input" && graph.edges.filter((edge) => edge.toId === node.id).length > 1) return;
         const start = { x: event.clientX, y: event.clientY };
         let held = false;
         const move = (next) => {
@@ -855,6 +886,8 @@ const clampPan = (nextPan, nextZoom = zoom) => {
     const clickInput = (event, node, pointerType) => {
         if (disabled) return;
         if (armedWire?.mode === "output") { finishConnection(graphNodeById.get(armedWire.id), node); return; }
+        const parents = graph.edges.filter((edge) => edge.toId === node.id).length;
+        if (parents > 1) { setWireToast(inputBarBehavior(parents).message); return; }
         setArmedWire({ mode: "input", id: node.id, touch: pointerType === "touch" });
         setWireCursor(canvasPoint(event)); setSelectedWire(null);
     };
@@ -876,9 +909,9 @@ const clampPan = (nextPan, nextZoom = zoom) => {
             if (event.key === "Escape" && armedWire) { event.preventDefault(); event.stopImmediatePropagation(); setArmedWire(null); }
             if (!disabled && selectedWire && ["Delete", "Backspace"].includes(event.key)) {
                 event.preventDefault(); event.stopImmediatePropagation();
-                const child = graphNodeById.get(selectedWire);
-                const next = child ? disconnectNode(roots, child) : null;
-                if (next) commitConfiguration({ ...configuration, roots: next });
+                const wire = graph.edges.find((edge) => edge.id === selectedWire);
+                const child = wire ? graphNodeById.get(wire.toId) : null;
+                if (child) cutWire(child, wire.copy);
                 setSelectedWire(null);
             }
         };
@@ -894,6 +927,19 @@ const clampPan = (nextPan, nextZoom = zoom) => {
         onOutput: (event, pointerType) => clickOutput(event, node, pointerType), onOutputPress: (event) => beginWireHold(event, node), onInputPress: (event) => beginWireHold(event, node, "input"), onInput: (event, pointerType) => clickInput(event, node, pointerType), armed: armedWire?.id === node.id,
         ...wirePinState(node),
     });
+    // "Used by" in an action's panel: selects that parent and brings it into view.
+    const selectParentNode = (nodeId) => {
+        const node = graphNodes.find((candidate) => candidate.id === nodeId);
+        if (!node) return;
+        setInspectedNode(null);
+        setSelectedRow(null);
+        setSelectedNodeIds([nodeId]);
+        const rect = viewportRef.current?.getBoundingClientRect();
+        if (rect) {
+            const offset = nodeOffsetsRef.current[node.id] ?? { x: 0, y: 0 };
+            onPanChange(clampPan({ x: rect.width / 2 - (node.x + offset.x + node.width / 2) * zoom, y: rect.height / 2 - (node.y + offset.y + (node.height ?? 0) / 2) * zoom }));
+        }
+    };
     const inspectedOrderNode = inspectedNode ? graph.conditions.find((node) => node.id === inspectedNode.id) : null;
     const inspectedOrder = inspectedOrderNode ? orderProps(inspectedOrderNode) : null;
     const orderInfo = inspectedOrderNode ? { label: treeBranchAt(roots[inspectedOrderNode.rootIndex]?.branches, inspectedOrderNode.path)?.branchType === "else" ? "ELSE" : inspectedOrder.rank === 1 ? "IF" : "ELSE IF",
@@ -958,6 +1004,10 @@ const clampPan = (nextPan, nextZoom = zoom) => {
     const removeBranch = (rootIndex, path) => commitConfiguration({ ...configuration, roots: removeLogicBranch(roots, rootIndex, path) }, true);
     const removeSelectedNodes = (ids = selectedNodeIds) => {
         if (disabled || !canRemove || !ids.length) return;
+        // A shared action goes from every parent, after a confirmation.
+        const sharedNodes = puzzleMode ? [] : graph.actions.filter((node) => ids.includes(node.id) && sharedDeletePrompt(roots, node));
+        if (sharedNodes.length && !window.confirm(`${sharedNodes.map((node) => sharedDeletePrompt(roots, node)).join(" ")} Delete it from all of them?`)) return;
+        const sharedLinkIds = sharedNodes.map((node) => linkIdOf(roots, node));
         const selected = new Set(ids);
         const selectedRootIndices = new Set(graph.roots.filter((node) => selected.has(node.id)).map((node) => node.rootIndex));
         const selectedConditionIds = new Set(graph.conditions.filter((node) => selected.has(node.id)).map((node) => node.id));
@@ -988,7 +1038,7 @@ const clampPan = (nextPan, nextZoom = zoom) => {
                 ...root,
                 ...(Array.isArray(root.branches) ? { branches: removeFromBranches(root.branches, root.id) } : {}),
             }));
-        commitConfiguration({ ...configuration, roots: nextRoots }, true);
+        commitConfiguration({ ...configuration, roots: sharedLinkIds.reduce((remaining, linkId) => removeLinkedCopies(remaining, linkId), nextRoots) }, true);
         clearCanvasSelection();
     };
     removeSelectedNodesRef.current = removeSelectedNodes;
@@ -1168,8 +1218,13 @@ const clampPan = (nextPan, nextZoom = zoom) => {
         const actions = graphBranchActions(branch);
         const otherActions = actions.filter((_, index) => index !== actionIndex);
         const replacementBranch = addGraphAction(setGraphActions(branch, otherActions), selectedLoadout, actionId, configuration.customVariables ?? [], chains);
-        const replacement = graphBranchActions(replacementBranch)[otherActions.length];
-        if (!replacement) return;
+        const fresh = graphBranchActions(replacementBranch)[otherActions.length];
+        if (!fresh) return;
+        // The replacement stays the same node: it keeps its id, and its link, so every parent's copy changes with it.
+        const previous = actions[actionIndex];
+        const replacement = { ...fresh, ...(previous?.id ? { id: previous.id } : {}), ...(previous?.linkId ? { linkId: previous.linkId } : {}) };
+        const blocked = previous?.linkId ? linkedChangeBlockReason(roots, previous, replacement) : null;
+        if (blocked) { setWireToast(blocked); setNodePicker(null); return; }
         updateBranch(rootIndex, path, (current) => setGraphActions(current, graphBranchActions(current).map((entry, index) => index === actionIndex ? replacement : entry)));
         setNodePicker(null);
         if (actionId === "run_chain") {
@@ -1267,7 +1322,7 @@ const clampPan = (nextPan, nextZoom = zoom) => {
                 editNode(graphNodeById.get(frame.dataset.graphNodeId), rowElement ? Number(rowElement.dataset.condRow) : 0);
             }} onPointerDown={beginMarquee} className="code-graph-surface absolute left-0 top-0 bg-[#171b20] bg-[radial-gradient(circle,rgba(100,116,139,.24)_1px,transparent_1px)] bg-[size:20px_20px]" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", "--code-zoom": zoom }}>
                 <svg className="pointer-events-none absolute inset-0 overflow-hidden" width={canvasWidth} height={canvasHeight}>
-                    {graph.edges.filter((edge) => !(armedWire?.mode === "input" && !armedWire.touch && edge.toId === armedWire.id)).map((edge) => <g key={edge.id}><path d={graphEdgePath(edge, nodeOffsets, frameGeometry)} fill="none" stroke={selectedWire === edge.toId ? "#5fd4f0" : "rgba(165,180,252,.72)"} strokeWidth="2" /><path d={graphEdgePath(edge, nodeOffsets, frameGeometry)} fill="none" stroke="transparent" strokeWidth="16" style={{ pointerEvents: "stroke" }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setSelectedNodeIds([]); setSelectedWire(edge.toId); }} /></g>)}
+                    {graph.edges.filter((edge) => !(armedWire?.mode === "input" && !armedWire.touch && edge.toId === armedWire.id)).map((edge) => <g key={edge.id}><path d={graphEdgePath(edge, nodeOffsets, frameGeometry)} fill="none" stroke={selectedWire === edge.id ? "#5fd4f0" : "rgba(165,180,252,.72)"} strokeWidth="2" /><path d={graphEdgePath(edge, nodeOffsets, frameGeometry)} fill="none" stroke="transparent" strokeWidth="16" style={{ pointerEvents: "stroke" }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setSelectedNodeIds([]); setSelectedWire(edge.id); }} /></g>)}
                     {previewEdge && !armedWire?.touch && <path d={graphEdgePath(previewEdge)} fill="none" stroke="#5fd4f0" strokeWidth="2" strokeDasharray="6 4" />}
                 </svg>
                 {selectionBox && <div className="code-selection-marquee" style={{
@@ -1331,7 +1386,7 @@ const clampPan = (nextPan, nextZoom = zoom) => {
                         onRemove={() => removeGraphAction(node.rootIndex, node.path, node.actionIndex)} />;
                 })}
             </div>
-            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector orderInfo={orderInfo} inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} chains={chains} onNewChain={createChainForAction} onOpenChain={onOpenChain} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} defaultVariable={defaultVariable} puzzleMode={puzzleMode} coordinateVersion={coordinateVersion} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickConditionOperand={openOperandPicker} onChangeAction={(rootIndex, path, actionIndex) => openNodePicker({ type: "action", rootIndex, path, actionIndex })} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector orderInfo={orderInfo} inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} chains={chains} onNewChain={createChainForAction} onOpenChain={onOpenChain} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} defaultVariable={defaultVariable} puzzleMode={puzzleMode} coordinateVersion={coordinateVersion} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickConditionOperand={openOperandPicker} onSelectParent={selectParentNode} onDeleteNode={(nodeId) => removeSelectedNodes([nodeId])} onChangeAction={(rootIndex, path, actionIndex) => openNodePicker({ type: "action", rootIndex, path, actionIndex })} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} />}
             {!isSearchOpen && !isExternalConfigurationOpen && actionOperandInspector && actionOperandDefinition && <ActionVariableInspector definition={actionOperandDefinition} operand={actionOperand} selectableTypes={selectableTypes} disabled={disabled} onChange={(operand) => updateActionOperand(actionOperandInspector.rootIndex, actionOperandInspector.path, actionOperandInspector.actionIndex, actionOperandInspector.termIndex, operand)} onClose={() => setActionOperandInspector(null)} />}
         </div>
     );

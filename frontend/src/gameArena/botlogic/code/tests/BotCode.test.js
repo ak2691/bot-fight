@@ -259,9 +259,10 @@ test("bearing conditionals use the configured From and To pair", () => {
     ]);
     assert.deepEqual(selectableIdentitiesForVariable(absoluteBearing, 0), [SELECTABLE_IDENTITIES.FACING]);
     assert.deepEqual(selectableIdentitiesForVariable(absoluteBearing, 1), []);
+    // Direction To is retired from the picker; stored brains still evaluate it.
     assert.deepEqual(
         VISIBLE_STATE_VARIABLES.filter((variable) => variable.label === "Direction To").map((variable) => variable.id),
-        ["selectable.absoluteBearing"],
+        [],
     );
     const normalizedBearing = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{

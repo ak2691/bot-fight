@@ -17,7 +17,11 @@
  * 10. every ability names a channel of channels.json; a channel's blocking statuses have presets (and the ones
  *     that make an ability not ready are among them); only the
  *     dash channel may declare a stamina cost, a whole number in 1..staminaMax
- * 11. an entity phase moves in a known mode (straight, static, seek or followOwner) with the numbers it needs;
+ * 11. a trigger verb carries `atMs` (null = the trigger tick, else a whole number of ticks within the ability's
+ *     activeMs) and `pose` ("current" or "captured", required exactly when atMs > 0); only hit, spawn and
+ *     applyEffects may be delayed; verbs are in non-decreasing atMs order; `oncePerTarget` is "step",
+ *     "activation" or null
+ * 12. an entity phase moves in a known mode (straight, static, seek or followOwner) with the numbers it needs;
  *     a timer (`schedule`) event repeats at a whole tick interval
  */
 export const VOCABULARY = Object.freeze({
@@ -44,6 +48,8 @@ export const VOCABULARY = Object.freeze({
     statusToken: ["$amount", "$damageMultiplier", "$movementLockMs"],
     faceTarget: ["activationTarget"],
     hitAim: ["seekTarget"],
+    oncePerTarget: ["step", "activation"],
+    verbPose: ["current", "captured"],
     pushDirection: ["source", "owner", "velocity"],
 });
 
@@ -155,11 +161,42 @@ export function validateGameplayData({ abilities, statuses, movement, channels }
         bounded(`${here}.visualSize`, visual.visualSize, 2000, { min: 1 });
     };
 
+    // A trigger verb's place on the ability's timeline. Entity event verbs have none.
+    const checkTimeline = (verb, here, context, ability) => {
+        if (context !== "trigger") {
+            if (has(verb.atMs)) fail(`${here}.atMs`, "only an onTrigger verb has atMs");
+            if (has(verb.pose)) fail(`${here}.pose`, "only an onTrigger verb has pose");
+            return;
+        }
+        if (verb.atMs === undefined) fail(`${here}.atMs`, "missing (write null for the trigger tick)");
+        if (verb.pose === undefined) fail(`${here}.pose`, "missing (write null when the verb is not delayed)");
+        if (verb.atMs === undefined || verb.pose === undefined) return;
+        if (verb.atMs !== null) {
+            if (!["hit", "spawn", "applyEffects"].includes(verb.do)) {
+                fail(`${here}.atMs`, `a ${verb.do} verb cannot be delayed`);
+                return;
+            }
+            const activeMs = ability?.timing?.activeMs ?? 0;
+            if (!Number.isInteger(verb.atMs) || verb.atMs < 0) fail(`${here}.atMs`, `${verb.atMs} is not a whole number of ms`);
+            else if (verb.atMs % 100 !== 0) fail(`${here}.atMs`, `${verb.atMs} is not a multiple of 100 ms`);
+            else if (verb.atMs > activeMs) fail(`${here}.atMs`, `${verb.atMs} is after the ability's activeMs ${activeMs}`);
+        }
+        if (verb.atMs > 0) {
+            oneOf(`${here}.pose`, "verbPose", verb.pose);
+            if (verb.pose === "captured" && !ability?.activation?.capture) {
+                fail(`${here}.pose`, "captured needs activation.capture");
+            }
+        } else if (verb.pose !== null) {
+            fail(`${here}.pose`, "pose is only for a delayed verb (atMs above 0)");
+        }
+    };
+
     // One verb of an onTrigger list ("trigger") or of an entity event ("event").
-    const checkVerb = (verb, here, { context, phaseIds, entityNames }) => {
+    const checkVerb = (verb, here, { context, phaseIds, entityNames, ability = null }) => {
         oneOf(`${here}.do`, context === "trigger" ? "triggerVerb" : "eventVerb", verb.do);
         for (const target of verb.targets ?? []) oneOf(`${here}.targets`, "verbTarget", target);
         checkVisual(verb.visual, `${here}.visual`);
+        checkTimeline(verb, here, context, ability);
         switch (verb.do) {
             case "hit":
                 checkHitbox(verb.hitbox, `${here}.hitbox`);
@@ -167,7 +204,8 @@ export function validateGameplayData({ abilities, statuses, movement, channels }
                 if (!Array.isArray(verb.effects) || verb.effects.length === 0) fail(`${here}.effects`, "hit needs at least one effect");
                 checkEffects(verb.effects, `${here}.effects`);
                 if (typeof verb.nearestOnly !== "boolean") fail(`${here}.nearestOnly`, "missing");
-                if (typeof verb.oncePerTarget !== "boolean") fail(`${here}.oncePerTarget`, "missing");
+                if (verb.oncePerTarget === undefined) fail(`${here}.oncePerTarget`, "missing (write null for no restriction)");
+                else oneOf(`${here}.oncePerTarget`, "oncePerTarget", verb.oncePerTarget, { nullable: true });
                 if (has(verb.aim)) oneOf(`${here}.aim`, "hitAim", verb.aim);
                 else if (verb.aim === undefined) fail(`${here}.aim`, "missing (write null for no aim)");
                 if (verb.origin) oneOf(`${here}.origin.rotationSpace`, "rotationSpace", verb.origin.rotationSpace);
@@ -227,7 +265,6 @@ export function validateGameplayData({ abilities, statuses, movement, channels }
         oneOf(`${here}.lifetime.timerMode`, "timerMode", entity.lifetime?.timerMode);
         ms(`${here}.lifetime.duration`, entity.lifetime?.duration);
         ms(`${here}.lifetime.add`, entity.lifetime?.add);
-        if (typeof entity.bindToCast !== "boolean") fail(`${here}.bindToCast`, "missing");
         if (!entity.runtimeType) fail(`${here}.runtimeType`, "missing");
         if (!Array.isArray(entity.phases) || entity.phases.length === 0) { fail(`${here}.phases`, "needs at least one phase"); return; }
         const phaseIds = new Set(entity.phases.map((phase) => phase.id));
@@ -331,7 +368,15 @@ export function validateGameplayData({ abilities, statuses, movement, channels }
             fail(`${path}.onTrigger`, "needs at least one verb");
         }
         for (const [verbIndex, verb] of (ability.onTrigger ?? []).entries()) {
-            checkVerb(verb, `${path}.onTrigger[${verbIndex}]`, { context: "trigger", phaseIds: new Set(), entityNames });
+            checkVerb(verb, `${path}.onTrigger[${verbIndex}]`, { context: "trigger", phaseIds: new Set(), entityNames, ability });
+        }
+        let previousAtMs = 0;
+        for (const [verbIndex, verb] of (ability.onTrigger ?? []).entries()) {
+            const atMs = verb.atMs ?? 0;
+            if (Number.isFinite(atMs) && atMs < previousAtMs) {
+                fail(`${path}.onTrigger[${verbIndex}].atMs`, `${atMs} comes after a verb at ${previousAtMs} (verbs run in non-decreasing atMs order)`);
+            }
+            if (Number.isFinite(atMs)) previousAtMs = Math.max(previousAtMs, atMs);
         }
         for (const [entityName, entity] of Object.entries(entities)) {
             checkEntity(entity, `${path}.entities.${entityName}`, entityNames);

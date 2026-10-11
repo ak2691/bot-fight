@@ -314,9 +314,9 @@ const VARIABLE_DESCRIPTIONS = Object.freeze({
     "selectable.y": "Vertical position in the arena",
     "selectable.alive": "Whether the entity is still in the fight",
     "selectable.absoluteBearing": "Arena angle from one entity to another",
-    "selectable.movementDirection": "Angle the entity is moving toward",
+    "selectable.movementDirection": "Heading of its last-tick position change, including knockback, pulls and dashes. No value while it is not moving, so every comparison is false (even ≠): pair it with Is Moving",
     "selectable.speed": "Distance moved per tick",
-    "selectable.approachAngle": "0 = moving toward the target, 180 = away",
+    "selectable.approachAngle": "Move Direction toward a target: 0 = toward, 180 = away",
     "selectable.moving": "Moved during the last tick",
     "bot.anyAbilityPreparing": "Any of its abilities is winding up",
     "bot.stamina": "Stamina left, from 0 to 100. At 0 the bot cannot dash, sprint or fast turn until it refills",
@@ -416,8 +416,14 @@ export const STATE_VARIABLES = Object.freeze([
     variableDefinition("selectable.exists", "Exists", "boolean", { group: "Ability Entity", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.ABILITY_ENTITY], scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_EXISTS }),
 ]);
 export const STATE_VARIABLE_BY_ID = new Map(STATE_VARIABLES.map((variable) => [variable.id, variable]));
-// Speed stays in STATE_VARIABLES so saved brains keep evaluating it, but it is no longer offered in the picker.
-const HIDDEN_PICKER_VARIABLE_IDS = new Set(["selectable.speed"]);
+// These stay in STATE_VARIABLES so saved brains keep evaluating and displaying them, but the picker no longer offers them.
+// Approach Angle is reached as Move Direction -> "Toward a target"; Direction To and Facing are retired from the picker.
+const HIDDEN_PICKER_VARIABLE_IDS = new Set([
+    "selectable.speed",
+    "selectable.absoluteBearing",
+    "selectable.facing",
+    "selectable.approachAngle",
+]);
 export const VISIBLE_STATE_VARIABLES = Object.freeze(STATE_VARIABLES.filter((variable) => !HIDDEN_PICKER_VARIABLE_IDS.has(variable.id)));
 export function abilityDefinitionsForVariable(variable, equippedAbilityIds) {
     const equipped = equippedAbilityIds instanceof Set ? equippedAbilityIds : new Set(equippedAbilityIds ?? []);

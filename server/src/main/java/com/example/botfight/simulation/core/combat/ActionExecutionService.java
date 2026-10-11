@@ -295,12 +295,20 @@ public class ActionExecutionService {
             }
         }
 
+        // The timeline steps that come due on this tick, derived from the active time left before the stage
+        // advances: their spawn verbs create entities now, from the pose they name; their hit and applyEffects
+        // verbs resolve with the trigger verbs.
+        AbilityTimeline.stampSerial(bot, justActivatedAbilityIds);
+        List<AbilityTimeline.DueStep> dueSteps = AbilityTimeline.due(bot, STEP_MS, justActivatedAbilityIds);
+
         stamina.finish(bot);
         botStateService.beginTick(bot, justActivatedAbilityIds);
         if (bot.triggeredAbilityPayload != null) {
             bot.abilitySpawn = new java.util.ArrayList<>();
             spawnAbilityEntities(bot, bot.triggeredAbilityPayload, arena);
         }
+        bot.dueSteps = dueSteps;
+        if (!dueSteps.isEmpty()) spawnDueEntities(bot, dueSteps, arena);
     }
 
     public void resolveTriggeredAbilities(Bot attacker, Bot defender, Arena arena) {
@@ -319,6 +327,7 @@ public class ActionExecutionService {
 
     public void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
         abilityEffectService.resolveTriggeredAbilities(attacker, bots, arena);
+        abilityEffectService.resolveDueSteps(attacker, bots, arena);
     }
 
     public ArenaEntity applyEffectsToEntity(ArenaEntity entity, List<Bot> bots,
@@ -387,6 +396,7 @@ public class ActionExecutionService {
         // The act-stage verbs: the owner faces its target (and the pose is captured again), then moves.
         ActHost host = new ActHost(bot, payload.capture(bot), arena);
         AbilityVerbs.run(payload.verbs(), AbilityVerbs.Stage.ACT, host);
+        AbilityTimeline.start(bot, host.activated, activeMs);
         return host.activated;
     }
 
@@ -462,6 +472,7 @@ public class ActionExecutionService {
         AbilityVerbs.run(payload.verbs(), new AbilityVerbs.Host() {
             @Override
             public void spawn(AbilityContracts.SpawnVerb verb) {
+                if (verb.atMs() > 0) return;
                 AbilityContracts.EntityContract entity = payload.contract().entities().get(verb.entity());
                 if (entity == null) return;
                 String idPrefix = !entity.phases().isEmpty()
@@ -478,6 +489,43 @@ public class ActionExecutionService {
                 }
             }
         });
+    }
+
+    /**
+     * The entities the due timeline steps' spawn verbs create, after the trigger tick's own, in step, verb and
+     * pattern index order, each tagged with the activation serial of the cast that made it. A step spawns from
+     * the bot's pose on this tick ("current") or from the pose captured at the trigger ("captured").
+     */
+    private static void spawnDueEntities(Bot bot, List<AbilityTimeline.DueStep> dueSteps, Arena arena) {
+        if (arena == null) return;
+        List<ArenaEntity> spawned = new java.util.ArrayList<>(bot.abilitySpawn);
+        for (AbilityTimeline.DueStep step : dueSteps) {
+            AbilityExecutionPayload payload = AbilityExecutionPayload.forAbility(step.abilityId());
+            if (payload.contract() == null) continue;
+            List<AbilityContracts.Verb> verbs = payload.verbs();
+            for (int index = step.from(); index < step.to(); index += 1) {
+                if (!(verbs.get(index) instanceof AbilityContracts.SpawnVerb verb)) continue;
+                AbilityContracts.EntityContract entity = payload.contract().entities().get(verb.entity());
+                if (entity == null) continue;
+                String idPrefix = !entity.phases().isEmpty()
+                        && entity.phases().getFirst().type() == AbilityContracts.PhaseType.PROJECTILE
+                                ? entity.runtimeType()
+                                : "ability";
+                boolean captured = "captured".equals(verb.pose()) && step.hasPose();
+                double x = captured ? step.poseX() : bot.x;
+                double y = captured ? step.poseY() : bot.y;
+                double rotation = captured ? step.poseRotation() : bot.rotation;
+                for (AbilityEntityFactory.Placement placement : AbilityEntityFactory.placements(verb.pattern())) {
+                    String entityId = idPrefix + "-" + bot.userId + "-" + bot.abilityEntitySerial++;
+                    bot.entityActivations.put(entityId, step.serial());
+                    spawned.add(AbilityEntityFactory.create(
+                            entityId, entity, bot.slot, x, y, bot.size, rotation,
+                            bot.attackDamageMultiplier, step.targetX(), step.targetY(),
+                            arena.width(), arena.height(), placement));
+                }
+            }
+        }
+        bot.abilitySpawn = spawned;
     }
 
     private static void cancelPreparation(Bot bot) {

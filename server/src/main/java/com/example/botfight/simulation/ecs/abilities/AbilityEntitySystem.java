@@ -61,11 +61,6 @@ public final class AbilityEntitySystem {
             return idPrefix + "-" + parentEntityId + "-" + System.nanoTime();
         }
 
-        /** Whether the owner's ability is still in its active stage (a bound entity lives only that long). */
-        default boolean castActive(List<F> bots, int ownerSlot, int abilityId) {
-            return true;
-        }
-
         /** The owner's pose {x, y, rotation}, or null when the owner is gone. */
         default double[] ownerPose(List<F> bots, int ownerSlot) {
             return null;
@@ -1050,7 +1045,7 @@ public final class AbilityEntitySystem {
                 entity.damageTakenLastTick(), entity.hpNetChangeLastTick(), entity.rotation(),
                 entity.hitLedger(), entity.phaseId(), entity.phaseLocked(),
                 entity.statusEffects(), entity.eventSequence(), entity.eventType(),
-                entity.eventScheduleState(), entity.eventPhaseId(), entity.entityKey(), entity.bindToCast(),
+                entity.eventScheduleState(), entity.eventPhaseId(), entity.entityKey(),
                 entity.patternAngle(), entity.patternLateral());
     }
 
@@ -1075,7 +1070,7 @@ public final class AbilityEntitySystem {
                 source.damageTakenLastTick(), source.hpNetChangeLastTick(), rotation,
                 source.hitLedger(), phaseId, phaseLocked, source.statusEffects(),
                 source.eventSequence(), source.eventType(), source.eventScheduleState(),
-                source.eventPhaseId(), source.entityKey(), source.bindToCast(),
+                source.eventPhaseId(), source.entityKey(),
                 source.patternAngle(), source.patternLateral());
     }
 
@@ -1213,16 +1208,13 @@ public final class AbilityEntitySystem {
     }
 
     /**
-     * First stage of the entity tick. An entity bound to its cast ends as soon as the ability that spawned it
-     * leaves its active stage (it finished or was interrupted); an entity that follows its owner takes the
-     * owner's pose plus its spawn offset.
+     * First stage of the entity tick. An entity that follows its owner takes the owner's pose plus its spawn
+     * offset.
      */
     private static <F extends AbilityEntityBot> List<ArenaEntity> bindEntitiesToOwners(
             List<ArenaEntity> entities, List<F> bots, Combat<F> combat) {
         List<ArenaEntity> kept = new ArrayList<>();
         for (ArenaEntity entity : entities) {
-            if (entity.bindToCast() && entity.abilityId() != null
-                    && !combat.castActive(bots, entity.ownerSlot(), entity.abilityId())) continue;
             AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
             AbilityContracts.EntityContract definition = AbilityContracts.forEntity(entity);
             double[] owner = phase != null && phase.movement() != null

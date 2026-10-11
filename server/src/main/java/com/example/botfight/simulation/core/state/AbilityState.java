@@ -34,6 +34,8 @@ public final class AbilityState {
         /** Only while winding up: the activation target the wind-up was started with. */
         public double targetX = Double.NaN;
         public double targetY = Double.NaN;
+        /** Only while active, for an ability with delayed trigger verbs: the timeline of the activation. */
+        public Timeline steps;
 
         public Record copy() {
             Record copy = new Record();
@@ -44,6 +46,7 @@ public final class AbilityState {
             copy.reloadMs = reloadMs;
             copy.targetX = targetX;
             copy.targetY = targetY;
+            copy.steps = steps == null ? null : steps.copy();
             return copy;
         }
 
@@ -54,6 +57,39 @@ public final class AbilityState {
             cooldownMs = 0;
             targetX = Double.NaN;
             targetY = Double.NaN;
+            steps = null;
+        }
+    }
+
+    /**
+     * The timeline of one activation of an ability with delayed trigger verbs: {@code next} is the index of the
+     * next pending verb, {@code activeMs} the active time the activation was given, {@code serial} its activation
+     * serial, the target and captured pose its steps may use, and {@code hit} the slots its activation-scoped
+     * hits already touched. Mirrors the browser record's {@code steps}.
+     */
+    public static final class Timeline {
+        public int next;
+        public int activeMs;
+        public int serial;
+        public double targetX = Double.NaN;
+        public double targetY = Double.NaN;
+        public double poseX = Double.NaN;
+        public double poseY = Double.NaN;
+        public double poseRotation = Double.NaN;
+        public final java.util.TreeSet<Integer> hit = new java.util.TreeSet<>();
+
+        public Timeline copy() {
+            Timeline copy = new Timeline();
+            copy.next = next;
+            copy.activeMs = activeMs;
+            copy.serial = serial;
+            copy.targetX = targetX;
+            copy.targetY = targetY;
+            copy.poseX = poseX;
+            copy.poseY = poseY;
+            copy.poseRotation = poseRotation;
+            copy.hit.addAll(hit);
+            return copy;
         }
     }
 
@@ -159,6 +195,7 @@ public final class AbilityState {
         record.stage = cooldown > 0 ? Stage.COOLDOWN : Stage.READY;
         record.remainingMs = cooldown;
         record.cooldownMs = 0;
+        record.steps = null;
     }
 
     /** Drops every active stage with no cooldown following it (a bot's effects are cleared at death). */

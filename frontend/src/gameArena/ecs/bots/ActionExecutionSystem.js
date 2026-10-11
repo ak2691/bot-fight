@@ -10,7 +10,7 @@ import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayloa
 import { statusIsActive } from "../contracts/StatusContracts.js";
 import { interrupt } from "../abilities/effects.js";
 import { EFFECT_TYPES, triggerEffects } from "../contracts/AbilityContracts.js";
-import { applyActivationVerbs, spawnTriggerEntities } from "../abilities/verbs.js";
+import { applyActivationVerbs, dueTimelineSteps, spawnDueEntities, spawnTriggerEntities, stampTimelineSerial, startTimeline } from "../abilities/verbs.js";
 import { MOVEMENT_CONFIG } from "../../gameconfig/MovementConfig.js";
 import { advanceStaminaTimers, botStamina, canCancelWindup, cancelWindup, spendAbilityStamina, spendStamina, withFastTurning, withSprinting } from "../../gameconfig/StaminaSystem.js";
 
@@ -132,23 +132,33 @@ export function applyBotAction(bot, action, elapsedMs) {
     });
     // Every ability that activated this step keeps its stages for the step, so a dash started beside an
     // ability gets the same active/cooldown timing as a dash started alone.
-    tickBotState(bot, elapsedMs, [abilityResult.triggeredPayload?.abilityId, dashResult.triggeredPayload?.abilityId]);
+    const justActivatedIds = [abilityResult.triggeredPayload?.abilityId, dashResult.triggeredPayload?.abilityId];
+    // The timeline steps that come due on this tick (derived from the active time left, before the stage
+    // advances): their spawn verbs create entities now, from the pose they name; their hit and applyEffects
+    // verbs resolve with the trigger verbs.
+    for (const abilityId of justActivatedIds) if (abilityId != null) stampTimelineSerial(bot, abilityId, activationSerial);
+    const dueSteps = dueTimelineSteps(bot, elapsedMs, justActivatedIds);
+    const delayedSpawn = spawnDueEntities(bot, dueSteps, { serial: entitySerial + abilitySpawn.length, clampFn: clamp });
+    tickBotState(bot, elapsedMs, justActivatedIds);
     const phaseFacing = triggeredPayloadOptions(abilityResult, abilityPayload, dashPayload);
     bot.activationSerial = activationSerial;
-    bot.entityActivations = abilitySpawn.length > 0
+    const spawned = [...abilitySpawn, ...delayedSpawn.map(({ entity }) => entity)];
+    bot.entityActivations = spawned.length > 0
         ? {
             ...(bot.entityActivations ?? {}),
             ...Object.fromEntries(abilitySpawn.map((entity) => [entity.id, activationSerial])),
+            ...Object.fromEntries(delayedSpawn.map(({ entity, serial }) => [entity.id, serial])),
         }
         : bot.entityActivations ?? {};
-    bot.abilityEntitySerial = entitySerial + abilitySpawn.length;
+    bot.abilityEntitySerial = entitySerial + spawned.length;
+    bot.dueSteps = dueSteps;
     bot.triggeredAbility = triggered;
     bot.triggeredPhaseFacingMode = triggered == null
         ? null
         : phaseFacing?.phaseFacingMode ?? phaseFacing?.activation?.phaseFacingDefault ?? null;
     bot.abilityTargetX = (abilityPayload ?? dashPayload)?.targetX;
     bot.abilityTargetY = (abilityPayload ?? dashPayload)?.targetY;
-    bot.abilitySpawn = abilitySpawn;
+    bot.abilitySpawn = spawned;
     return bot;
 }
 
@@ -276,6 +286,7 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
     // An ability that declares a stamina cost (the dash channel) pays it on activation.
     spendAbilityStamina(bot, payload.abilityId);
     applyActivationVerbs(bot, payload, elapsedMs);
+    startTimeline(bot, payload, activeMs);
     return { triggered, triggeredPayload: payload };
 }
 

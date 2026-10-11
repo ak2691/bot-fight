@@ -33,7 +33,6 @@ import {
     phaseForEntity,
     phasesForEntity,
 } from "../contracts/AbilityContracts.js";
-import { ABILITY_STAGES, abilityRecord } from "../../gameconfig/AbilityState.js";
 import { ownerRelativePose } from "../entities/EntityFactory.js";
 import { ownerBot } from "../entities/EntityCombat.js";
 import { dispatchEntityEvent } from "./EntityEventSystem.js";
@@ -886,25 +885,18 @@ function scheduleDue(entity, event) {
 }
 
 /**
- * First stage of the entity tick. An entity bound to its cast ends as soon as the ability that spawned it
- * leaves its active stage (it finished or was interrupted); an entity that follows its owner takes the owner's
- * pose plus its spawn offset.
+ * First stage of the entity tick. An entity that follows its owner takes the owner's pose plus its spawn
+ * offset.
  */
 function bindEntitiesToOwners(world) {
     const entities = [];
     for (const entity of world.entities) {
         const owner = entity.ownerId == null ? null : ownerBot(world.bots, entity);
-        if (entity.bindToCast && !castIsActive(entity, owner)) continue;
         const phase = phaseForEntity(entity);
         if (phase?.movement?.mode === MOVEMENT_MODES.FOLLOW_OWNER && owner) followOwner(entity, owner);
         entities.push(entity);
     }
     return entities;
-}
-
-function castIsActive(entity, owner) {
-    const record = owner ? abilityRecord(owner, entity.abilityId) : null;
-    return record?.stage === ABILITY_STAGES.ACTIVE;
 }
 
 function followOwner(entity, owner) {

@@ -139,6 +139,27 @@ class NewConditionsParityTest {
         assertThat(resolve("selectable.moving", "my_bot", bot(1, 400, 400), opponent(600, 400, 600, 400)).booleanValue()).isFalse();
     }
 
+    private double moveDirection(Bot player, Bot opponent) {
+        return resolve("selectable.movementDirection", "opponent", player, opponent).numberValue();
+    }
+
+    @Test
+    void moveDirectionFollowsTheRealLastTickDisplacement() {
+        Bot player = bot(1, 400, 400);
+        // Knockback on a standing bot: +x is heading 90.
+        Bot pushed = opponent(720, 400, 600, 400);
+        assertThat(moveDirection(player, pushed)).isEqualTo(90.0);
+        // Knockback on a walking bot: walk velocity points up (0), displacement points +x (90).
+        Bot walkingPushed = opponent(720, 400, 600, 400);
+        walkingPushed.velocityY = -4;
+        walkingPushed.movementVelocityY = -4;
+        assertThat(moveDirection(player, walkingPushed)).isEqualTo(90.0);
+        // Pull toward a source on the left: signed heading -90.
+        assertThat(moveDirection(player, opponent(560, 400, 600, 400))).isEqualTo(-90.0);
+        // Standing still: NaN, so no comparison (including not-equal) can match.
+        assertThat(moveDirection(player, opponent(600, 400, 600, 400))).isNaN();
+    }
+
     @Test
     void anyAbilityWindingUpIsTrueOnlyWhileTheCountdownRuns() {
         Bot player = bot(1, 400, 400);

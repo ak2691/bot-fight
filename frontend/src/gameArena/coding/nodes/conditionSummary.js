@@ -2,6 +2,7 @@
 // strips. Formatting only; evaluation lives in botlogic/code.
 
 import { rightOperandView } from "../../botlogic/code/runtime/conditionEvaluator.js";
+import { conditionVariableLabel } from "./conditionMeasure.js";
 
 const COMPARATOR_SYMBOLS = Object.freeze({ lt: "<", lte: "≤", eq: "=", neq: "≠", gte: "≥", gt: ">" });
 
@@ -40,7 +41,7 @@ export function summarizeCondition(condition, lookups) {
     if (right?.type === "boolean") value = right.value ? "True" : "False";
     else if (right?.type === "variable") {
         const rightVariable = lookups.variable(right.value);
-        value = rightVariable?.label ?? String(right.value ?? "");
+        value = (rightVariable && conditionVariableLabel(rightVariable)) ?? String(right.value ?? "");
         if (rightVariable?.selectableType === "pair") {
             const view = rightOperandView(condition);
             const rightTarget = view.targetMode === "coordinates"
@@ -49,7 +50,7 @@ export function summarizeCondition(condition, lookups) {
             if (view.selectable1) valueEntities.push(`${lookups.selectable(view.selectable1)} → ${rightTarget}`);
         } else if (condition.rightSelectable) valueEntities.push(lookups.selectable(condition.rightSelectable));
     } else if (right?.type === "number") value = `${formatNumber(right.value)}${left?.suffix ? ` ${left.suffix}` : ""}`;
-    return { subject: left?.label ?? String(condition.left ?? "Unknown"), entities, comparator: comparatorSymbol(condition.comparator), value, valueEntities };
+    return { subject: (left && conditionVariableLabel(left)) ?? String(condition.left ?? "Unknown"), entities, comparator: comparatorSymbol(condition.comparator), value, valueEntities };
 }
 
 export function describeCondition(condition, lookups) {

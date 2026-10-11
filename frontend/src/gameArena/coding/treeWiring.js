@@ -1,5 +1,7 @@
 import { ACTION_TYPES, actionExecutionHead } from "../botlogic/code/BotCode.js";
 import { CHAIN_ACTION_TYPES } from "../botlogic/code/contracts/BotLogicContracts.js";
+import { createLinkId, isLinkId, linkContentKey } from "../botlogic/code/configuration/linkedActions.js";
+import { createEditorNodeId } from "../botlogic/code/configuration/identifiers.js";
 
 // Editor adapters expose root actions and disconnected subtrees through the same
 // branch editing paths. These wrappers never enter the submitted brain.
@@ -41,6 +43,35 @@ function at(roots, node) {
     return branch;
 }
 
+const validEntries = (branch) => (branch?.actions ?? []).filter((entry) => entry.action && entry.action !== "none");
+
+// Every conditional and root-action holder of the editor roots with where it sits, in tree order. Bare orphan
+// actions have no parent, so they never take part in a link.
+function branchLocations(roots) {
+    const found = [];
+    const visit = (rootIndex, branch, path) => {
+        if (!branch || branch._actionOrphan) return;
+        found.push({ rootIndex, path, branch });
+        (branch.children ?? []).forEach((child, index) => visit(rootIndex, child, [...path, index]));
+    };
+    roots.forEach((root, rootIndex) => (root.branches ?? []).forEach((branch, index) => visit(rootIndex, branch, [index])));
+    return found;
+}
+
+// The copies of one linked action, in tree order. `actionIndex` indexes the holder's real (non-N/A) actions.
+export function linkedCopies(roots, linkId) {
+    if (!isLinkId(linkId)) return [];
+    return branchLocations(roots).flatMap(({ rootIndex, path, branch }) => validEntries(branch)
+        .map((entry, actionIndex) => ({ rootIndex, path, branch, entry, actionIndex }))
+        .filter((copy) => copy.entry.linkId === linkId));
+}
+
+const actionHead = (entry) => {
+    const definition = [...ACTION_TYPES, ...CHAIN_ACTION_TYPES].find((candidate) => candidate.id === entry?.action);
+    return definition ? actionExecutionHead(definition) : null;
+};
+const sharesCategory = (head, other) => head && !["variable", "chain"].includes(head) && actionHead(other) === head;
+
 function detach(roots, node) {
     const owner = at(roots, node);
     if (!owner) return null;
@@ -71,9 +102,15 @@ function detach(roots, node) {
 const HEAD_LABELS = { movement: "Move", rotation: "Rotate", ability: "Ability", dash: "Dash", cancel: "Cancel" };
 const isTail = (branch) => branch.branchType === "else" || branch._rootActions;
 
-// Why `child` cannot be wired under `parent`, or null when it can. Every input takes one wire, so wiring a
-// connected node moves it (the same as lifting its input first); only loops, self wires and a second
-// action of the same category on one conditional are refused.
+// A loose action with no parent at all (a bare orphan), as opposed to one inside a disconnected subtree.
+function isBareOrphanAction(roots, node) {
+    return Boolean(roots[node.rootIndex]?._orphan && at(roots, node)?._actionOrphan);
+}
+
+// Why `child` cannot be wired under `parent`, or null when it can. Roots and conditionals take one wire, so
+// wiring a connected one moves it (the same as lifting its input first). An action that already has a parent
+// gains this one as another parent instead (it is saved as a linked copy under each). Loops, self wires, a
+// parent the action already hangs from, and a second action of the same category on one conditional are refused.
 export function wireBlockReason(roots, parent, child) {
     if (!parent || !child) return "Pick a node to connect";
     if (parent.actionIndex != null) return "Actions have no output";
@@ -86,12 +123,15 @@ export function wireBlockReason(roots, parent, child) {
     if (!owner || !current) return "That node is no longer available";
     if (child.actionIndex != null) {
         const action = current.actions?.filter((entry) => entry.action && entry.action !== "none")[child.actionIndex];
-        const definition = [...ACTION_TYPES, ...CHAIN_ACTION_TYPES].find((entry) => entry.id === action?.action);
         // An action whose ability is not equipped has no category to clash with, and can still be moved.
-        const head = definition ? actionExecutionHead(definition) : null;
+        const head = action ? actionHead(action) : null;
         const target = parent.path ? owner : owner.branches?.find((branch) => branch._rootActions);
-        if (head && !["variable", "chain"].includes(head) && (target?.actions ?? []).some((entry) => entry !== action
-            && [...ACTION_TYPES, ...CHAIN_ACTION_TYPES].some((candidate) => candidate.id === entry.action && actionExecutionHead(candidate) === head))) {
+        // A connected action gains this parent (it does not move), so it must not already hang from it.
+        if (!isBareOrphanAction(roots, child) && target
+            && (target === current || (isLinkId(action?.linkId) && validEntries(target).some((entry) => entry.linkId === action.linkId)))) {
+            return "Already connected to this node";
+        }
+        if (head && !["variable", "chain"].includes(head) && validEntries(target).some((entry) => entry !== action && sharesCategory(head, entry))) {
             return `This ${parent.path ? "conditional" : "root"} already has a ${HEAD_LABELS[head] ?? "matching"} action`;
         }
     }
@@ -109,7 +149,7 @@ export function wireNodes(roots, parent, child, { xOf } = {}) {
     const next = structuredClone(roots);
     // Retain references before splicing shifts sibling paths.
     const owner = at(next, parent);
-    const item = detach(next, child);
+    const item = child.actionIndex != null && !isBareOrphanAction(next, child) ? copyForNewParent(next, child) : detach(next, child);
     if (!item) return null;
     delete item.kind;
     if (child.actionIndex != null) {
@@ -138,7 +178,116 @@ export function wireNodes(roots, parent, child, { xOf } = {}) {
     return next.filter((root) => !root._orphan || root.branches.some((branch) => !branch._actionOrphan || branch.actions.length));
 }
 
-export function disconnectNode(roots, child) {
+// Wiring a connected action under another parent: the original becomes a linked action and the new parent
+// gets a copy with its own id and the same linkId.
+function copyForNewParent(roots, child) {
+    const source = validEntries(at(roots, child))[child.actionIndex];
+    if (!source) return null;
+    source.id ??= child.id;
+    if (!isLinkId(source.linkId)) source.linkId = createLinkId();
+    const { kind: _kind, ...content } = structuredClone(source);
+    return { ...content, id: createEditorNodeId("node") };
+}
+
+// A lone surviving copy stops being linked.
+function unlinkLoneCopy(roots, linkId) {
+    const left = linkedCopies(roots, linkId);
+    if (left.length === 1) delete left[0].entry.linkId;
+}
+
+// Removes one copy of a linked action; nothing becomes an orphan because the others still run it.
+function removeLinkedCopy(roots, copy) {
+    const next = structuredClone(roots);
+    const holder = at(next, copy);
+    const entries = validEntries(holder);
+    const [removed] = entries.splice(copy.actionIndex, 1);
+    if (!removed) return null;
+    holder.actions = entries;
+    holder.action = entries[0]?.action ?? "none";
+    unlinkLoneCopy(next, removed.linkId);
+    return next;
+}
+
+// How many parents an action node has: one per copy of its link, otherwise one.
+export function parentCount(roots, node) {
+    const linkId = linkIdOf(roots, node);
+    return linkId ? Math.max(1, linkedCopies(roots, linkId).length) : 1;
+}
+
+// The link an action node belongs to, or null.
+export function linkIdOf(roots, node) {
+    const entry = node?.actionIndex != null ? validEntries(at(roots, node))[node.actionIndex] : null;
+    return isLinkId(entry?.linkId) ? entry.linkId : null;
+}
+
+// Removes every copy of a link. Deleting a shared action removes all its wires and copies.
+export function removeLinkedCopies(roots, linkId) {
+    const next = structuredClone(roots);
+    for (const copy of linkedCopies(next, linkId)) {
+        const holder = at(next, copy);
+        holder.actions = validEntries(holder).filter((candidate) => candidate !== copy.entry);
+        holder.action = holder.actions[0]?.action ?? "none";
+    }
+    return next;
+}
+
+// Editing any copy of a linked action edits them all: the copy that changed since `previous` is written onto
+// its siblings (each keeps its own id). Configurations without links come back untouched.
+export function syncLinkedActions(previous, roots) {
+    const before = new Map();
+    for (const { branch } of branchLocations(previous)) {
+        for (const entry of validEntries(branch)) if (entry.id && isLinkId(entry.linkId)) before.set(entry.id, linkContentKey(entry));
+    }
+    const mismatched = (list) => {
+        const groups = new Map();
+        for (const { branch } of branchLocations(list)) {
+            for (const entry of validEntries(branch)) {
+                if (!isLinkId(entry.linkId)) continue;
+                if (!groups.has(entry.linkId)) groups.set(entry.linkId, []);
+                groups.get(entry.linkId).push({ branch, entry });
+            }
+        }
+        return [...groups.values()].filter((copies) => new Set(copies.map(({ entry }) => linkContentKey(entry))).size > 1);
+    };
+    if (!mismatched(roots).length) return roots;
+    const next = structuredClone(roots);
+    for (const copies of mismatched(next)) {
+        const source = copies.find(({ entry }) => before.has(entry.id) && before.get(entry.id) !== linkContentKey(entry));
+        if (!source) continue;
+        const { id: _id, ...content } = source.entry;
+        for (const copy of copies) {
+            if (copy === source) continue;
+            const id = copy.entry.id;
+            for (const key of Object.keys(copy.entry)) delete copy.entry[key];
+            Object.assign(copy.entry, structuredClone(content), id ? { id } : {});
+            copy.branch.action = validEntries(copy.branch)[0]?.action ?? copy.branch.action;
+        }
+    }
+    return next;
+}
+
+// Why changing the action in `copy` to `replacement` would break one of its other parents, or null when it can.
+export function linkedChangeBlockReason(roots, copy, replacement) {
+    const head = actionHead(replacement);
+    if (!isLinkId(copy?.linkId) || !head || ["variable", "chain"].includes(head)) return null;
+    for (const other of linkedCopies(roots, copy.linkId)) {
+        if (other.entry.id === copy.id) continue;
+        if (validEntries(other.branch).some((entry) => entry.id !== copy.id && entry !== other.entry && sharesCategory(head, entry))) {
+            return `Another branch that uses this action already has a ${HEAD_LABELS[head] ?? "matching"} action`;
+        }
+    }
+    return null;
+}
+
+// `copy` names which parent's wire to cut for a linked action (default: the node's own). A plain action or a
+// conditional becomes an orphan as always.
+export function disconnectNode(roots, child, copy = null) {
+    if (child.actionIndex != null) {
+        const entry = validEntries(at(roots, child))[child.actionIndex];
+        if (isLinkId(entry?.linkId) && linkedCopies(roots, entry.linkId).length > 1) {
+            return removeLinkedCopy(roots, { rootIndex: copy?.rootIndex ?? child.rootIndex, path: copy?.path ?? child.path, actionIndex: copy?.actionIndex ?? child.actionIndex });
+        }
+    }
     const next = structuredClone(roots);
     const item = detach(next, child);
     if (!item) return null;
@@ -175,4 +324,18 @@ export function removeRootKeepingChildren(roots, rootIndex) {
     }
     next.forEach((entry, index) => { entry.priority = entry.priority || index + 1; });
     return next;
+}
+
+// What a click on an action's input bar does. One parent: lift the wire, as always. Several: lifting would
+// have to pick one wire, so nothing lifts and the wires are cut one at a time instead.
+export function inputBarBehavior(parents) {
+    return parents > 1
+        ? { lift: false, message: `Connected to ${parents} nodes. Select a wire to disconnect it.` }
+        : { lift: true, message: null };
+}
+
+// The confirmation before deleting an action that hangs from several parents, or null when it hangs from one.
+export function sharedDeletePrompt(roots, node) {
+    const parents = parentCount(roots, node);
+    return parents > 1 ? `This action is used by ${parents} branches.` : null;
 }

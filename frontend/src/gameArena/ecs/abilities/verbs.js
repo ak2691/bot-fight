@@ -21,6 +21,7 @@ import {
     VERBS,
 } from "../contracts/AbilityContracts.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
+import { ABILITY_STAGES, abilityRecord, patchAbilityRecord } from "../../gameconfig/AbilityState.js";
 import {
     abilityPose,
     entityAbilitySpawnTransform,
@@ -52,6 +53,11 @@ import { BASE_BOT_HP } from "../../modelPayloads/arenaConstants.js";
  * in resolveHits, spawn at the end of act from the bot's final pose (the stage after adds the entities to the
  * world). The run contexts are mutable; each runner below builds a fresh one. The bots and the entity a verb
  * changes are changed in place.
+ *
+ * A trigger verb with `atMs` above 0 is a step of the ability's timeline: it runs on the tick the ability's
+ * elapsed active time reaches `atMs`, in the stage that owns its verb, from the pose its `pose` names. The
+ * activation record (`abilityState[id].steps`) holds the index of the next pending step; nothing is scheduled
+ * ahead, `dueTimelineSteps` derives what is due from the active time left.
  */
 export const VERB_STAGE = Object.freeze({
     [VERBS.FACE]: "act",
@@ -60,6 +66,14 @@ export const VERB_STAGE = Object.freeze({
     [VERBS.APPLY_EFFECTS]: "resolveHits",
     [VERBS.HIT]: "resolveHits",
 });
+
+/** True for a trigger verb that runs on the tick the ability triggers (no `atMs`, or 0). */
+const runsAtTrigger = (verb) => Number(verb.atMs ?? 0) <= 0;
+
+/** Index of the first delayed trigger verb (atMs above 0), or -1 when every verb runs at the trigger. */
+export function firstDelayedIndex(verbs) {
+    return (verbs ?? []).findIndex((verb) => !runsAtTrigger(verb));
+}
 
 export function executeVerb(verb, run) {
     switch (verb.do) {
@@ -148,6 +162,79 @@ function moveVerb(verb, run) {
     return run;
 }
 
+// --- timeline ----------------------------------------------------------------------------------------------
+
+/**
+ * Called when an ability has just triggered (its active stage started and the act verbs ran): an ability with
+ * delayed steps records the index of the first one, the active time it was given, the target and the captured
+ * pose its steps may use, and the targets its `activation`-scoped hits already touched.
+ */
+export function startTimeline(bot, payload, activeMs) {
+    const abilityId = payload?.abilityId;
+    const verbs = payload?.contract?.onTrigger ?? [];
+    const next = firstDelayedIndex(verbs);
+    const record = abilityRecord(bot, abilityId);
+    if (next < 0 || record?.stage !== ABILITY_STAGES.ACTIVE) {
+        if (record?.steps) patchAbilityRecord(bot, abilityId, { steps: undefined });
+        return bot;
+    }
+    const captures = verbs.some((verb) => verb.pose === "captured");
+    const pose = captures ? abilityPose(bot, null, payload.activation?.capture) : null;
+    patchAbilityRecord(bot, abilityId, {
+        steps: {
+            next,
+            activeMs,
+            serial: 0,
+            targetX: Number.isFinite(Number(payload.targetX)) ? Number(payload.targetX) : null,
+            targetY: Number.isFinite(Number(payload.targetY)) ? Number(payload.targetY) : null,
+            pose: pose ? { x: pose.x, y: pose.y, rotation: pose.rotation } : null,
+            hit: [],
+        },
+    });
+    return bot;
+}
+
+/** Stamps the activation serial the tick settled on onto the timeline of an ability that triggered this tick. */
+export function stampTimelineSerial(bot, abilityId, serial) {
+    const steps = abilityRecord(bot, abilityId)?.steps;
+    if (steps) patchAbilityRecord(bot, abilityId, { steps: { ...steps, serial } });
+    return bot;
+}
+
+/**
+ * The timeline steps due on this tick, found from the active time the abilities have used up once the tick
+ * ends: each active ability (other than one that triggered this tick) hands over every pending verb whose
+ * `atMs` it has reached, and moves its next-step index past them. An ability that is not active any more (it
+ * was interrupted, or its bot died) has no pending steps. Returns entries { abilityId, from, to, serial,
+ * pose, targetX, targetY, hit } in ascending ability id order.
+ */
+export function dueTimelineSteps(bot, elapsedMs, justActivatedIds = []) {
+    const due = [];
+    const skipped = new Set(justActivatedIds.filter((id) => id != null).map(Number));
+    for (const [rawId, record] of Object.entries(bot.abilityState ?? {})) {
+        const steps = record?.steps;
+        const abilityId = Number(rawId);
+        if (!steps || record.stage !== ABILITY_STAGES.ACTIVE || skipped.has(abilityId)) continue;
+        const verbs = abilityContract(abilityId)?.onTrigger ?? [];
+        const used = Number(steps.activeMs) - Math.max(0, (Number(record.remainingMs) || 0) - elapsedMs);
+        let next = steps.next;
+        while (next < verbs.length && Number(verbs[next].atMs ?? 0) <= used) next += 1;
+        if (next === steps.next) continue;
+        due.push({
+            abilityId,
+            from: steps.next,
+            to: next,
+            serial: steps.serial,
+            pose: steps.pose,
+            targetX: steps.targetX,
+            targetY: steps.targetY,
+            hit: [...steps.hit],
+        });
+        patchAbilityRecord(bot, abilityId, { steps: { ...steps, next } });
+    }
+    return due;
+}
+
 // --- spawn -------------------------------------------------------------------------------------------------
 
 /**
@@ -158,7 +245,7 @@ export function spawnTriggerEntities(bot, payload, { serial, targetX, targetY, a
     const abilityId = payload?.abilityId;
     const created = [];
     for (const verb of payload?.contract?.onTrigger ?? []) {
-        if (verb.do !== VERBS.SPAWN) continue;
+        if (verb.do !== VERBS.SPAWN || !runsAtTrigger(verb)) continue;
         const entities = spawnVerbEntities(bot, abilityId, verb, {
             serial: serial + created.length,
             targetX,
@@ -169,6 +256,34 @@ export function spawnTriggerEntities(bot, payload, { serial, targetX, targetY, a
             height: ARENA_HEIGHT_UNITS,
         });
         created.push(...entities.filter(Boolean));
+    }
+    return created;
+}
+
+/**
+ * The entities the due timeline steps' spawn verbs create, in entry, verb and pattern index order, each with
+ * the activation serial of the cast that made it. A step spawns from the bot's pose on this tick ("current")
+ * or from the pose captured at the trigger ("captured").
+ */
+export function spawnDueEntities(bot, dueSteps, { serial, clampFn }) {
+    const created = [];
+    for (const entry of dueSteps ?? []) {
+        const verbs = abilityContract(entry.abilityId)?.onTrigger ?? [];
+        for (let index = entry.from; index < entry.to; index += 1) {
+            const verb = verbs[index];
+            if (verb.do !== VERBS.SPAWN) continue;
+            const source = verb.pose === "captured" && entry.pose ? { ...bot, ...entry.pose } : bot;
+            const entities = spawnVerbEntities(source, entry.abilityId, verb, {
+                serial: serial + created.length,
+                targetX: entry.targetX ?? undefined,
+                targetY: entry.targetY ?? undefined,
+                activationSerial: entry.serial,
+                clamp: clampFn,
+                width: ARENA_WIDTH_UNITS,
+                height: ARENA_HEIGHT_UNITS,
+            });
+            created.push(...entities.filter(Boolean).map((entity) => ({ entity, serial: entry.serial })));
+        }
     }
     return created;
 }
@@ -252,19 +367,85 @@ export function resolveTriggerVerbsForRoster(bots) {
     for (let attackerIndex = 0; attackerIndex < bots.length; attackerIndex += 1) {
         const attacker = bots[attackerIndex];
         if (!attacker) continue;
+        run.attackerIndex = attackerIndex;
+        // The ability that triggered this tick runs the verbs that belong to its trigger tick.
         const abilityId = ACTION_TO_ABILITY[attacker.triggeredAbility];
         const contract = abilityContract(abilityId);
-        if (!abilityId || !contract) continue;
-        run.attackerIndex = attackerIndex;
-        run.abilityId = abilityId;
-        run.contract = contract;
-        run.hitIds = new Set();
-        setAbilityVisual(attacker, abilityId, contract);
-        for (const verb of contract.onTrigger) {
-            if (VERB_STAGE[verb.do] === "resolveHits") executeVerb(verb, run);
+        if (abilityId && contract) {
+            const delayed = firstDelayedIndex(contract.onTrigger);
+            beginActivationRun(run, abilityId, contract, null, abilityRecord(attacker, abilityId)?.steps?.hit);
+            setAbilityVisual(attacker, abilityId, contract);
+            runTimeline(run, 0, delayed < 0 ? contract.onTrigger.length : delayed);
+            persistActivationHits(attacker, run);
+        }
+        // Then the timeline steps that came due on this tick, ability by ability.
+        for (const entry of attacker.dueSteps ?? []) {
+            const dueContract = abilityContract(entry.abilityId);
+            if (!dueContract) continue;
+            beginActivationRun(run, entry.abilityId, dueContract, entry, entry.hit);
+            runTimeline(run, entry.from, entry.to);
+            persistActivationHits(attacker, run);
         }
     }
     return bots;
+}
+
+/** Points the run at one activation: its ability, the due step it resolves (null at the trigger) and the targets its `activation`-scoped hits already touched. */
+function beginActivationRun(run, abilityId, contract, entry, activationHit) {
+    run.abilityId = abilityId;
+    run.contract = contract;
+    run.entry = entry;
+    run.activationSerial = entry?.serial;
+    run.activationHit = new Set(activationHit ?? []);
+    run.activationHitCount = run.activationHit.size;
+}
+
+/** Writes the targets an activation has hit back to its record when they changed (while the record is still there). */
+function persistActivationHits(attacker, run) {
+    if (run.activationHit.size === run.activationHitCount) return;
+    const record = abilityRecord(attacker, run.abilityId);
+    if (!record?.steps) return;
+    patchAbilityRecord(attacker, run.abilityId, {
+        steps: { ...record.steps, hit: [...run.activationHit].sort((first, second) => first - second) },
+    });
+}
+
+/**
+ * Runs the resolveHits verbs of `onTrigger[from..to)`, one atMs group at a time. The targets a `"step"`-scoped
+ * hit touched are remembered for the group only.
+ */
+function runTimeline(run, from, to) {
+    const verbs = run.contract.onTrigger;
+    let index = from;
+    while (index < to) {
+        const atMs = Number(verbs[index].atMs ?? 0);
+        run.stepHit = new Set();
+        for (; index < to && Number(verbs[index].atMs ?? 0) === atMs; index += 1) {
+            const verb = verbs[index];
+            if (VERB_STAGE[verb.do] !== "resolveHits") continue;
+            if (atMs > 0 && verb.visual) setStepVisual(run, verb);
+            executeVerb(verb, run);
+        }
+    }
+}
+
+/** The visual of a delayed step is emitted from the pose the step fires from, when it fires. */
+function setStepVisual(run, verb) {
+    const attacker = run.bots[run.attackerIndex];
+    const pose = stepPose(run, verb, attacker);
+    attacker.abilityVisual = {
+        ability: run.abilityId,
+        ms: combatVisualDurationMs(run.abilityId, verb.visual),
+        x: pose.x,
+        y: pose.y,
+        rotation: pose.rotation,
+    };
+}
+
+/** The pose a verb fires from: the captured pose of its activation, or the bot where it stands now plus the verb's origin. */
+function stepPose(run, verb, attacker) {
+    if (verb.pose === "captured" && run.entry?.pose) return run.entry.pose;
+    return abilityPose(attacker, verb.origin ?? null, null);
 }
 
 function applyEffectsVerb(verb, run) {
@@ -296,11 +477,14 @@ function hitVerb(verb, run) {
     // The hitbox is fired from the pose the ability triggered at; a teleport must not move it, so the hit tests
     // read a copy taken now.
     const activationAttacker = { ...run.bots[attackerIndex] };
+    // A delayed hit fires from the pose its verb names instead of the capture the trigger made.
+    const geometry = hitGeometry(run, verb, activationAttacker);
+    const once = oncePerTargetSet(run, verb);
     const candidates = [];
     for (let defenderIndex = 0; defenderIndex < run.bots.length; defenderIndex += 1) {
         const defender = run.bots[defenderIndex];
         if (defenderIndex === attackerIndex || !areOpposingTeams(activationAttacker, defender)) continue;
-        if (verb.oncePerTarget && run.hitIds.has(defender?.id)) continue;
+        if (once?.has(defender?.slot)) continue;
         candidates.push({ defenderIndex, defender });
     }
     if (!(verb.targets ?? []).includes(TARGET_KINDS.BOT)) return run;
@@ -309,9 +493,9 @@ function hitVerb(verb, run) {
     if (teleports || verb.nearestOnly) {
         ordered = candidates
             .filter(({ defender }) => Number(defender?.hp ?? 0) > 0
-                && verbHitsTarget(activationAttacker, verb, defender, run.contract.activation))
-            .sort((left, right) => distanceFrom(activationAttacker, left.defender)
-                - distanceFrom(activationAttacker, right.defender));
+                && verbHitsTarget(geometry.attacker, geometry.verb, defender, geometry.activation))
+            .sort((left, right) => distanceFrom(geometry.attacker, left.defender)
+                - distanceFrom(geometry.attacker, right.defender));
         if (verb.nearestOnly) ordered = ordered.slice(0, 1);
     }
 
@@ -321,21 +505,45 @@ function hitVerb(verb, run) {
     for (const { defender: original } of ordered) {
         const skipEffectTypes = teleports && teleportApplied ? new Set([EFFECT_TYPES.TELEPORT]) : null;
         const canApplyTeleport = Number(original?.hp ?? 0) > 0 && !ignoresHostileEffects(original);
-        hitOneDefender(verb, run, run.bots[attackerIndex], original, {
-            hitTestAttacker: activationAttacker,
+        const connected = hitOneDefender(verb, run, run.bots[attackerIndex], original, {
+            geometry,
             effectSource: teleports ? activationAttacker : run.bots[attackerIndex],
             skipEffectTypes,
         });
-        if (verb.oncePerTarget && original?.id != null) run.hitIds.add(original.id);
+        if (connected && once && original?.slot != null) once.add(original.slot);
         if (teleports && !teleportApplied && canApplyTeleport) teleportApplied = true;
     }
     return run;
 }
 
-/** One `hit` verb against one opposing bot: geometry test, then the effects in declaration order. */
-function hitOneDefender(verb, run, attacker, defender, { hitTestAttacker, effectSource, skipEffectTypes }) {
-    if (!verbHitsTarget(hitTestAttacker, verb, defender, run.contract.activation)) return;
-    if (!defender || ignoresHostileEffects(defender)) return;
+/** The targets a hit verb's `oncePerTarget` scope has already used up: the atMs group's, the activation's, or none. */
+function oncePerTargetSet(run, verb) {
+    if (verb.oncePerTarget === "step") return run.stepHit;
+    if (verb.oncePerTarget === "activation") return run.activationHit;
+    return null;
+}
+
+/**
+ * What the hit tests read for one hit verb: the attacker, verb and activation metadata that give the pose it
+ * fires from. A verb with no `pose` fires from the trigger pose (the capture, when the ability has one).
+ */
+function hitGeometry(run, verb, activationAttacker) {
+    const activation = run.contract.activation;
+    if (!verb.pose) return { attacker: activationAttacker, verb, activation };
+    const withoutCapture = { ...activation, capture: undefined };
+    if (verb.pose === "captured" && run.entry?.pose) {
+        return { attacker: { ...activationAttacker, ...run.entry.pose }, verb: { ...verb, origin: undefined }, activation: withoutCapture };
+    }
+    return { attacker: activationAttacker, verb, activation: withoutCapture };
+}
+
+/**
+ * One `hit` verb against one opposing bot: geometry test, then the effects in declaration order. Returns
+ * whether the verb connected (the target was in the hitbox and could be affected).
+ */
+function hitOneDefender(verb, run, attacker, defender, { geometry, effectSource, skipEffectTypes }) {
+    if (!verbHitsTarget(geometry.attacker, geometry.verb, defender, geometry.activation)) return false;
+    if (!defender || ignoresHostileEffects(defender)) return false;
 
     const stats = phaseStatsFor(verb);
     // A teleport lands next to where the defender stood before this ability's other effects moved it.
@@ -366,7 +574,8 @@ function hitOneDefender(verb, run, attacker, defender, { hitTestAttacker, effect
             }
         }
     }
-    if (landedOnEnemy) recordAbilityHit(attacker, run.abilityId);
+    if (landedOnEnemy) recordAbilityHit(attacker, run.abilityId, run.activationSerial);
+    return true;
 }
 
 // --- entity events -----------------------------------------------------------------------------------------

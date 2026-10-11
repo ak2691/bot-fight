@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnPlacements } from "../entities/EntityFactory.js";
-import { ABILITY_STAGES, abilityRecord } from "../../gameconfig/AbilityState.js";
 import { interruptCurrentAbility } from "../../gameconfig/AbilityResourceSystem.js";
 import { GAMEPLAY_DATA } from "../../gameconfig/gameplayData.js";
 import { withTestAbilities } from "../contracts/AbilityContracts.js";
@@ -40,12 +39,11 @@ const entity = (runtimeType, phases, extra = {}) => ({
     lifetime: { timerMode: "none", duration: null, add: null },
     initialState: { armed: true, damageMultiplierFromOwner: false },
     state: null,
-    bindToCast: false,
     phases,
     ...extra,
 });
 
-const spawn = (name, pattern = null) => ({ do: "spawn", entity: name, pattern });
+const spawn = (name, pattern = null) => ({ do: "spawn", atMs: null, pose: null, entity: name, pattern });
 const event = (verbs) => ({
     targets: ["BOT"],
     schedule: { mode: "once", intervalMs: null, count: null, startImmediately: true },
@@ -75,7 +73,6 @@ function cast(bot, abilityId) {
     throw new Error("the ability never triggered");
 }
 
-const idle = (bot) => applyBotAction(bot, { dx: 0, dy: 0 }, 100);
 const world = (entities, bots) => ({ entities, bots, stepMs: 100, width: 1000, height: 800 });
 const headingOf = (shape) => vectorToCompassDegrees(shape.velocityX, shape.velocityY);
 
@@ -107,16 +104,13 @@ test("spawn patterns: one entity ahead, a ring, a line", () => {
     assert.equal(spawnPlacements({ type: "ring", count: 12 }).length, 12);
 });
 
-test("a followOwner entity bound to the cast ends when the cast is interrupted", () => {
+test("a followOwner entity follows the owner's pose", () => {
     const beam = entity("testBeam", [phase("active", { movement: { ...MOVEMENT_STATIC, mode: "followOwner", unitsPerTick: null } })], {
-        bindToCast: true,
         spawn: { offset: { x: 0, y: 50 }, rotation: 0, rotationSpace: "owner" },
     });
     withTestAbilities([testAbility(5, [spawn("testBeam")], { testBeam: beam })], () => {
         const triggered = cast(caster(5), 5);
         const [spawned] = triggered.abilitySpawn;
-        assert.equal(spawned.bindToCast, true);
-        assert.equal(abilityRecord(triggered, 5).stage, ABILITY_STAGES.ACTIVE);
 
         // Moving and turning the owner carries the entity: it stays 50 units ahead of it.
         const moved = { ...triggered, x: 500, y: 200, rotation: 180 };
@@ -126,32 +120,10 @@ test("a followOwner entity bound to the cast ends when the cast is interrupted",
         assert.ok(Math.abs(following.entities[0].x - (500 + ahead.x * 50)) < 0.000001);
         assert.ok(Math.abs(following.entities[0].y - (200 + ahead.y * 50)) < 0.000001);
         assert.equal(following.entities[0].rotation, 180);
-
-        // An interrupt ends the active stage, and the entity goes with it.
-        const interrupted = interruptCurrentAbility(moved);
-        assert.notEqual(abilityRecord(interrupted, 5).stage, ABILITY_STAGES.ACTIVE);
-        const removed = tickAbilityEntityWorld(world(following.entities, [interrupted]));
-        assert.equal(removed.entities.length, 0);
     });
 });
 
-test("a bound entity also ends when the active stage runs out", () => {
-    const beam = entity("testBeam", [phase("active", { movement: { ...MOVEMENT_STATIC, mode: "followOwner", unitsPerTick: null } })], { bindToCast: true });
-    withTestAbilities([testAbility(5, [spawn("testBeam")], { testBeam: beam })], () => {
-        let bot = cast(caster(5), 5);
-        let entities = bot.abilitySpawn;
-        let ticks = 0;
-        while (entities.length > 0 && ticks < 40) {
-            bot = idle(bot);
-            entities = tickAbilityEntityWorld(world(entities, [bot])).entities;
-            ticks += 1;
-        }
-        assert.ok(ticks > 0 && ticks < 40, `the entity lasted ${ticks} ticks`);
-        assert.notEqual(abilityRecord(bot, 5).stage, ABILITY_STAGES.ACTIVE);
-    });
-});
-
-test("an entity that is not bound outlives an interrupted cast", () => {
+test("an entity outlives an interrupted cast", () => {
     const orb = entity("testOrb", [phase("active")]);
     withTestAbilities([testAbility(5, [spawn("testOrb")], { testOrb: orb })], () => {
         const triggered = cast(caster(5), 5);

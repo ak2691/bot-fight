@@ -24,6 +24,9 @@ document is stale.
 
 - [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md): the six-round
   format design and its rationale.
+- [`FIXED_KIT_FORMAT.md`](FIXED_KIT_FORMAT.md): 2026-10-10 proposal amending
+  it: fixed kits (weapon + one ability per tier), alternating unlock and gap
+  rounds, saved brains and snippets. Not built.
 - [`TIMED_ROUNDS_IMPLEMENTATION_PLAN.md`](TIMED_ROUNDS_IMPLEMENTATION_PLAN.md):
   locked decisions, remaining work (P5, P6, S7) and their Sonnet prompts.
 - [`MATCH_TIMING.md`](MATCH_TIMING.md): server deadlines, client clock
@@ -35,6 +38,12 @@ document is stale.
   authorization, retention and the admin review contract.
 - [`LEGACY_PATH_DECISIONS.md`](LEGACY_PATH_DECISIONS.md): evidence required
   before removing legacy party persistence or replay recorders.
+
+## Explorations
+
+- [`realtime-mode/`](realtime-mode/README.md): 2026-10-10 exploration of a
+  real-time mode ("Hotfix") in which players patch their crew's brain during
+  the match. Nothing decided or built.
 
 ## Maintaining docs
 

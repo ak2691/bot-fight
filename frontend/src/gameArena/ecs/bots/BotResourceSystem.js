@@ -54,7 +54,7 @@ function advanceActiveOnly(record, elapsed, skipped) {
 
 /** The record after an active/cooldown stage: a cooldown of `cooldownMs` or ready. */
 function recovery(record, cooldownMs) {
-    const { cooldownMs: _reserved, target: _target, ...kept } = record;
+    const { cooldownMs: _reserved, target: _target, steps: _steps, ...kept } = record;
     return cooldownMs > 0
         ? { ...kept, stage: ABILITY_STAGES.COOLDOWN, remainingMs: cooldownMs }
         : { ...kept, stage: ABILITY_STAGES.READY, remainingMs: 0 };

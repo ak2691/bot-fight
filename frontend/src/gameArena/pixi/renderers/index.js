@@ -18,6 +18,7 @@ import railShot from "./railShot.js";
 import reactiveArmor from "./reactiveArmor.js";
 import repulsorBurst from "./repulsorBurst.js";
 import smash from "./smash.js";
+import sprintTrail from "./sprintTrail.js";
 import stun from "./stun.js";
 import temporalRewindZone from "./temporalRewindZone.js";
 import thrust from "./thrust.js";
@@ -53,6 +54,7 @@ export const BOT_ABILITY_RENDERERS = Object.freeze({
     reactiveArmor,
     repulsorBurst,
     smash,
+    sprintTrail,
     stun,
     temporalRewindZone,
     thrust,

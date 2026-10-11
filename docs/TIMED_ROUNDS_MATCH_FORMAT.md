@@ -292,14 +292,16 @@ The chain is the visible boundary between the two. Actions are never attached to
 ### Chains
 
 - A chain is defined once, with a name, and started by a **Run chain** action from any branch (reusable, like a function). Renaming changes the label, not the ID.
-- **One chain runs at a time.** If several roots run a chain on the same tick, the highest-priority one wins. Run chain has **If a chain is running: Skip (default) | Replace**. Replace ends the running chain and starts this one in the same tick. There is no separate Cancel chain action: Replace is how a root takes over.
-- The running chain is **the priority-0 root for the tick it acts**: whatever action its current step issues goes first in that category (movement, rotation, ability, cancel). A step that issues nothing claims nothing, and roots fill every category it didn't use. Nothing is reserved across ticks.
+- **One chain runs at a time.** If several roots run a chain on the same tick, the highest-priority one wins. A Run chain root while a chain is already running does nothing; the running chain is never replaced.
+- **Starting.** On the tick a chain would start, its instant steps (variable operations, If / Else if) run as usual until the first step that issues an action. That step competes in normal root priority order: it starts only if no higher-priority root (left of the root holding the Run chain) has claimed its category this tick, and the action is executable now (the same check a root action uses, including target resolution). If either fails, the chain does not start: its variable writes from that tick are discarded and the stack stays empty, so roots behave as if the Run chain wasn't there. A chain whose first step is a Wait claims nothing and starts normally.
+- **Once started**, the running chain is **the priority-0 root for the tick it acts**: whatever action its current step issues goes first in that category (movement, rotation, ability, dash, cancel), ahead of every root. A step that issues nothing claims nothing, and roots fill every category it didn't use. Nothing is reserved across ticks.
+- **A step that can't act ends the chain.** A Use ability / Dash step that isn't executable when it is reached ends the whole chain (the stack is emptied, callers included) instead of advancing. Walk / Rotate keep trying until their time or condition ends them. Wait and If are unchanged: they still advance in the same tick when their condition holds.
 
 ### Steps
 
 | Step | What it does | When the chain moves on |
 |---|---|---|
-| Use ability (target and aim as in the normal action) | Starts the ability | **Continue: When it ends** (default): once the ability is no longer winding up or active, for any reason: finished, cancelled by any Cancel Wind-up, or silenced. **Right away:** on the tick it starts. If the ability can't start when reached, skip it and process the next step next tick |
+| Use ability (target and aim as in the normal action) | Starts the ability | **Continue: When it ends** (default): once the ability is no longer winding up or active, for any reason: finished, cancelled by any Cancel Wind-up, or silenced. **Right away:** on the tick it starts. If the ability can't start when reached, the chain ends (see above) |
 | Walk / Rotate (normal settings, including sprint and aim) | Issues it every tick | After N s, or **until** a condition (max N s) |
 | Wait | Nothing | After N s, or **until** a condition (max N s), e.g. "Wait until Thrust Ready, max 1 s" |
 | If / Else if | Checks adjacent alternatives once | Runs the first matching nested body, then continues after the group. Else if must immediately follow If or Else if. No match or an empty body continues |
@@ -310,10 +312,10 @@ The chain is the visible boundary between the two. Actions are never attached to
 | Exit loop / End | Leave the nearest Repeat / return from the current chain to its caller | Immediately |
 
 - **Timing:** all durations are whole 100 ms ticks. "For N s" steps occupy exactly N s of ticks. "Until" steps are checked at the start of each tick, and the chain moves on in the same tick when they're satisfied. The chain issues at most one action per category per tick: a step that needs a category the chain already used this tick waits for the next tick.
-- **Wait avoids skipping:** put Wait until Ability Ready before Use to give it time to become usable. A bounded Wait still moves on at its maximum, so the Use can still skip if unavailable then.
+- **Wait avoids ending:** put Wait until Ability Ready before Use to give it time to become usable (no delay if it already is: the Use fires the same tick). A bounded Wait still moves on at its maximum, so the chain can still end if the ability is unavailable then.
 - **Deliberate cancels are not failures.** Feints are plain steps: Use Cleave (right away), Wait 0.3 s, Cancel Wind-up, Use Cleave.
 - **Chains call chains** like functions: no cycles, at most 3 levels deep, still one running chain. End returns from the current chain to its caller, including from inside a Repeat. Exit loop leaves only the nearest Repeat.
-- **What ends a chain:** reaching the end, End at the top level, purposeful Replace, stun, death, or a round boundary.
+- **What ends a chain:** reaching the end, End at the top level, a Use ability / Dash step that can't act, stun, death, or a round boundary.
 - **Variables:** chains use the brain's custom variables (no locals or parameters yet). Chain conditions read the world at the start of the tick and see the chain's own earlier writes in that tick.
 
 ### Time Since Hit
@@ -323,7 +325,7 @@ A new ability value, **Time Since Hit (ability)**: seconds since that ability (o
 ### Tick order
 
 1. All roots are checked against the start-of-tick state.
-2. Chain control from roots: the highest-priority Run chain (Skip or Replace).
+2. Chain control from roots: the highest-priority Run chain is pushed if no chain is running (it starts only if its first action step passes the starting rules above).
 3. The running chain continues from its saved step (instant steps run until a step issues an action or waits).
 4. Roots fill the categories the chain didn't use, by priority. Variable writes apply, the chain's first.
 5. The simulation steps.

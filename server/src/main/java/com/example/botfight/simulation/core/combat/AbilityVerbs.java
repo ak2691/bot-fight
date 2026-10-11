@@ -69,6 +69,12 @@ public final class AbilityVerbs {
         }
     }
 
+    /** The index just past the verbs that run on the trigger tick (all of them when none is delayed). */
+    public static int triggerEnd(List<Verb> verbs) {
+        int delayed = com.example.botfight.simulation.ecs.contracts.AbilityContracts.firstDelayedIndex(verbs);
+        return delayed < 0 ? verbs.size() : delayed;
+    }
+
     /** Runs the trigger verbs that belong to {@code stage}, in order. */
     public static void run(List<Verb> verbs, Stage stage, Host host) {
         for (Verb verb : verbs) {

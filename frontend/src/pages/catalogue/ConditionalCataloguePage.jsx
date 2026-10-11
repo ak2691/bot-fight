@@ -22,7 +22,7 @@ const DESCRIPTIONS = Object.freeze({
     "selectable.y": "The selected entity's vertical position.",
     "selectable.alive": "True when the selected entity exists and has HP remaining.",
     "selectable.absoluteBearing": "The arena heading from From toward To, as a signed degree measurement. From must have the facing identity.",
-    "selectable.movementDirection": "The selected entity's direction of travel, or 0 when it has no movement direction.",
+    "selectable.movementDirection": "Which way an entity is moving. Heading is its arena direction of travel, or 0 when it has none. Toward a target is the angle between its movement last tick and the direction to a target, from 0 to 180 degrees: 0 means straight toward it, 180 straight away, and 90 sideways, not moving, or on top of it. Pair that with Is Moving.",
     "selectable.speed": "The selected entity's movement speed in arena units per tick.",
     "selectable.approachAngle": "The angle between From's movement last tick and the direction from it to To, from 0 to 180 degrees. 0 means it is moving straight toward the target, 180 means it is moving straight away, and 90 means it moved sideways, did not move, or is on top of the target. Pair it with Is Moving.",
     "selectable.moving": "True when the selected entity moved during the last tick. Walking, dashing and being knocked back all count.",

@@ -10,6 +10,7 @@ import { createFight } from "../modelPayloads/arenaPreviewSimulation.js";
 import { normalizeAbilityStrategyConfiguration } from "../botlogic/code/BotCode.js";
 import { buildInitialArenaShapes, resetBotShape } from "../modelPayloads/arenaShapes.js";
 import { isBotState } from "../modelPayloads/botState.js";
+import { withTestAbilities } from "../ecs/contracts/AbilityContracts.js";
 
 /**
  * Runs the shared golden scenarios (shared/gameplay-tests/goldenScenarios.json) through the browser tick
@@ -103,7 +104,15 @@ export function stateHash(shapes) {
     return fnv1a(stateLines(shapes).join("\n"));
 }
 
-export function runScenario(scenario, { log = true } = {}) {
+/**
+ * Runs one scenario. A scenario may carry `testAbilities`: abilities written in the abilities.json schema that
+ * replace the shipped ones of the same id for this run (the server swaps them in the same way).
+ */
+export function runScenario(scenario, options = {}) {
+    return withTestAbilities(scenario.testAbilities ?? [], () => runScenarioFight(scenario, options));
+}
+
+function runScenarioFight(scenario, { log = true } = {}) {
     const combatLog = log ? createCombatLog() : null;
     const hashes = [];
     const states = [];

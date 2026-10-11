@@ -53,10 +53,38 @@ const settingsByType = {
         windup: { color: 0xf59e0b, alphaStart: 0.25, alphaEnd: 0.6, outlineWidth: 3 },
         sizingHitboxAbilityId: 36, hitboxSizeScale: 1.92, tint: 0xfde68a,
     },
+    // Smash (approved "cracks" preview, docs/visual-previews/smash-thrust.html). Lengths are arena
+    // units (preview units / 1.25); `impactFraction` places the impact point along the hitbox.
     smash: {
         visualPriority: 22,
-        windup: { color: 0xe2e8f0, alphaStart: 0.15, alphaEnd: 0.75, outlineWidth: 3 },
-        active: { color: 0xe2e8f0, fillAlpha: 0.5, impactColor: 0xffffff, impactWidth: 6, dustColor: 0x94a3b8, dustPuffs: 3 },
+        impactFraction: 0.72,
+        windup: {
+            fill: { color: 0xe2e8f0, alphaStart: 0.04, alphaEnd: 0.14 },
+            outline: { color: 0xe2e8f0, alphaStart: 0.25, alphaEnd: 0.6, width: 1.6, dashUnits: 4.8, gapUnits: 4 },
+            shadow: { color: 0x000000, alphaStart: 0.15, alphaEnd: 0.55, radiusAlongStart: 14, radiusAlongEnd: 28, radiusAcrossStart: 18, radiusAcrossEnd: 34 },
+        },
+        active: {
+            flash: { color: 0xffffff, alpha: 0.45, falloff: 3 },
+            burst: { color: 0xffecc8, alpha: 0.6, falloff: 2, radiusStart: 10, radiusGrow: 22 },
+            ring: { color: 0xffffff, radiusStart: 18, radiusGrow: 70, alongScale: 0.8, widthMax: 5, widthMin: 1 },
+            cracks: {
+                seed: 7, count: 7, segments: 4, lengthMin: 9, lengthSpan: 8, growFraction: 0.12, alpha: 0.8,
+                color: 0x0f172a, width: 2.4, highlightColor: 0x94a3b8, highlightAlphaScale: 0.6, highlightWidth: 0.8, highlightOffset: 0.8,
+            },
+            debris: { seed: 19, count: 9, color: 0x94a3b8, spread: 2.4, reachMin: 70, reachSpan: 110, sizeMin: 3, sizeSpan: 4, spin: 6 },
+            chevrons: { color: 0xfde68a, count: 3, offset: 12, spacing: 14, travel: 30, halfHeight: 10, depth: 8, width: 2.4, fadePerChevron: 0.25 },
+        },
+        linger: {
+            ms: 700, crackAlpha: 0.8,
+            dust: { color: 0x94a3b8, count: 4, alpha: 0.3, spacing: 14, offsetAcross: 10, riseUnitsPerMs: 0.008, radiusStart: 9, radiusGrowPerMs: 0.012 },
+        },
+    },
+    // Sprint trail (approved option C, docs/visual-previews/sprint-trail.html). Preview units were
+    // arena units x 0.42, so the sizes here are the preview sizes / 0.42; offsets are in bot radii.
+    sprintTrail: {
+        spawnIntervalMs: 50, maxCatchUp: 3, seed: 4129,
+        line: { color: 0xe2e8f0, alpha: 0.8, width: 3.6, lifeMs: 220, driftUnits: 33, lengthMin: 19, lengthSpan: 29, behindRadii: 1, sideRadii: 1.1 },
+        dust: { color: 0x94a3b8, alpha: 0.45, chance: 0.35, lifeMs: 500, radiusStart: 7, radiusGrow: 14, behindRadii: 0.8, sideRadii: 0.5 },
     },
     // Not an activation visual: the pulse follows the bot's rewind timer fields.
     temporalRewindZone: {

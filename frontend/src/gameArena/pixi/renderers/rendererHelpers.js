@@ -198,3 +198,96 @@ export function drawGuardFlash(ctx) {
         rotation: angle + Math.PI, alpha: 1 - progress, tint: presentation.tint, width: radius * 2, height: radius * 2,
     });
 }
+
+/** Small seeded generator (Lehmer) so effect shapes are identical every run (renderers take no unseeded randomness). */
+export function seededRandom(seed) {
+    let state = Math.max(1, Math.floor(Number(seed) || 1)) % 2147483647 || 1;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+}
+
+/** Polygon points of an ellipse whose `rx` axis points along `angle`, centred at (cx, cy). */
+export function ellipsePoints(angle, cx, cy, rx, ry, steps = 24) {
+    const points = [];
+    for (let step = 0; step < steps; step += 1) {
+        const theta = (step / steps) * Math.PI * 2;
+        const [x, y] = rotatePoint(angle, Math.cos(theta) * rx, Math.sin(theta) * ry);
+        points.push(cx + x, cy + y);
+    }
+    return points;
+}
+
+/** Axis-aligned-then-rotated square of side `size` centred at (cx, cy). */
+export function squarePoints(angle, cx, cy, size) {
+    const half = size / 2;
+    return [[-half, -half], [half, -half], [half, half], [-half, half]].flatMap(([x, y]) => {
+        const [rx, ry] = rotatePoint(angle, x, y);
+        return [cx + rx, cy + ry];
+    });
+}
+
+/**
+ * Smash cracks in the hitbox frame (x forward, y sideways) relative to the impact point:
+ * each crack is a polyline of `segments` steps, fanned around the point, from a fixed seed.
+ */
+export function smashCrackPaths({ seed, count, segments, lengthMin, lengthSpan }) {
+    const random = seededRandom(seed);
+    return Array.from({ length: count }, (_, index) => {
+        let heading = index * 2 * Math.PI / count + random() * 0.5;
+        const path = [[0, 0]];
+        let x = 0;
+        let y = 0;
+        for (let segment = 0; segment < segments; segment += 1) {
+            heading += (random() - 0.5) * 0.8;
+            const length = lengthMin + random() * lengthSpan;
+            x += Math.cos(heading) * length;
+            y += Math.sin(heading) * length;
+            path.push([x, y]);
+        }
+        return path;
+    });
+}
+
+/** Smash debris in the hitbox frame: launch angle (mostly forward), reach, size and spin, from a fixed seed. */
+export function smashDebrisPieces({ seed, count, spread, reachMin, reachSpan, sizeMin, sizeSpan }) {
+    const random = seededRandom(seed);
+    return Array.from({ length: count }, () => ({
+        angle: (random() - 0.5) * spread,
+        reach: reachMin + random() * reachSpan,
+        size: sizeMin + random() * sizeSpan,
+        spin: random() * 6,
+    }));
+}
+
+/**
+ * Dash segments `[x0, y0, x1, y1]` around the outline of a rectangle (x along 0..length, y across
+ * -width/2..width/2), with the dash pattern running unbroken through the corners. Pixi has no dashed strokes.
+ */
+export function dashedRectSegments(length, width, dashUnits, gapUnits) {
+    const half = width / 2;
+    const corners = [[0, -half], [length, -half], [length, half], [0, half], [0, -half]];
+    const period = dashUnits + gapUnits;
+    if (!(dashUnits > 0) || !(period > 0)) return [];
+    const segments = [];
+    let phase = 0;
+    for (let edge = 0; edge < 4; edge += 1) {
+        const [ax, ay] = corners[edge];
+        const [bx, by] = corners[edge + 1];
+        const edgeLength = Math.hypot(bx - ax, by - ay);
+        if (edgeLength <= 0) continue;
+        const dx = (bx - ax) / edgeLength;
+        const dy = (by - ay) / edgeLength;
+        let position = 0;
+        while (position < edgeLength - 1e-9) {
+            const dashing = phase < dashUnits;
+            const step = Math.min(edgeLength - position, dashing ? dashUnits - phase : period - phase);
+            if (dashing) segments.push([ax + dx * position, ay + dy * position, ax + dx * (position + step), ay + dy * (position + step)]);
+            position += step;
+            phase = (phase + step) % period;
+            if (period - phase < 1e-9) phase = 0;
+        }
+    }
+    return segments;
+}

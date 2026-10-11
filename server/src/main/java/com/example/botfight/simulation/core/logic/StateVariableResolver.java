@@ -274,13 +274,6 @@ final class StateVariableResolver {
         return 0.0;
     }
 
-    private static double movementDirection(Entity selectable) {
-        Velocity velocity = TargetingService.entityVelocity(selectable);
-        if (velocity == null || Math.hypot(velocity.x(), velocity.y()) <= 0.001) return Double.NaN;
-        double bearing = normalizeDegrees(Math.toDegrees(Math.atan2(velocity.x(), -velocity.y())));
-        return bearing > 180 ? bearing - 360 : bearing;
-    }
-
     private static final double MOVEMENT_EPSILON = 0.001;
 
     private record Movement(double dx, double dy, boolean moved) {}
@@ -320,6 +313,14 @@ final class StateVariableResolver {
         double cosine = (movement.dx() * toX + movement.dy() * toY)
                 / (Math.hypot(movement.dx(), movement.dy()) * toLength);
         return Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, cosine))));
+    }
+
+    /** Heading of the last-tick displacement (walking, dash, knockback, pulls); NaN when the entity did not move. */
+    private static double movementDirection(Entity selectable) {
+        Movement movement = lastTickMovement(selectable);
+        if (!movement.moved()) return Double.NaN;
+        double bearing = normalizeDegrees(Math.toDegrees(Math.atan2(movement.dx(), -movement.dy())));
+        return bearing > 180 ? bearing - 360 : bearing;
     }
 
     private static double velocityMagnitude(Entity selectable) {
@@ -362,7 +363,8 @@ final class StateVariableResolver {
     }
 
     private static StateValue number(double value) {
-        return StateValue.number(BotLogicContracts.truncateToNumberPrecision(value));
+        // NaN means "no value" (Move Direction while not moving); truncation would turn it into 0.
+        return StateValue.number(Double.isNaN(value) ? value : BotLogicContracts.truncateToNumberPrecision(value));
     }
 
     private static StateValue bool(boolean value) {

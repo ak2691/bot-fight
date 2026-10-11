@@ -453,6 +453,9 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const cachedEffects = new Map();
         const graphics = new Graphics();
         graphics.eventMode = "none";
+        // Drawn beneath the body sprite: sprint trail, smash cracks.
+        const underGraphics = new Graphics();
+        underGraphics.eventMode = "none";
         const rotationHandle = new Graphics();
         rotationHandle.eventMode = "static";
         rotationHandle.cursor = "default";
@@ -461,7 +464,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         caption.resolution = Math.min(3, Math.max(2, Number(app.renderer.resolution) || 1));
         caption.anchor.set(0.5);
         caption.eventMode = "none";
-        container.addChild(baseSprite, graphics, rotationHandle, caption);
+        container.addChild(underGraphics, baseSprite, graphics, rotationHandle, caption);
         container.eventMode = isBotState(shape) ? "static" : "none";
         if (visualInstance) container.eventMode = "none";
         container.cursor = visualInstance ? "default" : canEditBot(shape) ? "grab" : "default";
@@ -471,6 +474,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             baseSprite,
             cachedEffects,
             graphics,
+            underGraphics,
             rotationHandle,
             caption,
             shape: initialState.shape,
@@ -1063,7 +1067,7 @@ function drawArena(graphics) {
 }
 
 function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false, rotationDistance = null, otherBots = [], layers = null) {
-    const { shape, baseSprite, graphics, rotationHandle, caption } = view;
+    const { shape, baseSprite, graphics, underGraphics, rotationHandle, caption } = view;
     const colorRole = botColorRole(shape);
     const tone = colorRole === "red" ? COLORS.opponent : COLORS.player;
     const radius = Number(shape.size ?? BOT_SIZE) / 2;
@@ -1071,10 +1075,11 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
     const hitFlash = Number(shape.hitFlashMs ?? 0) > 0;
     hideCachedEffects(view);
     graphics.clear();
+    underGraphics.clear();
 
     const dead = Number(shape.hp ?? 0) <= 0;
     const rendererContext = {
-        pass: "body", shape, graphics, position, now, arenaSprites, radius, rotation, dead, otherBots, layers, kit: rendererKit,
+        pass: "body", shape, graphics, underGraphics, position, now, arenaSprites, radius, rotation, dead, otherBots, layers, kit: rendererKit,
         activeAbilityId: activeBotVisual(shape),
     };
     baseSprite.visible = true;

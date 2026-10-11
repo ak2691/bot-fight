@@ -115,7 +115,7 @@ test("trigger hit verbs fire from the owner's center and hit once", () => {
     assert.equal(hit.origin.rotation, 0);
     assert.equal(hit.origin.rotationSpace, "owner");
     assert.equal(hit.nearestOnly, false);
-    assert.equal(hit.oncePerTarget, false);
+    assert.equal(hit.oncePerTarget, undefined, "no restriction (null in the data)");
     assert.equal(ENTITY_CONTRACTS[1], undefined, "Slash spawns nothing");
 });
 

@@ -12,7 +12,7 @@ import { NODE_POSITIONS_FIELD, normalizeNodePositions } from "./nodePositions.js
 export function normalizeConfiguration(configuration, operations) {
     const coordinateVersion = coordinateVersionFor(configuration);
     const customVariables = operations.normalizeCustomVariables(operations.customVariablesWithReferencedActions(configuration));
-    const remaining = { actions: MAX_LOGIC_BLOCKS, conditions: MAX_TOTAL_CONDITIONS };
+    const remaining = { actions: MAX_LOGIC_BLOCKS, conditions: MAX_TOTAL_CONDITIONS, links: new Set() };
     const sourceRoots = Array.isArray(configuration?.roots) ? configuration.roots : operations.defaultConfiguration().roots;
     const boundedRoots = sourceRoots.slice(0, MAX_ROOT_NODES);
     const priorities = uniquePrioritiesForNodes(boundedRoots);

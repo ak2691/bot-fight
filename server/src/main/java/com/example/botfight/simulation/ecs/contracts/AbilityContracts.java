@@ -298,28 +298,73 @@ public final class AbilityContracts {
      * order. {@code aim} {@code "seekTarget"} limits an entity's shot to the enemy it is chasing.
      */
     public record HitVerb(Hitbox hitbox, List<TargetKind> targets, List<Effect> effects,
-                          boolean nearestOnly, boolean oncePerTarget, String aim, Spawn origin,
-                          String knockbackDirection, String pullDirection, Visual visual) implements Verb {
+                          boolean nearestOnly, String oncePerTarget, String aim, Spawn origin,
+                          String knockbackDirection, String pullDirection, Visual visual,
+                          int atMs, String pose) implements Verb {
         public HitVerb {
             targets = targets == null ? List.of() : List.copyOf(targets);
             effects = effects == null ? List.of() : List.copyOf(effects);
         }
 
         @Override public String name() { return "hit"; }
+
+        public HitVerb(Hitbox hitbox, List<TargetKind> targets, List<Effect> effects,
+                       boolean nearestOnly, String oncePerTarget, String aim, Spawn origin,
+                       String knockbackDirection, String pullDirection, Visual visual) {
+            this(hitbox, targets, effects, nearestOnly, oncePerTarget, aim, origin, knockbackDirection,
+                    pullDirection, visual, 0, null);
+        }
     }
 
     /** Applies {@code effects} to the owner ({@code ownerTarget}) or to the event's targets. */
     public record ApplyEffectsVerb(boolean ownerTarget, List<Effect> effects, String knockbackDirection,
-                                   String pullDirection, Visual visual) implements Verb {
+                                   String pullDirection, Visual visual, int atMs, String pose) implements Verb {
         public ApplyEffectsVerb {
             effects = effects == null ? List.of() : List.copyOf(effects);
         }
 
         @Override public String name() { return "applyEffects"; }
+
+        public ApplyEffectsVerb(boolean ownerTarget, List<Effect> effects, String knockbackDirection,
+                                String pullDirection, Visual visual) {
+            this(ownerTarget, effects, knockbackDirection, pullDirection, visual, 0, null);
+        }
     }
 
-    public record SpawnVerb(String entity, SpawnPattern pattern) implements Verb {
+    public record SpawnVerb(String entity, SpawnPattern pattern, int atMs, String pose) implements Verb {
+        public SpawnVerb(String entity, SpawnPattern pattern) {
+            this(entity, pattern, 0, null);
+        }
+
         @Override public String name() { return "spawn"; }
+    }
+
+    /** The tick offset a trigger verb runs at: 0 for the trigger tick, else the delayed step's {@code atMs}. */
+    public static int atMs(Verb verb) {
+        return switch (verb) {
+            case HitVerb hit -> hit.atMs();
+            case ApplyEffectsVerb apply -> apply.atMs();
+            case SpawnVerb spawn -> spawn.atMs();
+            default -> 0;
+        };
+    }
+
+    /** The pose a delayed trigger verb fires from ({@code "current"} or {@code "captured"}), or null. */
+    public static String poseOf(Verb verb) {
+        return switch (verb) {
+            case HitVerb hit -> hit.pose();
+            case ApplyEffectsVerb apply -> apply.pose();
+            case SpawnVerb spawn -> spawn.pose();
+            default -> null;
+        };
+    }
+
+    /** Index of the first delayed trigger verb (atMs above 0), or -1 when every verb runs at the trigger. */
+    public static int firstDelayedIndex(List<Verb> verbs) {
+        for (int index = 0; index < verbs.size(); index += 1) {
+            if (atMs(verbs.get(index)) > 0) return index;
+        }
+        return -1;
     }
 
     /** Moves the owner (a dash): {@code distance} units, {@code unitsPerTick} each tick. */
@@ -450,7 +495,6 @@ public final class AbilityContracts {
             SelectableOwner selectableOwner,
             Lifetime lifetime,
             InitialState initialState,
-            boolean bindToCast,
             List<AbilityPhase> phases) {
         public EntityContract {
             category = category == null ? Category.ZONE : category;

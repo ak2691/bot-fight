@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
+import { lingerFade, smashCrackGrowth, sprintSpawnPlan, sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
 import { ABILITY_CONTRACTS, eventVerbs } from "../ecs/contracts/AbilityContracts.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
 import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
@@ -733,6 +733,28 @@ test("Cleave and Smash alpha ramps", () => {
     assert.ok(Math.abs(weaponWindupAlpha(0.5, 0.25, 0.6) - 0.425) < 1e-9);
     assert.equal(smashFlashAlpha(0, 0.5), 0.5);
     assert.equal(smashFlashAlpha(1, 0.5), 0);
+});
+
+test("Smash cracks grow within the first 12% of the active phase and linger fades on the presentation clock", () => {
+    assert.equal(smashCrackGrowth(0, 0.12), 0);
+    assert.ok(Math.abs(smashCrackGrowth(0.06, 0.12) - 0.5) < 1e-9);
+    assert.equal(smashCrackGrowth(0.12, 0.12), 1);
+    assert.equal(smashCrackGrowth(0.9, 0.12), 1);
+    assert.equal(smashCrackGrowth(0.5, 0), 1);
+    assert.equal(lingerFade(0, 700), 1);
+    assert.equal(lingerFade(350, 700), 0.5);
+    assert.equal(lingerFade(700, 700), 0);
+    assert.equal(lingerFade(5000, 700), 0);
+    assert.equal(lingerFade(10, 0), 0);
+});
+
+test("sprint trail spawns on a fixed interval, catches up briefly, and never bursts after a gap or rewind", () => {
+    assert.deepEqual(sprintSpawnPlan(null, 1000, 50), { count: 1, nextSpawnAt: 1050 });
+    assert.deepEqual(sprintSpawnPlan(1050, 1020, 50), { count: 0, nextSpawnAt: 1050 });
+    assert.deepEqual(sprintSpawnPlan(1050, 1050, 50), { count: 1, nextSpawnAt: 1100 });
+    assert.deepEqual(sprintSpawnPlan(1050, 1160, 50), { count: 3, nextSpawnAt: 1200 });
+    assert.deepEqual(sprintSpawnPlan(1050, 3000, 50), { count: 1, nextSpawnAt: 3050 }, "a long gap spawns one particle");
+    assert.deepEqual(sprintSpawnPlan(5000, 1000, 50), { count: 1, nextSpawnAt: 1050 }, "a rewound clock restarts the schedule");
 });
 
 test("weapon active visuals are selected from the active stage and match replay state", () => {

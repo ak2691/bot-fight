@@ -9,6 +9,7 @@ import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.AbilityBaseRange;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.bots.BotLogicContracts;
+import com.example.botfight.simulation.bots.LinkedActions;
 import com.example.botfight.simulation.gameconfig.AbilityRegistry;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
@@ -531,6 +532,8 @@ public class BotSubmissionValidationService {
         }
         validateOrphans(errors, orphans, loadoutSpec, customVariableTypes, branchCount, conditionCount,
                 requireExecutableActions, coordinateBounds, brainVersion);
+        // Identical copies of a linked action cost once, the same rule the editor counts by.
+        if (requireExecutableActions) branchCount[0] -= LinkedActions.discount(roots, orphans, this::executableActionCost);
         if (branchCount[0] > MAX_LOGIC_BLOCKS) errors.add("brain tree actions exceed the action node limit");
         if (conditionCount[0] > MAX_TOTAL_CONDITIONS) errors.add("brain tree exceeds the total condition limit");
     }
@@ -663,6 +666,7 @@ public class BotSubmissionValidationService {
                 String action = actionNode.isTextual() ? actionNode.asText() : null;
                 validateActionAllowed(errors, actionNode, actionPath, loadoutSpec);
                 validateActionConfiguration(errors, entry, actionNode, actionPath, coordinateBounds);
+                validateLinkId(errors, entry, actionPath);
                 validateSelectable(errors, entry.get("selectable"), actionPath + ".selectable");
                 if (entry.has("targetOffsetX")) validateSignedCoordinate(errors, entry.get("targetOffsetX"), actionPath + ".targetOffsetX", coordinateBounds.offsetMagnitude());
                 if (entry.has("targetOffsetY")) validateSignedCoordinate(errors, entry.get("targetOffsetY"), actionPath + ".targetOffsetY", coordinateBounds.offsetMagnitude());
@@ -689,6 +693,7 @@ public class BotSubmissionValidationService {
         } else {
             validateActionAllowed(errors, block.get("action"), path, loadoutSpec);
             validateActionConfiguration(errors, block, block.get("action"), path, coordinateBounds);
+            validateLinkId(errors, block, path);
             if (block.has("targetOffsetX")) validateSignedCoordinate(errors, block.get("targetOffsetX"), path + ".targetOffsetX", coordinateBounds.offsetMagnitude());
             if (block.has("targetOffsetY")) validateSignedCoordinate(errors, block.get("targetOffsetY"), path + ".targetOffsetY", coordinateBounds.offsetMagnitude());
         }
@@ -1130,6 +1135,14 @@ public class BotSubmissionValidationService {
         }
         if (!BotLogicContracts.CONDITION_ALWAYS.equals(type)) {
             errors.add(path + ".type must be always or expression");
+        }
+    }
+
+    private void validateLinkId(List<String> errors, JsonNode entry, String path) {
+        JsonNode linkId = entry.get("linkId");
+        if (linkId == null || linkId.isNull()) return;
+        if (!LinkedActions.isLinkId(linkId)) {
+            errors.add(path + ".linkId must be 1 to " + LinkedActions.MAX_LINK_ID_LENGTH + " letters, digits, underscores or hyphens");
         }
     }
 

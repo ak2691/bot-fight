@@ -9,7 +9,9 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelSimulationRequest;
 import com.example.botfight.simulation.core.replay.ReplayMappingService;
 import com.example.botfight.simulation.core.state.BotStateService;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
+import com.example.botfight.simulation.gameconfig.GameplayData;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -103,7 +105,19 @@ final class GoldenScenarioRunner {
                 bots);
     }
 
+    /**
+     * Runs one scenario. A scenario may carry {@code testAbilities}: abilities written in the abilities.json schema
+     * that replace the shipped ones of the same id for this run (the browser swaps them in the same way).
+     */
     static Result run(DuelSimulationService service, JsonNode scenario) {
+        List<GameplayData.AbilityData> testAbilities = new ArrayList<>();
+        for (JsonNode ability : scenario.path("testAbilities")) {
+            testAbilities.add(GameplayData.parseAbility(ability.toString()));
+        }
+        return AbilityContracts.withTestAbilities(testAbilities, () -> runFight(service, scenario));
+    }
+
+    private static Result runFight(DuelSimulationService service, JsonNode scenario) {
         DuelSimulationRequest request = requestFor(scenario);
         CombatLog log = new CombatLog();
         List<String> hashes = new ArrayList<>();

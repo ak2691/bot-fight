@@ -150,7 +150,6 @@ public final class AbilityEntityFactory {
                 Map.of(),
                 null,
                 contract.entityType(),
-                contract.bindToCast(),
                 placement.angle(),
                 placement.lateral());
     }

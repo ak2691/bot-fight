@@ -10,6 +10,7 @@ import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,6 +34,20 @@ public final class BrainNormalizer {
     private BrainNormalizer() {
     }
 
+    /**
+     * Identical copies of a linked action cost once: `keys` remembers each copy's budget key and `paid`
+     * the keys already charged. The copies themselves all still run.
+     */
+    private static final class LinkLedger {
+        final Set<String> paid = new HashSet<>();
+        final Map<StrategyBlock, String> keys = new IdentityHashMap<>();
+
+        int charge(StrategyBlock block, int cost) {
+            String key = keys.get(block);
+            return key != null && !paid.add(key) ? 0 : cost;
+        }
+    }
+
     /** A normalized brain: its coordinate schema version, priority tree and chains. */
     public record Result(String schemaVersion, List<TreeRoot> roots, Map<String, ChainRuntime.Chain> chains) {
     }
@@ -51,7 +66,7 @@ public final class BrainNormalizer {
         // Chains share the roots' action and condition budget.
         int[] remainingActions = { MAX_LOGIC_BLOCKS };
         int[] remainingConditions = { MAX_TOTAL_CONDITIONS };
-        List<TreeRoot> tree = normalizeTreeRoots(roots, schemaVersion, remainingActions, remainingConditions);
+        List<TreeRoot> tree = normalizeTreeRoots(roots, schemaVersion, remainingActions, remainingConditions, new LinkLedger());
         JsonNode chains = brain != null ? brain.get("chains") : null;
         Map<String, ChainRuntime.Chain> normalizedChains = ChainRuntime.normalize(chains, schemaVersion,
                 chainBlockNormalizer(schemaVersion), remainingActions, remainingConditions);
@@ -84,7 +99,7 @@ public final class BrainNormalizer {
     }
 
     private static List<TreeRoot> normalizeTreeRoots(JsonNode roots, String coordinateVersion,
-            int[] remainingActions, int[] remainingConditions) {
+            int[] remainingActions, int[] remainingConditions, LinkLedger links) {
         if (roots == null || !roots.isArray()) return List.of();
         List<TreeRoot> normalized = new ArrayList<>();
         int limit = Math.min(roots.size(), MAX_ROOTS);
@@ -93,19 +108,19 @@ public final class BrainNormalizer {
             normalized.add(new TreeRoot(
                     index,
                     clamp(numberValue(field(root, "priority"), index + 1), 1, MAX_ROOTS),
-                    normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions, coordinateVersion),
-                    normalizeRootActions(root, index, remainingActions, coordinateVersion)));
+                    normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions, coordinateVersion, links),
+                    normalizeRootActions(root, index, remainingActions, coordinateVersion, links)));
         }
         normalized.sort(Comparator.comparingDouble(TreeRoot::priority));
         return List.copyOf(normalized);
     }
 
-    private static List<StrategyBlock> normalizeRootActions(JsonNode root, int index, int[] remainingActions, String version) {
+    private static List<StrategyBlock> normalizeRootActions(JsonNode root, int index, int[] remainingActions, String version, LinkLedger links) {
         if (field(root, "actions") == null) return List.of();
         List<StrategyBlock> actions = new ArrayList<>();
-        for (StrategyBlock block : normalizeTreeActions(root, index, version)) {
+        for (StrategyBlock block : normalizeTreeActions(root, index, version, links)) {
             if (BotLogicContracts.ACTION_NONE.equals(block.action())) continue;
-            int cost = strategyBlockActionCost(block);
+            int cost = links.charge(block, strategyBlockActionCost(block));
             if (cost > remainingActions[0]) break;
             remainingActions[0] -= cost;
             actions.add(block);
@@ -114,15 +129,15 @@ public final class BrainNormalizer {
     }
 
     private static List<TreeBranch> normalizeTreeBranches(JsonNode branches, int[] remainingActions, int[] remainingConditions,
-            String coordinateVersion) {
+            String coordinateVersion, LinkLedger links) {
         if (branches == null || !branches.isArray() || remainingConditions[0] <= 0) return List.of();
         List<TreeBranch> normalized = new ArrayList<>();
         for (int index = 0; index < branches.size() && remainingConditions[0] > 0; index += 1) {
             JsonNode branch = branches.get(index);
             List<StrategyBlock> blocks = new ArrayList<>();
-            for (StrategyBlock block : normalizeTreeActions(branch, index, coordinateVersion)) {
+            for (StrategyBlock block : normalizeTreeActions(branch, index, coordinateVersion, links)) {
                 if (BotLogicContracts.ACTION_NONE.equals(block.action())) continue;
-                int cost = strategyBlockActionCost(block);
+                int cost = links.charge(block, strategyBlockActionCost(block));
                 if (cost > remainingActions[0]) break;
                 blocks.add(block);
                 remainingActions[0] -= cost;
@@ -143,13 +158,13 @@ public final class BrainNormalizer {
                     branchType,
                     clamp(numberValue(field(branch, "priority"), index + 1), 1, MAX_LOGIC_BLOCKS),
                     blocks,
-                    normalizeTreeBranches(field(branch, "children"), remainingActions, remainingConditions, coordinateVersion)));
+                    normalizeTreeBranches(field(branch, "children"), remainingActions, remainingConditions, coordinateVersion, links)));
         }
         normalized.sort(Comparator.comparingDouble(TreeBranch::priority));
         return List.copyOf(normalized);
     }
 
-    private static List<StrategyBlock> normalizeTreeActions(JsonNode branch, int index, String coordinateVersion) {
+    private static List<StrategyBlock> normalizeTreeActions(JsonNode branch, int index, String coordinateVersion, LinkLedger links) {
         JsonNode actions = field(branch, "actions");
         List<StrategyBlock> blocks = new ArrayList<>();
         Set<String> heads = new HashSet<>();
@@ -171,6 +186,7 @@ public final class BrainNormalizer {
                     targetX = target.x();
                     targetY = target.y();
                 }
+                int blockCount = blocks.size();
                 blocks.add(new StrategyBlock(index, action,
                 normalizeSelectable(textValue(field(actionNode, "selectable"), BotLogicContracts.SELECTABLE_OPPONENT), BotLogicContracts.SELECTABLE_OPPONENT),
                         BotLogicContracts.ACTION_VARIABLE.equals(action)
@@ -190,6 +206,8 @@ public final class BrainNormalizer {
                         normalizeAim(action, actionNode),
                         normalizeSprint(action, actionNode),
                         normalizeFastTurn(action, actionNode)));
+                String linkKey = LinkedActions.budgetKey(actionNode);
+                if (linkKey != null) links.keys.put(blocks.get(blockCount), linkKey);
             }
         }
         if (blocks.isEmpty()) blocks.add(normalizeStrategyBlock(branch, index, coordinateVersion));

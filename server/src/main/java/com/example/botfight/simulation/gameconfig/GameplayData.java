@@ -76,7 +76,7 @@ public record GameplayData(AbilitiesFile abilities, StatusesFile statuses, Movem
     /** One arena entity an ability's spawn verbs can create. */
     public record EntityData(String runtimeType, Category category, SpawnData spawn, TargetingData targeting,
                              LifetimeData lifetime, InitialStateData initialState, Map<String, Object> state,
-                             Boolean bindToCast, List<PhaseData> phases) {
+                             List<PhaseData> phases) {
     }
 
     public record SpawnData(OffsetData offset, Double rotation, RotationSpace rotationSpace) {
@@ -127,8 +127,9 @@ public record GameplayData(AbilitiesFile abilities, StatusesFile statuses, Movem
      * One verb, the union of every verb's fields (a field that does not apply is null). {@code verb} is the JSON
      * {@code do}: hit, spawn, move, face, applyEffects, transition, remove or emitVisual.
      */
-    public record VerbData(@JsonProperty("do") String verb, HitboxData hitbox, List<String> targets,
-                           List<EffectData> effects, Boolean nearestOnly, Boolean oncePerTarget, String aim,
+    public record VerbData(@JsonProperty("do") String verb, Integer atMs, String pose, HitboxData hitbox,
+                           List<String> targets, List<EffectData> effects, Boolean nearestOnly,
+                           String oncePerTarget, String aim,
                            SpawnData origin, String knockbackDirection, String pullDirection, VisualData visual,
                            String entity, PatternData pattern, Double distance, Double unitsPerTick,
                            Integer trailMs, String target, String to, String visualType, Integer visibleMs,
@@ -363,7 +364,17 @@ public record GameplayData(AbilitiesFile abilities, StatusesFile statuses, Movem
                 errors.add(path + ".onTrigger: needs at least one verb");
             } else for (int verbIndex = 0; verbIndex < ability.onTrigger().size(); verbIndex += 1) {
                 checkVerb(errors, ability.onTrigger().get(verbIndex), path + ".onTrigger[" + verbIndex + "]", true,
-                        Set.of(), entityNames, presets);
+                        Set.of(), entityNames, presets, timing, ability.activation());
+            }
+            int previousAtMs = 0;
+            if (ability.onTrigger() != null) for (int verbIndex = 0; verbIndex < ability.onTrigger().size(); verbIndex += 1) {
+                Integer atMs = ability.onTrigger().get(verbIndex).atMs();
+                int value = atMs == null ? 0 : atMs;
+                if (value < previousAtMs) {
+                    errors.add(path + ".onTrigger[" + verbIndex + "].atMs: " + value + " comes after a verb at "
+                            + previousAtMs + " (verbs run in non-decreasing atMs order)");
+                }
+                previousAtMs = Math.max(previousAtMs, value);
             }
             entities.forEach((entityName, entity) ->
                     checkEntity(errors, entity, path + ".entities." + entityName, entityNames, presets));
@@ -445,8 +456,48 @@ public record GameplayData(AbilitiesFile abilities, StatusesFile statuses, Movem
             "emitVisual");
     private static final Set<String> VERB_TARGETS = Set.of("OWNER", "BOT", "HP_ENTITY", "SUMMON", "ENTITY");
 
+    private static final Set<String> DELAYABLE_VERBS = Set.of("hit", "spawn", "applyEffects");
+
+    /**
+     * A trigger verb's place on the ability's timeline ({@code atMs}, {@code pose}); an entity event verb has none.
+     * The browser also requires both keys to be written; JSON {@code null} and an absent key read the same here.
+     */
+    private static void checkTimeline(List<String> errors, VerbData verb, String here, boolean trigger,
+                                      TimingData timing, ActivationData activation) {
+        if (!trigger) {
+            if (verb.atMs() != null) errors.add(here + ".atMs: only an onTrigger verb has atMs");
+            if (verb.pose() != null) errors.add(here + ".pose: only an onTrigger verb has pose");
+            return;
+        }
+        Integer atMs = verb.atMs();
+        if (atMs != null) {
+            if (!DELAYABLE_VERBS.contains(verb.verb())) {
+                errors.add(here + ".atMs: a " + verb.verb() + " verb cannot be delayed");
+                return;
+            }
+            int activeMs = timing == null || timing.activeMs() == null ? 0 : timing.activeMs();
+            if (atMs < 0) errors.add(here + ".atMs: " + atMs + " is not a whole number of ms");
+            else if (atMs % 100 != 0) errors.add(here + ".atMs: " + atMs + " is not a multiple of 100 ms");
+            else if (atMs > activeMs) errors.add(here + ".atMs: " + atMs + " is after the ability's activeMs " + activeMs);
+        }
+        if (atMs != null && atMs > 0) {
+            if (verb.pose() == null || !VERB_POSES.contains(verb.pose())) {
+                errors.add(here + ".pose: unknown verbPose " + verb.pose());
+            } else if ("captured".equals(verb.pose())
+                    && (activation == null || activation.capture() == null || activation.capture().isEmpty())) {
+                errors.add(here + ".pose: captured needs activation.capture");
+            }
+        } else if (verb.pose() != null) {
+            errors.add(here + ".pose: pose is only for a delayed verb (atMs above 0)");
+        }
+    }
+
+    private static final Set<String> VERB_POSES = Set.of("current", "captured");
+    private static final Set<String> ONCE_PER_TARGET_SCOPES = Set.of("step", "activation");
+
     private static void checkVerb(List<String> errors, VerbData verb, String here, boolean trigger,
-                                  Set<String> phaseIds, Set<String> entityNames, Map<String, StatusPreset> presets) {
+                                  Set<String> phaseIds, Set<String> entityNames, Map<String, StatusPreset> presets,
+                                  TimingData timing, ActivationData activation) {
         String name = verb.verb();
         if (name == null || !(trigger ? TRIGGER_VERBS : EVENT_VERBS).contains(name)) {
             errors.add(here + ".do: unknown " + (trigger ? "triggerVerb" : "eventVerb") + " " + name);
@@ -458,13 +509,16 @@ public record GameplayData(AbilitiesFile abilities, StatusesFile statuses, Movem
             }
         }
         checkVisual(errors, verb.visual(), here + ".visual");
+        checkTimeline(errors, verb, here, trigger, timing, activation);
         switch (name) {
             case "hit" -> {
                 checkHitbox(errors, verb.hitbox(), here + ".hitbox");
                 if (verb.targets() == null || verb.targets().isEmpty()) errors.add(here + ".targets: hit needs targets");
                 checkVerbEffects(errors, verb, here, "hit", presets);
                 if (verb.nearestOnly() == null) errors.add(here + ".nearestOnly: missing");
-                if (verb.oncePerTarget() == null) errors.add(here + ".oncePerTarget: missing");
+                if (verb.oncePerTarget() != null && !ONCE_PER_TARGET_SCOPES.contains(verb.oncePerTarget())) {
+                    errors.add(here + ".oncePerTarget: unknown oncePerTarget " + verb.oncePerTarget());
+                }
                 if (verb.aim() != null && !"seekTarget".equals(verb.aim())) {
                     errors.add(here + ".aim: unknown hitAim " + verb.aim());
                 }
@@ -554,7 +608,6 @@ public record GameplayData(AbilitiesFile abilities, StatusesFile statuses, Movem
             ms(errors, here + ".lifetime.duration", entity.lifetime().duration(), false, false);
             ms(errors, here + ".lifetime.add", entity.lifetime().add(), false, false);
         }
-        if (entity.bindToCast() == null) errors.add(here + ".bindToCast: missing");
         if (entity.runtimeType() == null) errors.add(here + ".runtimeType: missing");
         List<PhaseData> phases = entity.phases() == null ? List.of() : entity.phases();
         if (phases.isEmpty()) { errors.add(here + ".phases: needs at least one phase"); return; }
@@ -622,7 +675,7 @@ public record GameplayData(AbilitiesFile abilities, StatusesFile statuses, Movem
                 if (event.verbs() == null) { errors.add(eventPath + ".do: must be a list of verbs"); return; }
                 for (int verbIndex = 0; verbIndex < event.verbs().size(); verbIndex += 1) {
                     checkVerb(errors, event.verbs().get(verbIndex), eventPath + ".do[" + verbIndex + "]", false,
-                            phaseIds, entityNames, presets);
+                            phaseIds, entityNames, presets, null, null);
                 }
             });
         }

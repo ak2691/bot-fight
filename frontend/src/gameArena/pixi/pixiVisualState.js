@@ -353,6 +353,32 @@ export function smashFlashAlpha(progress, fillAlpha = 0.5) {
     return fillAlpha * (1 - clamp01(progress));
 }
 
+/** Smash cracks grow from the impact point and are fully grown after `growFraction` of the active phase. */
+export function smashCrackGrowth(progress, growFraction = 0.12) {
+    return growFraction <= 0 ? 1 : Math.min(1, clamp01(progress) / growFraction);
+}
+
+/** 1 -> 0 over `durationMs` of presentation-clock time; used by effects that linger after their ability ends. */
+export function lingerFade(elapsedMs, durationMs) {
+    const duration = Number(durationMs);
+    if (!Number.isFinite(duration) || duration <= 0) return 0;
+    return 1 - clamp01(Number(elapsedMs) / duration);
+}
+
+/**
+ * How many sprint-trail particles are due on the presentation clock. A null or
+ * far-future `nextSpawnAt` (first frame, clock rewound) spawns one now; a long gap
+ * spawns one instead of a burst. Returns `{ count, nextSpawnAt }`.
+ */
+export function sprintSpawnPlan(nextSpawnAt, now, intervalMs, maxCatchUp = 3) {
+    const interval = Math.max(1, Number(intervalMs) || 50);
+    if (nextSpawnAt == null || nextSpawnAt - now > interval) return { count: 1, nextSpawnAt: now + interval };
+    if (now < nextSpawnAt) return { count: 0, nextSpawnAt };
+    const due = Math.floor((now - nextSpawnAt) / interval) + 1;
+    if (due > maxCatchUp) return { count: 1, nextSpawnAt: now + interval };
+    return { count: due, nextSpawnAt: nextSpawnAt + due * interval };
+}
+
 export function botColorRole(bot) {
     const teamNumber = Number(bot?.teamNumber);
     if (Number.isFinite(teamNumber) && teamNumber > 0) {

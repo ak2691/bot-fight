@@ -693,9 +693,19 @@ public class DuelSimulationService {
                 .orElse(null);
 
         List<StrategyBlock> chainControl = selected.stream().filter(DuelSimulationService::isChainControl).toList();
-        ChainRuntime.applyControl(player.chainStack, chainControl, player.normalizedChains);
+        ChainRuntime.Start start = null;
+        if (ChainRuntime.applyControl(player.chainStack, chainControl, player.normalizedChains)) {
+            // Roots left of the Run chain take their categories before the chain's first action. `selected`
+            // only holds roots that can act now (executable, target resolved).
+            Set<String> claimed = new HashSet<>();
+            for (StrategyBlock block : selected) {
+                if (isChainControl(block)) break;
+                if (!BotLogicContracts.ACTION_VARIABLE.equals(block.action)) claimed.add(BrainNormalizer.actionHead(block.action));
+            }
+            start = new ChainRuntime.Start(claimed, block -> strategyBlockExecutableNow(block, player, opponent, entities));
+        }
         for (ChainRuntime.Claim claim : ChainRuntime.resume(player.chainStack, player.normalizedChains,
-                chainHost(player, opponent, entities, arena))) {
+                chainHost(player, opponent, entities, arena), start)) {
             placeInPlan(plan, claim.head(), claim.block());
         }
 
@@ -753,6 +763,11 @@ public class DuelSimulationService {
             public void applyVariable(StrategyBlock block) {
                 actionExecutionService.applyCustomVariableAction(
                         player, opponent, entities, arena, conditionResolutionService, block);
+            }
+
+            @Override
+            public Map<String, Object> variables() {
+                return player.customVariables;
             }
 
             @Override
@@ -910,13 +925,6 @@ public class DuelSimulationService {
                         owner.entityActivations.put(entityId,
                                 owner.entityActivations.getOrDefault(parentEntityId, owner.activationSerial));
                         return entityId;
-                    }
-
-                    @Override
-                    public boolean castActive(List<Bot> activeBots, int ownerSlot, int abilityId) {
-                        return activeBots.stream().filter(bot -> bot.slot == ownerSlot).findFirst()
-                                .map(owner -> AbilityState.stage(owner, abilityId) == AbilityState.Stage.ACTIVE)
-                                .orElse(false);
                     }
 
                     @Override

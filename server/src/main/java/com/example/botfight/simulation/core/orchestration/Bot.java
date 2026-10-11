@@ -100,6 +100,8 @@ public final class Bot implements Entity, AbilityEntityBot {
     public List<Bot> matchBots = List.of();
     /** The entities this tick's trigger spawned, in spawn order (empty when it spawned none). */
     public List<ArenaEntity> abilitySpawn = List.of();
+    /** The delayed trigger verbs that came due this tick, resolved with the trigger verbs (empty when none). */
+    public List<com.example.botfight.simulation.core.combat.AbilityTimeline.DueStep> dueSteps = List.of();
     public double pendingHealing;
     public double tickStartHp;
     public double damageTakenThisTick;

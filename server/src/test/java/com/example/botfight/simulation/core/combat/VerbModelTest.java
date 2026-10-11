@@ -6,7 +6,6 @@ import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
 import com.example.botfight.simulation.core.orchestration.Bot;
-import com.example.botfight.simulation.core.state.AbilityState;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
@@ -55,13 +54,13 @@ class VerbModelTest {
                 + "\"health\":null,\"trigger\":null,\"visual\":null,\"on\":" + on + "}";
     }
 
-    private static String entity(String runtimeType, boolean bindToCast, String spawnOffsetY, String phases) {
+    private static String entity(String runtimeType, String spawnOffsetY, String phases) {
         return "{\"runtimeType\":\"" + runtimeType + "\",\"category\":\"zone\","
                 + "\"spawn\":{\"offset\":{\"x\":0,\"y\":" + spawnOffsetY + "},\"rotation\":0,\"rotationSpace\":\"owner\"},"
                 + "\"targeting\":{\"owner\":\"owner\",\"position\":null,\"defaultX\":null,\"defaultY\":null,"
                 + "\"clampToRadius\":null},\"lifetime\":{\"timerMode\":\"none\",\"duration\":null,\"add\":null},"
                 + "\"initialState\":{\"armed\":true,\"damageMultiplierFromOwner\":false},\"state\":null,"
-                + "\"bindToCast\":" + bindToCast + ",\"phases\":[" + phases + "]}";
+                + "\"phases\":[" + phases + "]}";
     }
 
     private static String spawn(String entityName, String pattern) {
@@ -117,10 +116,6 @@ class VerbModelTest {
         return new Action(0, 0, 0, abilityId, 900, 400, null, null, null, false, false, false, null);
     }
 
-    private static Action idle() {
-        return new Action(0, 0, 0, null, 900, 400, null, null, null, false, false, false, null);
-    }
-
     /** Casts the ability, ticking through any wind-up, and returns the bot on the tick it triggered. */
     private Bot castUntilTriggered(Bot bot, int abilityId) {
         for (int tick = 0; tick < 40; tick += 1) {
@@ -146,11 +141,6 @@ class VerbModelTest {
             @Override public String spawnEntityId(List<Bot> bots, int ownerSlot, String idPrefix, String parentEntityId) {
                 Bot owner = bots.stream().filter(bot -> bot.slot == ownerSlot).findFirst().orElse(null);
                 return owner == null ? null : idPrefix + "-" + owner.userId + "-" + owner.abilityEntitySerial++;
-            }
-
-            @Override public boolean castActive(List<Bot> bots, int ownerSlot, int abilityId) {
-                return bots.stream().filter(bot -> bot.slot == ownerSlot).findFirst()
-                        .map(owner -> AbilityState.stage(owner, abilityId) == AbilityState.Stage.ACTIVE).orElse(false);
             }
 
             @Override public double[] ownerPose(List<Bot> bots, int ownerSlot) {
@@ -207,18 +197,16 @@ class VerbModelTest {
                 AbilityContracts.PatternType.RING, 12, 0, 0))).hasSize(12);
     }
 
-    private static GameplayData.AbilityData beam(boolean bound) throws Exception {
-        String beam = entity("testBeam", bound, "50", phase("active", FOLLOW, "null", "{}"));
+    private static GameplayData.AbilityData beam() throws Exception {
+        String beam = entity("testBeam", "50", phase("active", FOLLOW, "null", "{}"));
         return ability(5, spawn("testBeam", "null"), "{\"testBeam\":" + beam + "}");
     }
 
     @Test
-    void aFollowOwnerEntityBoundToTheCastEndsWhenTheCastIsInterrupted() throws Exception {
-        AbilityContracts.withTestAbilities(List.of(beam(true)), () -> {
+    void aFollowOwnerEntityFollowsTheOwnersPose() throws Exception {
+        AbilityContracts.withTestAbilities(List.of(beam()), () -> {
             Bot bot = castUntilTriggered(caster(5), 5);
             ArenaEntity spawned = bot.abilitySpawn.getFirst();
-            assertThat(spawned.bindToCast()).isTrue();
-            assertThat(AbilityState.stage(bot, 5)).isEqualTo(AbilityState.Stage.ACTIVE);
 
             // Moving and turning the owner carries the entity: it stays 50 units ahead of it.
             bot.x = 500;
@@ -230,36 +218,13 @@ class VerbModelTest {
             assertThat(following.getFirst().x()).isCloseTo(500 + Math.cos(ahead) * 50, org.assertj.core.data.Offset.offset(1e-9));
             assertThat(following.getFirst().y()).isCloseTo(200 + Math.sin(ahead) * 50, org.assertj.core.data.Offset.offset(1e-9));
             assertThat(following.getFirst().rotation()).isEqualTo(180);
-
-            // An interrupt ends the active stage, and the entity goes with it.
-            BotStateService.interruptCurrentAbility(bot);
-            assertThat(AbilityState.stage(bot, 5)).isNotEqualTo(AbilityState.Stage.ACTIVE);
-            assertThat(tick(following, bot)).isEmpty();
             return null;
         });
     }
 
     @Test
-    void aBoundEntityAlsoEndsWhenTheActiveStageRunsOut() throws Exception {
-        AbilityContracts.withTestAbilities(List.of(beam(true)), () -> {
-            Bot bot = castUntilTriggered(caster(5), 5);
-            List<ArenaEntity> entities = bot.abilitySpawn;
-            int ticks = 0;
-            while (!entities.isEmpty() && ticks < 40) {
-                bot.triggeredAbility = null;
-                executor.execute(bot, idle(), arena);
-                entities = tick(entities, bot);
-                ticks += 1;
-            }
-            assertThat(ticks).isBetween(1, 39);
-            assertThat(AbilityState.stage(bot, 5)).isNotEqualTo(AbilityState.Stage.ACTIVE);
-            return null;
-        });
-    }
-
-    @Test
-    void anEntityThatIsNotBoundOutlivesAnInterruptedCast() throws Exception {
-        AbilityContracts.withTestAbilities(List.of(beam(false)), () -> {
+    void anEntityOutlivesAnInterruptedCast() throws Exception {
+        AbilityContracts.withTestAbilities(List.of(beam()), () -> {
             Bot bot = castUntilTriggered(caster(5), 5);
             BotStateService.interruptCurrentAbility(bot);
             assertThat(tick(bot.abilitySpawn, bot)).hasSize(1);
@@ -269,10 +234,10 @@ class VerbModelTest {
 
     @Test
     void aSpawnVerbInsideAnEntityEventCreatesItsEntitiesFromTheParentsPose() throws Exception {
-        String parent = entity("testParent", false, "0", phase("active", STATIC, "200",
+        String parent = entity("testParent", "0", phase("active", STATIC, "200",
                 "{\"lifetimeEnd\":" + event(spawn("child", "{\"type\":\"ring\",\"count\":3}")
                         + ",{\"do\":\"remove\"}") + "}"));
-        String child = entity("testChild", false, "0", phase("active", STATIC, "null", "{}"));
+        String child = entity("testChild", "0", phase("active", STATIC, "null", "{}"));
         GameplayData.AbilityData parentAbility = ability(5, spawn("parent", "null"),
                 "{\"parent\":" + parent + ",\"child\":" + child + "}");
         AbilityContracts.withTestAbilities(List.of(parentAbility), () -> {

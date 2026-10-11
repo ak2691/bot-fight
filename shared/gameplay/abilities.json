@@ -37,6 +37,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "arc",
             "radius": null,
@@ -76,7 +78,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -128,6 +130,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "ray",
             "radius": null,
@@ -167,7 +171,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -215,6 +219,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "grenade",
           "pattern": null
         }
@@ -256,7 +262,6 @@
               }
             }
           },
-          "bindToCast": false,
           "phases": [
             {
               "id": "travel",
@@ -535,6 +540,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "fireball",
           "pattern": null
         }
@@ -576,7 +583,6 @@
               }
             }
           },
-          "bindToCast": false,
           "phases": [
             {
               "id": "active",
@@ -717,6 +723,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "rectangle",
             "radius": null,
@@ -778,7 +786,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -826,6 +834,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "arc",
             "radius": null,
@@ -887,7 +897,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -935,6 +945,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "circle",
             "radius": 110,
@@ -996,7 +1008,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -1044,6 +1056,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "ray",
             "radius": null,
@@ -1105,7 +1119,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -1153,6 +1167,8 @@
       "onTrigger": [
         {
           "do": "applyEffects",
+          "atMs": null,
+          "pose": null,
           "targets": [
             "OWNER"
           ],
@@ -1217,6 +1233,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "proximity_mine",
           "pattern": null
         }
@@ -1250,7 +1268,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "travel",
@@ -1507,6 +1524,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "ray",
             "radius": null,
@@ -1553,7 +1572,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -1601,6 +1620,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "ray",
             "radius": null,
@@ -1662,7 +1683,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -1710,6 +1731,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "gravity_zone",
           "pattern": null
         }
@@ -1743,7 +1766,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "travel",
@@ -2077,6 +2099,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "silence_wave",
           "pattern": null
         }
@@ -2110,7 +2134,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "active",
@@ -2252,6 +2275,8 @@
       "onTrigger": [
         {
           "do": "applyEffects",
+          "atMs": null,
+          "pose": null,
           "targets": [
             "OWNER"
           ],
@@ -2337,6 +2362,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "hunter_drone",
           "pattern": null
         }
@@ -2370,7 +2397,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "active",
@@ -2484,7 +2510,7 @@
                         }
                       ],
                       "nearestOnly": false,
-                      "oncePerTarget": false,
+                      "oncePerTarget": null,
                       "aim": "seekTarget",
                       "origin": {
                         "offset": {
@@ -2537,6 +2563,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "windburst_projectile",
           "pattern": null
         }
@@ -2578,7 +2606,6 @@
               }
             }
           },
-          "bindToCast": false,
           "phases": [
             {
               "id": "active",
@@ -2721,6 +2748,8 @@
       "onTrigger": [
         {
           "do": "move",
+          "atMs": null,
+          "pose": null,
           "distance": 150,
           "unitsPerTick": 75,
           "trailMs": 300,
@@ -2760,6 +2789,8 @@
       "onTrigger": [
         {
           "do": "face",
+          "atMs": null,
+          "pose": null,
           "target": "activationTarget",
           "visual": {
             "type": "lockOn",
@@ -2797,6 +2828,8 @@
       "onTrigger": [
         {
           "do": "applyEffects",
+          "atMs": null,
+          "pose": null,
           "targets": [
             "OWNER"
           ],
@@ -2829,6 +2862,8 @@
         },
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "temporal_rewind_zone",
           "pattern": null
         }
@@ -2862,7 +2897,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "active",
@@ -2928,6 +2962,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "orbital_zone",
           "pattern": null
         }
@@ -2961,7 +2997,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "active",
@@ -3083,6 +3118,8 @@
       "onTrigger": [
         {
           "do": "applyEffects",
+          "atMs": null,
+          "pose": null,
           "targets": [
             "OWNER"
           ],
@@ -3147,6 +3184,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "null_zone",
           "pattern": null
         }
@@ -3180,7 +3219,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "active",
@@ -3300,6 +3338,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "rectangle",
             "radius": null,
@@ -3360,7 +3400,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -3408,6 +3448,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "circle",
             "radius": 120,
@@ -3491,7 +3533,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -3539,6 +3581,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "singularity_zone",
           "pattern": null
         }
@@ -3572,7 +3616,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "fuse",
@@ -3801,6 +3844,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "tether_bolt",
           "pattern": null
         }
@@ -3842,7 +3887,6 @@
               }
             }
           },
-          "bindToCast": false,
           "phases": [
             {
               "id": "outbound",
@@ -4097,6 +4141,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "snare_bomb",
           "pattern": null
         }
@@ -4130,7 +4176,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "armed",
@@ -4489,6 +4534,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "ray",
             "radius": null,
@@ -4572,7 +4619,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -4620,6 +4667,8 @@
       "onTrigger": [
         {
           "do": "spawn",
+          "atMs": null,
+          "pose": null,
           "entity": "repeller_drone",
           "pattern": null
         }
@@ -4653,7 +4702,6 @@
             "damageMultiplierFromOwner": false
           },
           "state": null,
-          "bindToCast": false,
           "phases": [
             {
               "id": "active",
@@ -4788,7 +4836,7 @@
                         }
                       ],
                       "nearestOnly": false,
-                      "oncePerTarget": false,
+                      "oncePerTarget": null,
                       "aim": "seekTarget",
                       "origin": {
                         "offset": {
@@ -4841,6 +4889,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "ray",
             "radius": null,
@@ -4908,7 +4958,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -4956,6 +5006,8 @@
       "onTrigger": [
         {
           "do": "applyEffects",
+          "atMs": null,
+          "pose": null,
           "targets": [
             "OWNER"
           ],
@@ -5020,6 +5072,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "arc",
             "radius": null,
@@ -5059,7 +5113,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -5107,6 +5161,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "rectangle",
             "radius": null,
@@ -5146,7 +5202,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -5194,6 +5250,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "arc",
             "radius": null,
@@ -5233,7 +5291,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {
@@ -5281,6 +5339,8 @@
       "onTrigger": [
         {
           "do": "hit",
+          "atMs": null,
+          "pose": null,
           "hitbox": {
             "shape": "rectangle",
             "radius": null,
@@ -5342,7 +5402,7 @@
             }
           ],
           "nearestOnly": false,
-          "oncePerTarget": false,
+          "oncePerTarget": null,
           "aim": null,
           "origin": {
             "offset": {

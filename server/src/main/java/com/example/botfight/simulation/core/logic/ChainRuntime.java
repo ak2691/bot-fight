@@ -93,6 +93,9 @@ public final class ChainRuntime {
 
         void applyVariable(StrategyBlock block);
 
+        /** The bot's live custom variables, so a chain that fails to start can undo its writes. */
+        Map<String, Object> variables();
+
         boolean canCancelWindup();
 
         Integer abilityFor(Object action);
@@ -292,16 +295,35 @@ public final class ChainRuntime {
     // ---------------------------------------------------------------- runtime
 
     /**
-     * Applies chain control from the roots selected this tick: the highest-priority
-     * Run chain starts only when no chain is running; a running chain is never replaced. `entries` are in priority order.
+     * Applies chain control from the roots selected this tick: the highest-priority Run chain is pushed
+     * only when no chain is running; a running chain is never replaced. `entries` are in priority order.
+     * Returns true when a chain was just pushed; it has not started yet, see the starting rules on
+     * {@link #resume}.
      */
-    public static void applyControl(List<Frame> stack, List<StrategyBlock> entries, Map<String, Chain> chains) {
+    public static boolean applyControl(List<Frame> stack, List<StrategyBlock> entries, Map<String, Chain> chains) {
         for (StrategyBlock entry : entries) {
             if (!BotLogicContracts.ACTION_RUN_CHAIN.equals(entry.action())) continue;
             String chainId = chainIdOf(entry);
-            if (!chains.containsKey(chainId)) return;
-            if (stack.isEmpty()) stack.add(new Frame(chainId));
-            return;
+            if (!chains.containsKey(chainId) || !stack.isEmpty()) return false;
+            stack.add(new Frame(chainId));
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * What a chain pushed this tick needs to start: the categories higher-priority roots already hold and
+     * whether a block can act now (executable, target resolved). `passed` is set once the first action step
+     * has been cleared.
+     */
+    public static final class Start {
+        final Set<String> claimed;
+        final java.util.function.Predicate<StrategyBlock> canAct;
+        boolean passed;
+
+        public Start(Set<String> claimed, java.util.function.Predicate<StrategyBlock> canAct) {
+            this.claimed = claimed;
+            this.canAct = canAct;
         }
     }
 
@@ -314,8 +336,17 @@ public final class ChainRuntime {
     /**
      * Runs the chain from its saved step until a step issues an action or waits. Returns the actions the chain
      * issues this tick, one per category at most. `stack` is mutated in place.
+     *
+     * Starting: `start` is non-null on the tick the chain was pushed. Instant steps (variable ops, If / Else if)
+     * run as usual until the first step that issues an action. That step competes like a root: it needs a
+     * category no higher-priority root holds and `canAct` (executable now, target resolved). Otherwise the chain
+     * does not start: its variable writes from this tick are discarded and the stack is left empty. A chain whose
+     * first step is a Wait claims nothing and starts normally.
+     *
+     * Once started, a Use ability / Dash step that is not executable when reached ends the whole chain (every
+     * frame). Walk / Rotate keep trying until their time or condition ends them.
      */
-    public static List<Claim> resume(List<Frame> stack, Map<String, Chain> chains, Host host) {
+    public static List<Claim> resume(List<Frame> stack, Map<String, Chain> chains, Host host, Start start) {
         List<Claim> claims = new ArrayList<>();
         if (stack.isEmpty()) return claims;
         // Stun or death ends the chain before it acts.
@@ -324,6 +355,8 @@ public final class ChainRuntime {
             return claims;
         }
         Set<String> used = new java.util.HashSet<>();
+        Map<String, Object> variables = host.variables();
+        Map<String, Object> variablesBefore = start == null ? null : new java.util.HashMap<>(variables);
         for (int guard = 0; !stack.isEmpty() && guard < MAX_STEPS_PER_TICK; guard += 1) {
             Frame frame = stack.get(stack.size() - 1);
             Chain chain = chains.get(frame.chainId);
@@ -332,7 +365,15 @@ public final class ChainRuntime {
                 break;
             }
             Step step = stepAt(chain, frame.path);
-            Outcome outcome = step == null ? leaveList(frame, chain) : runStep(step, frame, stack, chains, host, used, claims);
+            Outcome outcome = step == null ? leaveList(frame, chain) : runStep(step, frame, stack, chains, host, used, claims, start);
+            if (outcome == Outcome.ABORT) {
+                // The chain never started: undo this tick's variable writes.
+                variables.clear();
+                variables.putAll(variablesBefore);
+                stack.clear();
+                claims.clear();
+                return claims;
+            }
             if (outcome == Outcome.POP) stack.remove(stack.size() - 1);
             else if (outcome == Outcome.END) stack.clear();
             else if (outcome == Outcome.STOP) break;
@@ -342,7 +383,7 @@ public final class ChainRuntime {
         return claims;
     }
 
-    private enum Outcome { CONTINUE, STOP, END, POP }
+    private enum Outcome { CONTINUE, STOP, END, POP, ABORT }
 
     private static List<Step> listAt(Chain chain, List<Object> path) {
         List<Step> list = chain.steps();
@@ -426,9 +467,9 @@ public final class ChainRuntime {
     }
 
     private static Outcome runStep(Step step, Frame frame, List<Frame> stack, Map<String, Chain> chains, Host host,
-                                   Set<String> used, List<Claim> claims) {
+                                   Set<String> used, List<Claim> claims, Start start) {
         switch (step.type()) {
-            case ACTION: return runActionStep(step, frame, host, used, claims);
+            case ACTION: return runActionStep(step, frame, host, used, claims, start);
             case WAIT: return runWait(step, frame, host);
             case IF: return runConditionalGroup(frame, chains.get(frame.chainId), host);
             case ELSE_IF: {
@@ -443,7 +484,7 @@ public final class ChainRuntime {
         }
     }
 
-    private static Outcome runActionStep(Step step, Frame frame, Host host, Set<String> used, List<Claim> claims) {
+    private static Outcome runActionStep(Step step, Frame frame, Host host, Set<String> used, List<Claim> claims, Start start) {
         StrategyBlock block = step.block();
         String head = host.head(block.action());
         if (head == null || "none".equals(head)) return Outcome.END;
@@ -453,14 +494,26 @@ public final class ChainRuntime {
             advance(frame);
             return Outcome.CONTINUE;
         }
-        if ("cancel".equals(head)) return runCancelWindup(step, frame, host, used, claims);
+        if ("cancel".equals(head)) return runCancelWindup(step, frame, host, used, claims, start);
         // Dash is issued like an ability (it can wait for its end), but claims its own category.
-        if (ABILITY.equals(head) || DASH.equals(head)) return runUseAbility(step, frame, host, head, used, claims);
-        return runTimedAction(step, frame, host, head, used, claims);
+        if (ABILITY.equals(head) || DASH.equals(head)) return runUseAbility(step, frame, host, head, used, claims, start);
+        return runTimedAction(step, frame, host, head, used, claims, start);
+    }
+
+    /**
+     * The first step that issues an action decides whether a chain that is starting this tick starts at all.
+     * False means abort: a higher-priority root holds the category or the action cannot act now.
+     */
+    private static boolean mayStart(Step step, String category, Start start) {
+        if (start == null || start.passed) return true;
+        if (start.claimed.contains(category) || !start.canAct.test(step.block())) return false;
+        start.passed = true;
+        return true;
     }
 
     /** Cancel Wind-up uses the cancel category and stops the chain for this tick, so no ability starts on a cancel tick. */
-    private static Outcome runCancelWindup(Step step, Frame frame, Host host, Set<String> used, List<Claim> claims) {
+    private static Outcome runCancelWindup(Step step, Frame frame, Host host, Set<String> used, List<Claim> claims, Start start) {
+        if (!mayStart(step, "cancel", start)) return Outcome.ABORT;
         if (!used.contains("cancel") && host.canCancelWindup()) {
             used.add("cancel");
             claims.add(new Claim("cancel", step.block()));
@@ -469,7 +522,7 @@ public final class ChainRuntime {
         return Outcome.STOP;
     }
 
-    private static Outcome runUseAbility(Step step, Frame frame, Host host, String category, Set<String> used, List<Claim> claims) {
+    private static Outcome runUseAbility(Step step, Frame frame, Host host, String category, Set<String> used, List<Claim> claims, Start start) {
         Integer abilityId = host.abilityFor(step.block().action());
         if (frame.issued) {
             // "When it ends": no longer winding up or active, for any reason.
@@ -477,9 +530,10 @@ public final class ChainRuntime {
             advance(frame);
             return Outcome.CONTINUE;
         }
+        if (!mayStart(step, category, start)) return Outcome.ABORT;
         if (used.contains(category)) return Outcome.STOP;
-        // An unavailable ability is skipped; the next step is attempted next tick.
-        if (!host.executableNow(step.block())) { advance(frame); return Outcome.STOP; }
+        // A step that cannot act ends the whole chain; wait for the ability first to hold the chain instead.
+        if (!host.executableNow(step.block())) return Outcome.END;
         used.add(category);
         claims.add(new Claim(category, step.block()));
         if ("now".equals(step.continueMode())) {
@@ -491,11 +545,12 @@ public final class ChainRuntime {
     }
 
     /** Walk and Rotate issue every tick for `forMs`, or until a condition holds (capped by `maxMs`). */
-    private static Outcome runTimedAction(Step step, Frame frame, Host host, String category, Set<String> used, List<Claim> claims) {
+    private static Outcome runTimedAction(Step step, Frame frame, Host host, String category, Set<String> used, List<Claim> claims, Start start) {
         if (!step.conditions().isEmpty() && host.conditionsHold(step.conditions())) {
             advance(frame);
             return Outcome.CONTINUE;
         }
+        if (!mayStart(step, category, start)) return Outcome.ABORT;
         if (used.contains(category)) return Outcome.STOP;
         if (host.executableNow(step.block())) {
             used.add(category);

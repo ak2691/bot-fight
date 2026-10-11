@@ -93,7 +93,6 @@ final class GameplayContracts {
                 targeting.owner() != null ? SelectableOwner.OWNER : SelectableOwner.NONE,
                 new Lifetime(data.lifetime().timerMode(), zero(data.lifetime().duration()), zero(data.lifetime().add())),
                 new InitialState(flag(data.initialState().armed()), flag(data.initialState().damageMultiplierFromOwner())),
-                flag(data.bindToCast()),
                 data.phases().stream().map(GameplayContracts::phase).toList());
     }
 
@@ -164,13 +163,15 @@ final class GameplayContracts {
     private static Verb verb(VerbData data) {
         return switch (data.verb()) {
             case "hit" -> new HitVerb(hitbox(data.hitbox()), kinds(data.targets()), effects(data.effects()),
-                    flag(data.nearestOnly()), flag(data.oncePerTarget()), data.aim(),
+                    flag(data.nearestOnly()), data.oncePerTarget(), data.aim(),
                     data.origin() == null ? null : spawn(data.origin(), null),
-                    data.knockbackDirection(), data.pullDirection(), visual(data.visual()));
+                    data.knockbackDirection(), data.pullDirection(), visual(data.visual()),
+                    zero(data.atMs()), data.pose());
             case "applyEffects" -> new ApplyEffectsVerb(
                     data.targets() != null && data.targets().contains(AbilityContracts.OWNER_TARGET),
-                    effects(data.effects()), data.knockbackDirection(), data.pullDirection(), visual(data.visual()));
-            case "spawn" -> new SpawnVerb(data.entity(), pattern(data.pattern()));
+                    effects(data.effects()), data.knockbackDirection(), data.pullDirection(), visual(data.visual()),
+                    zero(data.atMs()), data.pose());
+            case "spawn" -> new SpawnVerb(data.entity(), pattern(data.pattern()), zero(data.atMs()), data.pose());
             case "move" -> new MoveVerb(data.distance(), data.unitsPerTick(), zero(data.trailMs()), visual(data.visual()));
             case "face" -> new FaceVerb(data.target(), visual(data.visual()));
             case "transition" -> new TransitionVerb(data.to());

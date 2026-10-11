@@ -40,7 +40,6 @@ public record ArenaEntity(
         Map<String, EventScheduleState> eventScheduleState,
         String eventPhaseId,
         String entityKey,
-        boolean bindToCast,
         double patternAngle,
         double patternLateral) {
 
@@ -69,7 +68,7 @@ public record ArenaEntity(
                 ageMs, tickStartHp, damageTakenThisTick, damageTakenLastTick,
                 hpNetChangeLastTick, rotation, hitLedger, phaseId, phaseLocked,
                 statusEffects, eventSequence, eventType, eventScheduleState, eventPhaseId,
-                null, false, 0, 0);
+                null, 0, 0);
     }
 
     /** Source-compatible full constructor without the event's source phase. */
@@ -248,7 +247,7 @@ public record ArenaEntity(
                 armed, hp, damageMultiplier, abilityId, nextIntervalTimerMs, phaseTimerMs, ageMs,
                 tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation,
                 hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
-                eventScheduleState, eventPhaseId, entityKey, bindToCast, patternAngle, patternLateral);
+                eventScheduleState, eventPhaseId, entityKey, patternAngle, patternLateral);
     }
 
     public ArenaEntity withHp(int nextHp) {
@@ -308,7 +307,7 @@ public record ArenaEntity(
                 intervalTimerMs, phaseTimerMs, ageMs,
                 tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 rotation, hitLedger, phaseId, phaseLocked, statusEffects, eventSequence,
-                eventType, nextEventScheduleState, eventPhaseId, entityKey, bindToCast, patternAngle,
+                eventType, nextEventScheduleState, eventPhaseId, entityKey, patternAngle,
                 patternLateral);
     }
 
@@ -333,7 +332,7 @@ public record ArenaEntity(
                 tickStartHp, nextDamageTakenThisTick, nextDamageTakenLastTick,
                 nextHpNetChangeLastTick, nextRotation, nextHitLedger, nextPhaseId,
                 nextPhaseLocked, nextStatusEffects, nextEventSequence, nextEventType,
-                eventScheduleState, nextEventPhaseId, entityKey, bindToCast, patternAngle, patternLateral);
+                eventScheduleState, nextEventPhaseId, entityKey, patternAngle, patternLateral);
     }
 
     private ArenaEntity withTickStartHp(double nextTickStartHp) {
@@ -342,19 +341,10 @@ public record ArenaEntity(
                 intervalTimerMs, phaseTimerMs, ageMs, nextTickStartHp,
                 damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 rotation, hitLedger, phaseId, phaseLocked, statusEffects,
-                eventSequence, eventType, eventScheduleState, eventPhaseId, entityKey, bindToCast,
+                eventSequence, eventType, eventScheduleState, eventPhaseId, entityKey,
                 patternAngle, patternLateral);
     }
 
-    /** Names which entity of its ability this is, whether it ends with its cast, and its spawn placement. */
-    public ArenaEntity withBinding(String nextEntityKey, boolean nextBindToCast, double nextPatternAngle,
-                                   double nextPatternLateral) {
-        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
-                armed, hp, damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs, ageMs, tickStartHp,
-                damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation, hitLedger, phaseId,
-                phaseLocked, statusEffects, eventSequence, eventType, eventScheduleState, eventPhaseId,
-                nextEntityKey, nextBindToCast, nextPatternAngle, nextPatternLateral);
-    }
 
     /** Moves the entity to a pose, keeping everything else. */
     public ArenaEntity withPose(double nextX, double nextY, double nextVelocityX, double nextVelocityY,

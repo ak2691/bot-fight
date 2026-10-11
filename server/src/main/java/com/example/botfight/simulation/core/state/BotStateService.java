@@ -127,6 +127,7 @@ public class BotStateService {
         bot.triggeredAbility = null;
         bot.triggeredAbilityPayload = null;
         bot.abilitySpawn = java.util.List.of();
+        bot.dueSteps = java.util.List.of();
         bot.visualOriginX = Double.NaN;
         bot.visualOriginY = Double.NaN;
         bot.visualOriginRotation = Double.NaN;

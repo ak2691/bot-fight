@@ -157,13 +157,54 @@ test("11. entity phases move in a known mode and timer events repeat", () => {
     assertBroken("a schedule event repeats", (data) => { phase(data, 17).on.schedule.schedule.mode = "once"; });
     assertBroken("a schedule event needs intervalMs", (data) => { phase(data, 17).on.schedule.schedule.intervalMs = null; });
     assertBroken("only a schedule event waits for its hit", (data) => { phase(data, 4).on.collision.waitForHit = true; });
-    assertBroken("bindToCast", (data) => { delete entity(data, 4).bindToCast; });
 });
 
-test("12. followOwner and bindToCast entities validate", () => {
+test("12. followOwner entities validate", () => {
     const data = fresh();
     const grenade = entity(data, 4);
-    grenade.bindToCast = true;
     grenade.phases[0].movement = { mode: "followOwner", unitsPerTick: null, direction: null, turnDegrees: null, size: null };
     validateGameplayData(data);
+});
+
+test("13. trigger verbs sit on the ability's timeline", () => {
+    // Fireball: one spawn verb, 500 ms active. Rewind: applyEffects then spawn, 300 ms active.
+    const delay = (data, id, index, atMs, pose) => { Object.assign(verb(data, id, index), { atMs, pose }); };
+    for (const [atMs, pose] of [[100, "current"], [500, "current"], [0, null]]) {
+        const data = fresh();
+        delay(data, 5, 0, atMs, pose);
+        validateGameplayData(data);
+    }
+    const captured = fresh();
+    delay(captured, 5, 0, 200, "captured");
+    captured.abilities.abilities.find((entry) => entry.id === 5).activation.capture = { stepX: "x", stepY: "y", stepRotation: "rotation" };
+    validateGameplayData(captured);
+    const ordered = fresh();
+    delay(ordered, 21, 0, 100, "current");
+    delay(ordered, 21, 1, 200, "current");
+    validateGameplayData(ordered);
+
+    assertBroken("after the ability's activeMs", (data) => delay(data, 5, 0, 600, "current"));
+    assertBroken("not a multiple of 100", (data) => delay(data, 5, 0, 150, "current"));
+    assertBroken("non-decreasing atMs order", (data) => delay(data, 21, 0, 200, "current"));
+    assertBroken("cannot be delayed", (data) => delay(data, 20, 0, 100, "current"));
+    assertBroken("cannot be delayed", (data) => delay(data, 19, 0, 100, "current"));
+    assertBroken("unknown verbPose null", (data) => delay(data, 5, 0, 200, null));
+    assertBroken("unknown verbPose", (data) => delay(data, 5, 0, 200, "bogus"));
+    assertBroken("pose is only for a delayed verb", (data) => delay(data, 5, 0, null, "current"));
+    assertBroken("pose is only for a delayed verb", (data) => delay(data, 5, 0, 0, "current"));
+    assertBroken("captured needs activation.capture", (data) => delay(data, 5, 0, 200, "captured"));
+    assertBroken("atMs: missing", (data) => { delete verb(data, 5, 0).atMs; });
+    assertBroken("pose: missing", (data) => { delete verb(data, 5, 0).pose; });
+    assertBroken("only an onTrigger verb has atMs", (data) => { eventVerb(data, 5, "collision", "applyEffects").atMs = 100; });
+});
+
+test("14. oncePerTarget is a scope: step, activation or none", () => {
+    for (const scope of ["step", "activation", null]) {
+        const data = fresh();
+        verb(data, 1).oncePerTarget = scope;
+        validateGameplayData(data);
+    }
+    assertBroken("unknown oncePerTarget", (data) => { verb(data, 1).oncePerTarget = "bogus"; });
+    assertBroken("unknown oncePerTarget", (data) => { verb(data, 1).oncePerTarget = true; });
+    assertBroken("oncePerTarget: missing", (data) => { delete verb(data, 1).oncePerTarget; });
 });

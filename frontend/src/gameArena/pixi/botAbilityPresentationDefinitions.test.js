@@ -48,7 +48,7 @@ test("each presentation type resolves to the ability whose trigger declares that
     }
     // Rewind's visual lives on its entity phase, so it is driven by bot timer fields instead.
     assert.deepEqual(BOT_ABILITY_PRESENTATIONS.filter((presentation) => presentation.abilityId == null).map(({ type }) => type),
-        ["temporalRewindZone"]);
+        ["sprintTrail", "temporalRewindZone"]);
 });
 
 test("every presentation type has exactly one renderer module and vice versa", async () => {
@@ -78,8 +78,21 @@ test("the weapons have their own visual types instead of sharing meleeSlash", ()
     assert.equal(botAbilityPresentationForType("cleave").windup.color, 0xf59e0b);
     assert.equal(botAbilityPresentationForType("cleave").sizingHitboxAbilityId, 36);
     assert.equal(botAbilityPresentationForType("cleave").tint, 0xfde68a);
-    assert.equal(botAbilityPresentationForType("smash").windup.alphaEnd, 0.75);
+    const smash = botAbilityPresentationForType("smash");
+    assert.equal(smash.windup.outline.alphaEnd, 0.6);
+    assert.equal(smash.active.cracks.count, 7);
+    assert.equal(smash.active.debris.count, 9);
+    assert.equal(smash.linger.ms, 700);
     assert.equal(botAbilityPresentationForType("heavySlash").sizingHitboxAbilityId, 1);
+});
+
+test("the sprint trail is approved option C: a 50 ms line spawn with dust about one time in three", () => {
+    const trail = botAbilityPresentationForType("sprintTrail");
+    assert.equal(trail.abilityId, null);
+    assert.equal(trail.spawnIntervalMs, 50);
+    assert.equal(trail.line.lifeMs, 220);
+    assert.equal(trail.dust.lifeMs, 500);
+    assert.ok(trail.dust.chance > 0.3 && trail.dust.chance < 0.4);
 });
 
 test("Sniper keeps the gun type with a sight wind-up and rail_shot fire", () => {

@@ -84,6 +84,11 @@ public record AbilityExecutionPayload(
                 ? bot.triggeredAbilityPayload : forAbility(bot.triggeredAbility);
     }
 
+    /** The pose a verb fires from when it is fired on the bot where it stands now, from {@code origin} on the owner. */
+    public Pose currentPose(Bot bot, AbilityContracts.Spawn origin) {
+        return spawnPose(bot, origin);
+    }
+
     public AbilityExecutionPayload withPreparationTarget(double preparationTargetX, double preparationTargetY) {
         return new AbilityExecutionPayload(actionId, abilityId, definition, contract,
                 preparationTargetX, preparationTargetY, movementMode, movementDirection,
@@ -135,7 +140,11 @@ public record AbilityExecutionPayload(
         AbilityContracts.AbilityContract resolved = contract != null ? contract : AbilityContracts.forAbility(abilityId);
         AbilityContracts.HitVerb hit = resolved == null || resolved.hitVerbs().isEmpty()
                 ? null : resolved.hitVerbs().getFirst();
-        AbilityContracts.Spawn spawn = hit == null ? null : hit.origin();
+        return spawnPose(bot, hit == null ? null : hit.origin());
+    }
+
+    private Pose spawnPose(Bot bot, AbilityContracts.Spawn spawn) {
+        if (bot == null) return new Pose(0, 0, 0);
         if (spawn == null) {
             return new Pose(bot.x, bot.y, bot.rotation);
         }

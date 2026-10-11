@@ -22,6 +22,13 @@ final class AbilityHitDetectionService {
         return hits(attacker, defender, payload, verb);
     }
 
+    /** Whether one hit verb, fired from {@code pose}, touches the defender. */
+    boolean abilityHitsTarget(Bot attacker, Bot defender, AbilityExecutionPayload.Pose pose, HitVerb verb) {
+        if (attacker == null || defender == null || pose == null || verb == null) return false;
+        return !FindTargets.findTargets(new FindTargets.Pose(pose.x(), pose.y(), pose.rotation()),
+                hitbox(verb), FindTargets.Options.hitbox(null), List.of(defender)).isEmpty();
+    }
+
     /** Whether any hit verb of the ability, fired from the bot's captured pose, reaches an arena entity. */
     boolean abilityHitsEntity(Bot attacker, ArenaEntity target, AbilityExecutionPayload payload) {
         if (attacker == null || target == null || payload == null) return false;

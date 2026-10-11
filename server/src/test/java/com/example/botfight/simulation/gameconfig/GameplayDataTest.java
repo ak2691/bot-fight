@@ -256,14 +256,12 @@ class GameplayDataTest {
         abilityEdit("a schedule event repeats", 17, ability -> ((ObjectNode) phase(ability, 0).get("on").get("schedule").get("schedule")).put("mode", "once"));
         abilityEdit("a schedule event needs intervalMs", 17, ability -> ((ObjectNode) phase(ability, 0).get("on").get("schedule").get("schedule")).putNull("intervalMs"));
         abilityEdit("only a schedule event waits for its hit", 4, ability -> ((ObjectNode) phase(ability, 0).get("on").get("collision")).put("waitForHit", true));
-        abilityEdit("bindToCast", 4, ability -> entity(ability).putNull("bindToCast"));
     }
 
     @Test
-    void followOwnerAndBindToCastEntitiesAreValid() throws IOException {
+    void followOwnerEntitiesAreValid() throws IOException {
         ObjectNode abilities = (ObjectNode) MAPPER.readTree(read("abilities.json"));
         ObjectNode grenade = entity(ability(abilities, 4));
-        grenade.put("bindToCast", true);
         ObjectNode movement = (ObjectNode) grenade.get("phases").get(0).get("movement");
         movement.put("mode", "followOwner");
         movement.putNull("unitsPerTick");

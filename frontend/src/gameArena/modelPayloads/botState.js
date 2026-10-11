@@ -88,6 +88,7 @@ function botStateDefaults() {
         entityActivations: {},
         entityHitIds: [],
         abilitySpawn: [],
+        dueSteps: [],
         abilityEntitySerial: 1,
         triggeredAbility: null,
         triggeredPhaseFacingMode: null,

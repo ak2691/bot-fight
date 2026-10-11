@@ -66,18 +66,19 @@ class ChainRuntimeSimulationTest {
         return tests.stream();
     }
 
-    private JsonNode brain(JsonNode abilities, JsonNode roots, JsonNode chains) {
+    private JsonNode brain(JsonNode abilities, JsonNode roots, JsonNode chains, JsonNode customVariables) {
         ObjectNode brain = jsonMapper.createObjectNode();
         brain.put("version", "bot-logic-tree-v1");
         brain.putObject("loadout").set("abilities", abilities);
         brain.set("roots", roots);
         if (chains != null) brain.set("chains", chains);
+        if (customVariables != null) brain.set("customVariables", customVariables);
         return brain;
     }
 
     private List<String> trace(JsonNode scenario) {
-        JsonNode mainBrain = brain(scenario.get("abilities"), scenario.get("roots"), scenario.get("chains"));
-        JsonNode idle = brain(jsonMapper.createArrayNode(), jsonMapper.createArrayNode(), null);
+        JsonNode mainBrain = brain(scenario.get("abilities"), scenario.get("roots"), scenario.get("chains"), scenario.get("customVariables"));
+        JsonNode idle = brain(jsonMapper.createArrayNode(), jsonMapper.createArrayNode(), null, null);
         double rotation = scenario.has("mainRotation") ? scenario.get("mainRotation").asDouble() : 90.0;
         int ticks = scenario.get("ticks").asInt();
         int stunAtTick = scenario.has("stunAtTick") ? scenario.get("stunAtTick").asInt() : -1;

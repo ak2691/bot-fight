@@ -59,7 +59,7 @@ There is no attached/entity split. An ability is data:
 { id, name, label, channel, cost, timing,
   activation: { targetMode, capture, phaseFacingDefault, teleportOncePerActivation },
   onTrigger: [ verbs ],
-  entities:  { <entityType>: { spawn, targeting, lifetime, bindToCast, phases: [ ... ] } } }
+  entities:  { <entityType>: { spawn, targeting, lifetime, phases: [ ... ] } } }
 ```
 
 `onTrigger` runs in order when the wind-up ends. Anything that lives over time is an
@@ -252,7 +252,7 @@ the cooldown after its active stage, and its readout is the generic `readyInMs`.
 ## 6. Entity phase reference
 
 An entity: `runtimeType`, `category` (`projectile`, `zone`, `trap`, `summon`), `spawn`,
-`targeting`, `lifetime`, `initialState`, `state`, `bindToCast`, `phases[]`.
+`targeting`, `lifetime`, `initialState`, `state`, `phases[]`.
 
 A phase: `id`, `type` (`projectile`, `zone`, `summon`), optional `durationMs`, `movement`,
 `hitbox`, `health`, `trigger`, `visual`, `skipOwner`, `transitionOnly`, and `on`: events,
@@ -341,9 +341,6 @@ movement and rotation. Slow is x0.5. The stronger one applies.
   nearest living enemy and move `unitsPerTick`; summons use it), `followOwner` (the
   entity's pose is the owner's pose plus the entity's `spawn` offset and rotation, every
   tick).
-- **`bindToCast: true`:** the entity is removed as soon as the owner's ability that spawned
-  it leaves its active stage, because it finished or was interrupted. Use it for swings,
-  channelled beams and multi-hit melee; it needs an ability with an active stage.
 - **Spawn:** `spawn.offset` (x right, y forward of the owner),
   `rotation` (-360..360) in `rotationSpace` `owner` or `world`;
   `targeting.position: "target"` places it at the activation target
