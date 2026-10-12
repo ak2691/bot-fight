@@ -3,19 +3,13 @@ import botDesignUrl from "../../assets/arena/abilities/bot/bot-design.png";
 import droneDesignUrl from "../../assets/arena/abilities/bot/drone-design.png";
 import fireGunUrl from "../../assets/arena/abilities/rays/fire-gun.png";
 import muzzleFlashUrl from "../../assets/arena/abilities/rays/muzzle-flash.png";
-import concussiveShotUrl from "../../assets/arena/abilities/rays/concussive-shot.png";
 import railShotUrl from "../../assets/arena/abilities/rays/rail-shot.webp";
 import stunUrl from "../../assets/arena/abilities/stun/stun.png";
 import dashSmokeUrl from "../../assets/arena/abilities/movement/dash-smoke.png";
 import grenadeMineExplosionUrl from "../../assets/arena/abilities/explosions/grenade-mine-explosions.png";
-import gravityGrenadeUrl from "../../assets/arena/abilities/zones/gravity-grenade.png";
 import silencePulseUrl from "../../assets/arena/abilities/zones/silence-pulse.webp";
-import nullZoneUrl from "../../assets/arena/abilities/zones/null-zone.png";
 import temporalRewindUrl from "../../assets/arena/abilities/support/temporal-rewind.png";
-import basicHealUrl from "../../assets/arena/abilities/support/basic-heal.png";
 import repulsorBlastUrl from "../../assets/arena/abilities/repulsorblast/spritesheet.png";
-import regularShieldUrl from "../../assets/arena/abilities/shields/regular-shield.png";
-import orbitalMarkerUrl from "../../assets/arena/abilities/orbital-strike/orbital-strike-marker.png";
 import orbitalExplosionUrl from "../../assets/arena/abilities/orbital-strike/orbitalstrike-explosion/spritesheet.png";
 import frostRingSheetUrl from "../../assets/arena/abilities/frostring/IceShatter_96x96.png";
 import singularityAtlasUrl from "../../assets/arena/abilities/singularity/atlas_11.webp";
@@ -48,9 +42,6 @@ const FIREBALL_URLS = orderedAnimationFrames({
 const GRENADE_MOVING_URLS = [grenadeMoving001Url, grenadeMoving002Url, grenadeMoving003Url, grenadeMoving004Url];
 const GRENADE_STATIC_URLS = [grenadeStatic001Url, grenadeStatic002Url, grenadeStatic003Url, grenadeStatic004Url];
 const GRENADE_DETONATE_URLS = [grenadeDetonate001Url, grenadeDetonate002Url];
-const MINE_MOVING_URLS = sortedAssetUrls(import.meta.glob("../../assets/arena/abilities/projectiles/mine/moving-*.png", { eager: true, query: "?url", import: "default" }));
-const MINE_STATIC_URLS = sortedAssetUrls(import.meta.glob("../../assets/arena/abilities/projectiles/mine/static-*.png", { eager: true, query: "?url", import: "default" }));
-const MINE_DETONATE_URLS = sortedAssetUrls(import.meta.glob("../../assets/arena/abilities/projectiles/mine/detonate-*.png", { eager: true, query: "?url", import: "default" }));
 const PHASE_STRIKE_URLS = sortedAssetUrls(import.meta.glob("../../assets/arena/abilities/support/phase-strike/*.png", { eager: true, query: "?url", import: "default" }));
 
 const MUZZLE_ANCHORS = new WeakMap();
@@ -66,19 +57,13 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
         loadAsset(droneDesignUrl, "entity.hunterDrone"),
         loadAsset(fireGunUrl, "ray.fire_gun"),
         loadAsset(muzzleFlashUrl, "effect.muzzleFlash"),
-        loadAsset(concussiveShotUrl, "ray.concussive_shot"),
         loadAsset(railShotUrl, "ray.rail_shot"),
         loadAsset(stunUrl, "effect.stun"),
         loadAsset(dashSmokeUrl, "effect.dashSmoke"),
         loadAsset(grenadeMineExplosionUrl, "effect.grenadeMineExplosion"),
-        loadAsset(gravityGrenadeUrl, "entity.gravityZone"),
         loadAsset(silencePulseUrl, "entity.silenceWave"),
-        loadAsset(nullZoneUrl, "entity.nullZone"),
         loadAsset(temporalRewindUrl, "entity.temporalRewindZone"),
-        loadAsset(basicHealUrl, "effect.basicHeal"),
         loadAsset(repulsorBlastUrl, "effect.repulsorBurst"),
-        loadAsset(regularShieldUrl, "effect.shield"),
-        loadAsset(orbitalMarkerUrl, "entity.orbitalMarker"),
         loadAsset(orbitalExplosionUrl, "entity.orbitalExplosion"),
         loadAsset(frostRingSheetUrl, "effect.frostRing"),
         loadAsset(singularityAtlasUrl, "entity.singularity"),
@@ -88,23 +73,16 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
         loadFrames(GRENADE_MOVING_URLS, "projectile.grenade.moving", loadAsset),
         loadFrames(GRENADE_STATIC_URLS, "projectile.grenade.static", loadAsset),
         loadFrames(GRENADE_DETONATE_URLS, "projectile.grenade.detonate", loadAsset),
-        loadFrames(MINE_MOVING_URLS, "projectile.proximityMine.moving", loadAsset),
-        loadFrames(MINE_STATIC_URLS, "projectile.proximityMine.static", loadAsset),
-        loadFrames(MINE_DETONATE_URLS, "projectile.proximityMine.detonate", loadAsset),
         loadFrames(PHASE_STRIKE_URLS, "effect.phaseStrike", loadAsset),
-    ]).then(([bot, drone, fireGun, muzzleFlash, concussiveShot, railShot, stun, dashSmoke, grenadeMineExplosion,
-            gravityGrenade, silencePulse, nullZone, temporalRewind, basicHeal, repulsorBlast, regularShield, orbitalMarker, orbitalExplosion, frostRing, singularity,
-            meleeSlashes,
-            windburst, fireball, grenadeMoving, grenadeStatic, grenadeDetonate, mineMoving, mineStatic, mineDetonate,
+    ]).then(([bot, drone, fireGun, muzzleFlash, railShot, stun, dashSmoke, grenadeMineExplosion,
+            silencePulse, temporalRewind, repulsorBlast, orbitalExplosion, frostRing, singularity,
+            meleeSlashes, windburst, fireball, grenadeMoving, grenadeStatic, grenadeDetonate,
             phaseStrike]) => ({
             bot,
             drone,
             rays: Object.freeze({
                 gun: [fireGun],
-                pistol: [fireGun],
                 fire_gun: [fireGun],
-                pistol_shot: [fireGun],
-                concussive_shot: sliceGrid(concussiveShot, 1, 7).slice(0, 6),
                 // Nine rail frames arranged row-major in a 2 x 5 guide. The
                 // tenth cell is the green guide marker, not animation art.
                 // Per-frame anchors remove the changing transparent lead-in.
@@ -121,18 +99,11 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
             windburst: sliceGrid(windburst, 1, 3),
             fireball,
             grenade: Object.freeze({ moving: grenadeMoving, static: grenadeStatic, detonate: grenadeDetonate }),
-            mine: Object.freeze({ moving: mineMoving, static: mineStatic, detonate: mineDetonate }),
             grenadeMineExplosion: sliceGrid(grenadeMineExplosion, 8, 1),
-            gravityGrenade: sliceGrid(gravityGrenade, 10, 10).slice(0, 91),
             silencePulse: sliceGrid(silencePulse, 2, 3).slice(0, 5),
-            nullZone: sliceGrid(nullZone, 5, 1),
             temporalRewind: sliceGrid(temporalRewind, 5, 3),
-            basicHeal: sliceGrid(basicHeal, 16, 1),
             repulsorBlast: sliceGrid(repulsorBlast, 10, 1),
-            // The supplied sheet has four rows of five frames.
-            shield: sliceGrid(regularShield, 5, 4),
-            orbitalMarker,
-            // Two six-frame color rows; Pixi tinting supplies the bot color.
+            // Two six-frame color rows; Pixi tinting supplies the bot color. Cleave's sweep reads the second row.
             meleeSlash: sliceGrid(meleeSlashes, 6, 2).slice(0, 6),
             heavySlash: sliceGrid(meleeSlashes, 6, 2).slice(6, 12),
             orbitalExplosion: sliceGrid(orbitalExplosion, 9, 1),

@@ -225,7 +225,7 @@ abstract class MatchWorkflowFixture {
 
     /** Locks a player's pick for the round by sending their carried loadout, so the server adds the offers. */
     protected List<OutboundMatchmakingEvent> pick(UUID userId) {
-        List<OutboundMatchmakingEvent> events = TestMatches.selectLoadout(service, userId, carriedLoadouts.getOrDefault(userId, "custom:"));
+        List<OutboundMatchmakingEvent> events = TestMatches.beginBuild(service, userId);
         events.stream().map(OutboundMatchmakingEvent::event).findFirst().ifPresent(event ->
                 event.players().forEach(player -> carriedLoadouts.put(player.userId(), player.selectedLoadout())));
         return events;
@@ -233,7 +233,7 @@ abstract class MatchWorkflowFixture {
 
     /** Both players queue into a 1v1 and pick, which opens round 1's build. Returns the build-start events. */
     protected List<OutboundMatchmakingEvent> startDuelBuild(UUID first, UUID second) {
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 first,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -242,7 +242,7 @@ abstract class MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 second,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -385,7 +385,7 @@ abstract class MatchWorkflowFixture {
             String username = request.username();
             String principalName = request.principalName();
             String socketSessionId = request.socketSessionId();
-            List<OutboundMatchmakingEvent> events = super.joinQueue(new QueueJoinRequest(
+            List<OutboundMatchmakingEvent> events = super.joinQueue(com.example.botfight.support.TestKits.queue(
                     userId,
                     username,
                     principalName,

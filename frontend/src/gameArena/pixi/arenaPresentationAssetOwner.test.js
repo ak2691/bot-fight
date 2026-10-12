@@ -9,10 +9,7 @@ import {
 
 const ARRAY_PATHS = new Set(REQUIRED_ARENA_PRESENTATION_PATHS.filter((path) => [
     "rays.gun",
-    "rays.pistol",
     "rays.fire_gun",
-    "rays.pistol_shot",
-    "rays.concussive_shot",
     "rays.rail_shot",
     "muzzleFlash",
     "stun",
@@ -20,12 +17,9 @@ const ARRAY_PATHS = new Set(REQUIRED_ARENA_PRESENTATION_PATHS.filter((path) => [
     "windburst",
     "fireball",
     "grenadeMineExplosion",
-    "gravityGrenade",
     "silencePulse",
-    "nullZone",
     "temporalRewind",
     "repulsorBlast",
-    "shield",
     "meleeSlash",
     "heavySlash",
     "phaseStrike",

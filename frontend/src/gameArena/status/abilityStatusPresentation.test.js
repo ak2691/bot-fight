@@ -70,12 +70,12 @@ test("preparation, active, cooldown, and ready states use remaining-time directi
     assert.ok(Math.abs(preparing.progress - (1 / 3)) < 0.0001);
     assert.equal(abilityRingBackground(preparing), "conic-gradient(from 0deg, #facc15 0 100.00%, #64748b 100.00% 100%)");
 
-    const availableDuringPreparation = abilityStatusFor({ abilityState: { 18: { stage: "windup", remainingMs: 200 } } }, 7);
+    const availableDuringPreparation = abilityStatusFor({ abilityState: { 18: { stage: "windup", remainingMs: 200 } } }, 1);
     assert.equal(availableDuringPreparation.state, "ready");
     assert.equal(availableDuringPreparation.progress, 1);
-    assert.equal(abilityRingColorFor(7, availableDuringPreparation), "#22c55e");
+    assert.equal(abilityRingColorFor(1, availableDuringPreparation), "#22c55e");
 
-    const active = abilityStatusFor({ abilityState: { 7: { stage: "active", remainingMs: 200 } } }, 7);
+    const active = abilityStatusFor({ abilityState: { 1: { stage: "active", remainingMs: 200 } } }, 1);
     assert.equal(active.state, "active");
     assert.equal(active.remainingMs, 200);
     assert.match(abilityRingBackground(active), /#7dd3fc/);
@@ -85,20 +85,15 @@ test("preparation, active, cooldown, and ready states use remaining-time directi
     assert.equal(dash.durationMs, 200);
     assert.ok(Math.abs(dash.progress - 0) < 0.0001);
 
-    const cooldown = abilityStatusFor({ abilityState: { 7: { stage: "cooldown", remainingMs: 2500 } } }, 7);
+    const cooldown = abilityStatusFor({ abilityState: { 1: { stage: "cooldown", remainingMs: 250 } } }, 1);
     assert.equal(cooldown.state, "cooldown");
-    assert.equal(cooldown.durationMs, 4600);
-    assert.ok(Math.abs(cooldown.progress - (1 - 2500 / 4600)) < 0.0001);
+    assert.equal(cooldown.durationMs, 500);
+    assert.ok(Math.abs(cooldown.progress - 0.5) < 0.0001);
     assert.match(abilityRingBackground(cooldown), /from 0deg/);
     assert.match(abilityRingBackground(cooldown), /#22c55e/);
     assert.match(abilityRingBackground(cooldown), /#64748b/);
 
-    const reactiveArmorCooldown = abilityStatusFor({ abilityState: { 16: { stage: "cooldown", remainingMs: 9000 } } }, 16);
-    assert.equal(reactiveArmorCooldown.state, "cooldown");
-    assert.equal(reactiveArmorCooldown.durationMs, 9000);
-    assert.equal(reactiveArmorCooldown.progress, 0);
-
-    const ready = abilityStatusFor({ abilityState: { 7: { stage: "ready", remainingMs: 0 } } }, 7);
+    const ready = abilityStatusFor({ abilityState: { 1: { stage: "ready", remainingMs: 0 } } }, 1);
     assert.equal(ready.state, "ready");
     assert.equal(ready.progress, 1);
     assert.match(abilityRingBackground(ready), /#22c55e 0 100\.00%/);
@@ -108,26 +103,6 @@ test("preparation, active, cooldown, and ready states use remaining-time directi
         assert.equal(canonicalReplayState.state, "ready", `ability ${abilityId}`);
         assert.equal(abilityRingColorFor(abilityId, canonicalReplayState), "#22c55e");
     }
-});
-
-test("all ability resources use the canonical charge and recharge maps", () => {
-    assert.equal(abilityChargeCountFor({ abilityState: { 19: { stage: "ready", remainingMs: 0, charges: 1 } } }, 19), null);
-
-    const pistolReload = abilityStatusFor({ abilityState: { 12: { stage: "ready", remainingMs: 0, charges: 0, reloadMs: 900 } } }, 12);
-    assert.equal(pistolReload.state, "cooldown");
-    assert.equal(pistolReload.durationMs, 3000);
-    assert.equal(pistolReload.progress, 0.7);
-    assert.equal(abilityChargeCountFor({ abilityState: { 12: { stage: "ready", remainingMs: 0, charges: 11 } } }, 12), 10);
-
-    // Sniper and Fireball no longer expose an ammunition count.
-    assert.equal(abilityChargeCountFor({ abilityState: { 3: { stage: "ready", remainingMs: 0, charges: 7 } } }, 3), null);
-    assert.equal(abilityChargeCountFor({ abilityState: { 5: { stage: "ready", remainingMs: 0, charges: 3 } } }, 5), null);
-
-    const fireballCooldown = abilityStatusFor({ abilityState: { 5: { stage: "cooldown", remainingMs: 2750 } } }, 5);
-    assert.equal(fireballCooldown.state, "cooldown");
-    assert.equal(fireballCooldown.durationMs, 5500);
-    assert.equal(fireballCooldown.progress, 0.5);
-
 });
 
 test("presentation uses only canonical charge fields", () => {

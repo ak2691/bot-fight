@@ -25,14 +25,14 @@ public record ClosingZoneConfig(
     }
 
     /**
-     * Timed rounds: 20 s segments, 6 rounds, 120 s in all. The zone only exists in rounds 5 and 6.
-     * It starts at a 1200-unit diameter at the start of round 5 (80 s), contracts to 900 over the
-     * next 5 s, then to 600 over the 5 s after round 6 starts (100 s). Damage is unchanged. A
-     * warning ring shows the next diameter for the round before each step (20 s).
+     * Timed rounds: 15 s segments, 6 rounds, 90 s in all. The zone only exists in rounds 5 and 6.
+     * It starts at a 1200-unit diameter at the start of round 5 (60 s), contracts to 900 over the
+     * next 5 s, then to 600 over the 5 s after round 6 starts (75 s). Damage is unchanged. A
+     * warning ring shows the next diameter for the round before each step (15 s).
      */
-    public static ClosingZoneConfig timedRoundsV2() {
-        return new ClosingZoneConfig(80_000, 5_000, 20_000, 2, 32, 1_000, 500, 0.02, 120_000,
-                1_200, List.of(new Step(80_000, 5_000, 900), new Step(100_000, 5_000, 600)), 20_000);
+    public static ClosingZoneConfig timedRounds() {
+        return new ClosingZoneConfig(60_000, 5_000, 15_000, 2, 32, 1_000, 500, 0.02, 90_000,
+                1_200, List.of(new Step(60_000, 5_000, 900), new Step(75_000, 5_000, 600)), 15_000);
     }
 
     /**

@@ -6,7 +6,7 @@ import { ABILITY_STATS } from "../../../../shared/engine/gameconfig/Abilities.js
 import { ABILITIES } from "../../../../shared/engine/gameconfig/AbilityRegistry.js";
 import { isWindingUp } from "../../../../shared/engine/gameconfig/AbilityState.js";
 import { CLOSING_ZONE_TYPE } from "../../../../shared/engine/gameconfig/ArenaHazardConfig.js";
-import { basicHealParticleSpec, healthBarPercent, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS } from "../../../../shared/engine/gameconfig/visualState.js";
+import { healthBarPercent, REPULSOR_BURST_VISUAL_MS } from "../../../../shared/engine/gameconfig/visualState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { internalPointToPublic } from "../../../../shared/engine/modelPayloads/arenaCoordinates.js";
 import { createBotState, isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
@@ -20,7 +20,9 @@ import { advanceParticle } from "./particleMotion.js";
 import { createPresentationClock } from "./presentationClock.js";
 import { clearPresentationArtifacts, initialPresentationViewState } from "./presentationReset.js";
 import { destroyBotAbilityRenderers, syncBotAbilityRenderers, updateBotAbilityRenderers } from "./renderers/index.js";
-import { hideCachedEffects, rendererKit, showCachedEffect } from "./renderers/pixiToolkit.js";
+import { destroyEntityVisuals, updateEntityVisual } from "./renderers/entityRenderers.js";
+import { BOT_ABILITY_VISUAL_SETTINGS, ENTITY_VISUAL_SETTINGS } from "./botAbilityPresentationDefinitions.js";
+import { hideCachedEffects, rendererKit } from "./renderers/pixiToolkit.js";
 import { showRay } from "./renderers/rendererHelpers.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../../../../shared/engine/botlogic/planner/arenaAngles.js";
 import { entityAbilitySpawnTransform, hitboxGeometriesForEntity, hitboxGeometryForBot } from "../../../../shared/engine/gameconfig/hitboxGeometry.js";
@@ -502,6 +504,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     function destroyVisualView(id) {
         const view = visualViews.get(id);
         if (!view) return;
+        destroyEntityVisuals(view);
         view.container.parent?.removeChild?.(view.container);
         view.container.destroy({ children: true });
         visualViews.delete(id);
@@ -526,7 +529,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         if (!instance || visualViews.has(instance.id)) return;
         const view = createView(instance.shape, now, instance);
         visualViews.set(instance.id, view);
-        if (["mineExplosion", "orbitalExplosion"].includes(instance.type)) {
+        if (instance.type === "orbitalExplosion") {
             spawnBurst(instance.x, instance.y, explosionColor(instance.type), instance.type === "orbitalExplosion" ? 30 : 18);
         }
     }
@@ -538,6 +541,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         for (const [id, view] of views) {
             if (nextIds.has(id)) continue;
             destroyBotAbilityRenderers(view, rendererKit);
+            destroyEntityVisuals(view);
             view.container.destroy({ children: true });
             views.delete(id);
         }
@@ -570,7 +574,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             if (!view) {
                 view = createView(phaseShape, now, nextPhaseVisualInstance);
                 views.set(shape.id, view);
-                if (!suppressTransientPresentation && ["mineExplosion", "orbitalExplosion"].includes(phaseShape.type)) {
+                if (!suppressTransientPresentation && phaseShape.type === "orbitalExplosion") {
                     spawnBurst(phaseShape.x, phaseShape.y, explosionColor(phaseShape.type), phaseShape.type === "orbitalExplosion" ? 30 : 18);
                 }
             }
@@ -641,7 +645,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                     suppressTransient: suppressTransientPresentation,
                     activeAbilityId: activeBotVisual(phaseShape),
                     previousActiveAbilityId: activeBotVisual(previousShape),
-                    effects: { spawnBurst, spawnRepairPulse: spawnRepairPulseParticles },
+                    effects: { spawnBurst },
                     kit: rendererKit,
                 });
             }
@@ -756,29 +760,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             display.position.set(x, y);
             particleLayer.addChild(display);
             particles.push({ display, x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, lifeMs: 480 + (index % 4) * 70, totalMs: 690 });
-        }
-    }
-
-    function spawnRepairPulseParticles(x, y, visualSize) {
-        for (let index = 0; index < BASIC_HEAL_PARTICLE_COUNT; index += 1) {
-            const spec = basicHealParticleSpec(index, visualSize);
-            const display = new Text({
-                text: "+",
-                style: { fill: 0x6ee7b7, fontFamily: "monospace", fontSize: spec.fontSize, fontWeight: "bold", align: "center" },
-            });
-            display.anchor.set(0.5);
-            display.eventMode = "none";
-            display.position.set(x + spec.offsetX, y + spec.offsetY);
-            particleLayer.addChild(display);
-            particles.push({
-                display,
-                x: x + spec.offsetX,
-                y: y + spec.offsetY,
-                vx: spec.vx,
-                vy: spec.vy,
-                lifeMs: spec.lifetimeMs,
-                totalMs: spec.lifetimeMs,
-            });
         }
     }
 
@@ -1040,6 +1021,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             app.canvas.removeEventListener("contextmenu", preventContextMenu);
             app.canvas.removeEventListener("pointerleave", clearMeasurementHover);
             for (const [id, view] of visualViews) {
+                destroyEntityVisuals(view);
                 view.container.destroy({ children: true });
                 visualViews.delete(id);
             }
@@ -1207,15 +1189,16 @@ function drawDeadMarker(graphics) {
 
 
 const STATUS_ICON_STYLE = Object.freeze({
-    RA: { foreground: 0xfbbf24, background: 0x78350f, border: 0x92400e },
-    AG: { foreground: 0xe2e8f0, background: 0x475569, border: 0x334155 },
     BURN: { foreground: 0xfdba74, background: 0x9a3412, border: 0x7c2d12 },
     BLEED: { foreground: 0xfca5a5, background: 0x991b1b, border: 0x7f1d1d },
     SLOW: { foreground: 0x93c5fd, background: 0x1e3a8a, border: 0x1e40af },
     SIL: { foreground: 0xbfdbfe, background: 0x1e40af, border: 0x1e3a8a },
     SHOCK: { foreground: 0xfef08a, background: 0x155e75, border: 0x164e63 },
     STUN: { foreground: 0xfef9c3, background: 0x854d0e, border: 0x713f12 },
-    OVERCLOCK: { foreground: 0xa7f3d0, background: 0x022c22, border: 0x34d399 },
+    OVERDRIVE: { foreground: 0xa7f3d0, background: 0x065f46, border: 0x047857 },
+    PARRY: { foreground: 0xfef3c7, background: 0x713f12, border: 0xa16207 },
+    OVERCHARGE: { foreground: 0xfef08a, background: 0x854d0e, border: 0xca8a04 },
+    TETHERED: { foreground: 0xe2e8f0, background: 0x7f1d1d, border: 0x991b1b },
 });
 
 function drawStatusIcons(graphics, shape, radius, verticalGap = 64) {
@@ -1229,6 +1212,7 @@ function drawStatusIcons(graphics, shape, radius, verticalGap = 64) {
     statuses.forEach((status, index) => {
         const x = startX + index * (tileSize + gap);
         const style = STATUS_ICON_STYLE[status];
+        if (!style) return;
         graphics.roundRect(x, y, tileSize, tileSize, 3).fill(style.background).stroke({ color: style.border, width: 2 });
         drawStatusSymbol(graphics, status, x + tileSize / 2, y + tileSize / 2, style.foreground);
     });
@@ -1248,22 +1232,23 @@ function drawStatusSymbol(graphics, status, x, y, color) {
     } else if (status === "SLOW") {
         graphics.moveTo(x - 7, y - 5).lineTo(x - 1, y - 5).lineTo(x + 1, y + 1).lineTo(x + 7, y + 3).lineTo(x + 7, y + 6).lineTo(x - 7, y + 6).closePath().fill(color);
         graphics.moveTo(x + 5, y - 8).lineTo(x + 5, y - 1).moveTo(x + 2, y - 3).lineTo(x + 5, y).lineTo(x + 8, y - 3).stroke({ color: 0xdbeafe, width: 2 });
-    } else if (status === "RA") {
-        graphics.poly([x, y - 7, x + 6, y - 4, x + 5, y + 4, x, y + 8, x - 5, y + 4, x - 6, y - 4]).stroke({ color, width: 2 });
-        for (const offset of [-6, 0, 6]) graphics.moveTo(x + offset, y - 5).lineTo(x + offset, y - 9).stroke({ color, width: 2 });
-    } else if (status === "AG") {
-        graphics.circle(x - 4, y, 4.5).stroke({ color, width: 2 }).circle(x + 4, y, 4.5).stroke({ color, width: 2 });
-        graphics.moveTo(x - 1, y - 3).lineTo(x + 1, y + 3).moveTo(x - 1, y + 3).lineTo(x + 1, y - 3).stroke({ color, width: 2 });
     } else if (status === "STUN") {
         graphics.poly([x, y - 8, x + 2, y - 2, x + 8, y, x + 2, y + 2, x, y + 8, x - 2, y + 2, x - 8, y, x - 2, y - 2]).fill(color);
-    } else if (status === "OVERCLOCK") {
-        graphics.circle(x, y, 8.5).stroke({ color, width: 1.8 });
-        graphics.moveTo(x, y - 5).lineTo(x, y).lineTo(x + 3.5, y + 2).stroke({ color, width: 1.8 });
-        graphics.moveTo(x, y - 9.5).lineTo(x, y - 7.5)
-            .moveTo(x, y + 7.5).lineTo(x, y + 9.5)
-            .moveTo(x - 9.5, y).lineTo(x - 7.5, y)
-            .moveTo(x + 7.5, y).lineTo(x + 9.5, y)
-            .stroke({ color, width: 1.4 });
+    } else if (status === "OVERDRIVE") {
+        // Two forward chevrons: movement without a stamina cost.
+        graphics.moveTo(x - 7, y - 6).lineTo(x - 1, y).lineTo(x - 7, y + 6)
+            .moveTo(x, y - 6).lineTo(x + 6, y).lineTo(x, y + 6).stroke({ color, width: 2.5 });
+    } else if (status === "PARRY") {
+        // Two crossed blades.
+        graphics.moveTo(x - 7, y - 7).lineTo(x + 7, y + 7).moveTo(x + 7, y - 7).lineTo(x - 7, y + 7).stroke({ color, width: 2.5 });
+        graphics.moveTo(x - 7, y + 3).lineTo(x - 3, y + 7).moveTo(x + 7, y + 3).lineTo(x + 3, y + 7).stroke({ color, width: 2 });
+    } else if (status === "OVERCHARGE") {
+        // Two stacked up-arrows: doubled damage.
+        graphics.moveTo(x - 6, y - 1).lineTo(x, y - 7).lineTo(x + 6, y - 1)
+            .moveTo(x - 6, y + 6).lineTo(x, y).lineTo(x + 6, y + 6).stroke({ color, width: 2.5 });
+    } else if (status === "TETHERED") {
+        // Two chain links.
+        graphics.ellipse(x - 3.5, y, 5, 3.5).stroke({ color, width: 2 }).ellipse(x + 3.5, y, 5, 3.5).stroke({ color, width: 2 });
     }
 }
 
@@ -1378,7 +1363,6 @@ function drawEntity(view, selected, now, arenaSprites, botViews = [], position =
         return;
     }
     hideCachedEffects(view);
-    const persistentOrbitalMarker = shape.type === "orbitalMarker";
     const animationActive = visualAnimationIsActive(view, now);
     if (shape.type === CLOSING_ZONE_TYPE) {
         drawClosingZone(graphics, shape);
@@ -1387,7 +1371,7 @@ function drawEntity(view, selected, now, arenaSprites, botViews = [], position =
         caption.visible = false;
         return;
     }
-    if (!animationActive && !persistentOrbitalMarker) {
+    if (!animationActive) {
         baseSprite.visible = false;
         graphics.clear();
         caption.text = "";
@@ -1396,9 +1380,19 @@ function drawEntity(view, selected, now, arenaSprites, botViews = [], position =
     }
     const size = Math.max(2, visualSizeForShape(shape, Number(shape.size ?? 30)));
     const radius = size / 2;
-    const presentationType = presentationTypeForShape(shape);
     graphics.clear();
-    if (presentationDefinitionForShape(shape).kind === "generated") {
+    const definition = presentationDefinitionForShape(shape);
+    if (definition.kind === "procedural") {
+        baseSprite.visible = false;
+        updateEntityVisual(view, definition.visualType, {
+            graphics, shape, settings: ENTITY_VISUAL_SETTINGS[definition.visualType], now,
+        });
+        caption.text = entityCaption(shape);
+        caption.visible = Boolean(caption.text);
+        caption.position.set(0, -(Number(shape.size ?? 30) / 2) - 10);
+        return;
+    }
+    if (definition.kind === "generated") {
         baseSprite.visible = false;
         const ownerView = shape.type === "tetherBolt"
             ? botViews.find(({ view: candidate }) => candidate.shape.id === shape.ownerId
@@ -1419,12 +1413,8 @@ function drawEntity(view, selected, now, arenaSprites, botViews = [], position =
         if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
         return;
     }
-    const orbitalProgress = visualAnimationProgress(view, now);
-    const baseVisualShape = persistentOrbitalMarker
-        ? { ...shape, eventType: null, eventSequence: 0, visualEventType: null, visualEventMs: 0, visualEventSize: 0 }
-        : shape;
     const texture = entityTexture(
-        baseVisualShape,
+        shape,
         arenaSprites,
         now,
         view.visualAnimationStartedAt,
@@ -1440,25 +1430,11 @@ function drawEntity(view, selected, now, arenaSprites, botViews = [], position =
     baseSprite.height = spriteSize.height;
     caption.text = entityCaption(shape);
     caption.visible = Boolean(caption.text);
-    caption.position.set(0, presentationType === "nullZone" ? 0 : -radius - 10);
+    caption.position.set(0, -radius - 10);
 
     const trailStyle = projectileTrailStyle(shape);
     if (trailStyle) drawVelocityTrail(graphics, shape, trailStyle.color, trailStyle.length, trailStyle.width, now);
 
-    if (persistentOrbitalMarker && presentationType === "orbitalExplosion" && animationActive) {
-        const explosionFrames = arenaSprites.abilities.orbitalExplosion;
-        if (explosionFrames?.length) {
-            const progress = orbitalProgress ?? 1;
-            showCachedEffect(view, "orbital-explosion",
-                spriteFrameAtProgress(explosionFrames, progress), {
-                    alpha: 1 - progress,
-                    width: spriteSize.width,
-                    height: spriteSize.height,
-                });
-        }
-    } else if (presentationType === "gravityZone") {
-        if (shape.armed) baseSprite.alpha = 0.72 + Math.sin(now / 100) * 0.12;
-    }
     if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
     if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
 }
@@ -1695,20 +1671,12 @@ function entityVisualBaseSize(shape, fallback) {
 
 function entitySpriteSize(shape, size) {
     const presentationType = presentationTypeForShape(shape);
-    if (presentationType === "orbitalMarker") return { width: size, height: size };
     if (presentationType === "grenade") return { width: size * 10, height: size * 10 };
-    if (presentationType === "proximityMine") return { width: size * 4, height: size * 4 };
     if (presentationType === "fireball") return { width: size * 1.6, height: size * 1.6 };
-    if (["grenadeExplosion", "mineExplosion", "gravityExplosion", "orbitalExplosion", "singularityZone", "singularityExplosion"].includes(presentationType)) return { width: size, height: size };
+    if (["grenadeExplosion", "orbitalExplosion", "singularityZone", "singularityExplosion"].includes(presentationType)) return { width: size, height: size };
     // Each Null Zone frame is roughly 1.25:1 and includes some visual padding.
-    // Keep that aspect-ratio compensation, but enlarge the presentation by
-    // about 25 units so its visible ring reaches the 300-unit collider.
-    if (presentationType === "nullZone") {
-        const visualSize = Math.max(2, size + 25);
-        return { width: visualSize * 1.1, height: visualSize * 0.88 };
-    }
     if (presentationType === "temporalRewindZone") return { width: size * 1.7, height: size * 1.7 };
-    if (presentationType === "silenceWave" || presentationType === "gravityZone") return { width: size, height: size };
+    if (presentationType === "silenceWave") return { width: size, height: size };
     if (presentationType === "windburstProjectile") return { width: size * 6, height: size * 4 };
     return { width: size * 1.5, height: size * 1.5 };
 }
@@ -1780,7 +1748,6 @@ function drawMeasurements(layer, points, hoverPoint = null) {
 
 function explosionColor(type) {
     if (type === "orbitalExplosion") return 0xfef08a;
-    if (type === "mineExplosion") return 0xfca5a5;
     return 0xfdba74;
 }
 

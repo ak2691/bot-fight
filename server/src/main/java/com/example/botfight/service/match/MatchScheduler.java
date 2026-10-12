@@ -71,7 +71,7 @@ public class MatchScheduler {
 
     /** Called by timing services after storing a pick/build deadline. */
     public void deadlinesChanged(MatchSession session) {
-        if (session.phase() == MatchPhase.LOADOUT_SELECT && session.loadoutSelectionEndsAt() != null) {
+        if (session.phase() == MatchPhase.KIT_REVEAL && session.loadoutSelectionEndsAt() != null) {
             schedule(session.matchId(), session.phase(), session.loadoutSelectionEndsAt(),
                     () -> publisher.publish(matches.resolveLoadoutSelectionTimeout(session.matchId())));
         } else if (session.phase() == MatchPhase.BUILDING) {

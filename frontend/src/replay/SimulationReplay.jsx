@@ -147,7 +147,7 @@ export default function SimulationReplay({
     });
     const ratingChanges = replayRatingChanges(playback, matchResultRevealed, viewer?.username);
 
-    const segmentMs = (Number(playback.timedRounds?.segmentSeconds) > 0 ? Number(playback.timedRounds.segmentSeconds) : 20) * 1000;
+    const segmentMs = (Number(playback.timedRounds?.segmentSeconds) > 0 ? Number(playback.timedRounds.segmentSeconds) : 15) * 1000;
     const replaySeconds = replayRemainingSeconds(segmentMs, displayElapsedMs);
 
     useEffect(() => {

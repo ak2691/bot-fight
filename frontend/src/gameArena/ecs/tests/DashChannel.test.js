@@ -1,4 +1,5 @@
 import { asBots } from "../../testing/botFixtures.js";
+import { presetEffects } from "../../../../../shared/engine/gameconfig/StatusPresets.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MOVEMENT_TICK_MS } from "../../../../../shared/engine/gameconfig/MovementConfig.js";
@@ -41,7 +42,7 @@ function bot(extra = {}) {
 const abilityStageMs = (shape, id) => `${shape.abilityState?.[id]?.stage ?? "ready"}:${shape.abilityState?.[id]?.remainingMs ?? 0}`;
 
 const step = (shape, action = idle) => applyBotAction(shape, action, MOVEMENT_TICK_MS);
-const status = (type) => ({ statusEffects: [{ type, remainingMs: 1000, mode: "duration" }] });
+const status = (type) => ({ statusEffects: [{ type, remainingMs: 1000, mode: "duration", effects: presetEffects(type) }] });
 
 test("Dash has its own action category and ignores the ability lock", () => {
     assert.equal(ACTION_BY_ID.get(DASH_ABILITY_ID).head, "dash");

@@ -52,7 +52,6 @@ export const STATUS_CHIP_STYLES = Object.freeze({
     slow: "border-sky-400/50 text-sky-300",
     shock: "border-yellow-400/50 text-yellow-300",
     silence: "border-violet-400/50 text-violet-300",
-    overclock: "border-emerald-400/50 text-emerald-300",
 });
 export const DEFAULT_STATUS_CHIP_STYLE = "border-cyan-500/40 text-cyan-300";
 export const COMBAT_CHIP_STYLE = "border-[#2d353c] text-slate-300";

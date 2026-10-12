@@ -10,12 +10,12 @@ Goal: **faster paced, while coding stays the core skill.** No reflex mechanics. 
 
 ## 2. Format overview
 
-One continuous fight, split into up to **6 rounds**. There is no best-of series: rounds chain together, and each one builds on the last. Each round is a cycle:
+One continuous fight, split into up to **6 rounds of 15 seconds** (90 seconds total). There is no best-of series: rounds chain together, and each one builds on the last. Each round is a cycle:
 
 1. **Pick:** fixed (30 s in round 1, 20 s after), not taken from the clock. In round 1, players pick a weapon plus one ability. In rounds 2–6, they pick 1 ability from the offers (3, or 2 in tier 3; see section 5). Both players' picks are revealed to both players.
 2. **Build:** both players edit their brain at the same time and in secret. Each player's clock runs until they submit.
 3. **Simulate:** one authoritative batch simulation of the next segment. It takes milliseconds.
-4. **Watch:** about 20 s of segment playback. **Clocks are paused and editing is locked**, otherwise watching would be free build time.
+4. **Watch:** about 15 s of segment playback. **Clocks are paused and editing is locked**, otherwise watching would be free build time.
 
 Repeat until a bot's HP reaches zero or round 6 ends (section 6).
 
@@ -48,7 +48,7 @@ Modelled on a chess time control with a per-move bonus (a Fischer increment).
 - **The server owns the clock.** Deadlines live on the server and the client only displays them (same pattern as `MATCH_TIMING.md`). Allow a small grace period for a submit that is in flight when the clock hits zero.
 - Show both clocks to both players and to spectators.
 - **Why a large base and a small increment:** the extra complexity lands in round 1. Later rounds integrate one ability into an existing brain. A +1:00 increment was considered, but it adds time to the rounds that need it least and stretches matches.
-- **Match length:** each round also has about 50 seconds of fixed overhead (pick, a 20 s replay, holds), about 5 minutes over 6 rounds, and each round lasts as long as the slower player takes.
+- **Match length:** each round also has about 45 seconds of fixed overhead (pick, a 15 s replay, holds), about 4.5 minutes over 6 rounds, and each round lasts as long as the slower player takes.
 
   | Option | Max build per player | Worst-case match | Typical (about 60% of clock used) |
   |---|---|---|---|
@@ -190,7 +190,7 @@ Decided after auditing the current conditions and actions. Goal: more useful inf
 - **Is Moving** (true/false), to replace the main use of Speed.
 - **Sprint checkbox on Walk:** sprint is an option on the Walk action, not a separate action, so it never competes for the movement channel. Comes with the movement system (section 5a).
 - **Opponent "Any Ability Winding Up"** (true/false): the footsies trigger, "they've committed", without one condition per ability.
-- **Reach autofill:** next to the number field of Distance and Angle To conditions, a button lists the bot's equipped abilities and fills the number with that ability's **effective** reach (Distance: hitbox length plus the target's 30-unit radius where the hitbox includes it; Angle To: half the arc). It inserts a plain, editable number, not a live link. The UI still needs design.
+- **Reach autofill:** next to the number field of Distance and In View conditions, a button lists the bot's equipped abilities and fills the number with that ability's **effective** reach (Distance: hitbox length plus the target's 30-unit radius where the hitbox includes it; In View: the full arc, twice the half-arc Angle To used to fill, so the arc covers the whole cone). It inserts a plain, editable number, not a live link. The UI still needs design. No autofill exists in code yet.
 
 ### Remove
 
@@ -238,7 +238,7 @@ These are the current low-cooldown ranged "weapons." They move out of the weapon
 | Gun (3) | Sniper: long range, long cooldown, visible 0.9 s aim |
 | Pistol (12) | Shotgun Blast: 7 pellets in a fixed 40° spread; more pellets hit up close. Done last, with the multi-spawn engine; Pistol is unchanged until then |
 
-**IDs:** keep IDs 3, 5 and 12. Nothing re-simulates old matches, and the ruleset bump to `duel-v2` marks the change.
+**IDs:** keep IDs 3, 5 and 12. Nothing re-simulates old matches, and the ruleset bump to `duel-v3` marks the change.
 
 ### Weapons vs. abilities
 
@@ -267,11 +267,11 @@ These are the current low-cooldown ranged "weapons." They move out of the weapon
 
 ### HP
 
-**HP stays at 300** (up from 150), so a fight realistically lasts several segments. The target is a **median KO in round 5**: one strong segment matters but doesn't decide the match on its own, and most matches end before the round 6 HP decision. Tune weapon damage against this, not HP.
+**HP is 225**, so a fight realistically lasts several segments. The target is a **median KO in round 5**: one strong segment matters but doesn't decide the match on its own, and most matches end before the round 6 HP decision. Tune weapon damage against this, not HP.
 
 ### Balancing approach
 
-- **Set a target time-to-kill.** The target is a median KO in round 5 (about 80–100 s of fighting, 4–5 segments of 20 s) with 300 HP. Derive each weapon's damage per second from that, then adjust for its range and how reliably it hits.
+- **Set a target time-to-kill.** The target is a median KO in round 5 (about 60–75 s of fighting, 4–5 segments of 15 s) with 225 HP. Derive each weapon's damage per second from that, then adjust for its range and how reliably it hits.
 - **Run matchup tables with the deterministic simulation.** Write a few simple reference brains ("chase and melee", "kite and poke with abilities", "hold and counter"), then batch-simulate every weapon against every other, and later weapon and ability combinations. Fights take milliseconds, so a whole win-rate table takes seconds. If kiting with ranged abilities beats chasing with melee most of the time, ranged abilities are too strong.
 
 ## 5d. Action chains
@@ -342,10 +342,10 @@ A Chains list sits beside Roots, with "+ Chain". Opening a chain (from the list,
 
 ## 6. Ending the match
 
-- **Zone escalation:** the closing zone (existing `ClosingZoneSystem`) only appears in rounds 5–6, pushing bots together late and forcing a result. `ClosingZoneConfig.timedRoundsV2()` starts the zone at 80,000 ms, the start of round 5:
-  - the zone side goes from 1200 to 900 units at the start of round 5, then to 600 at the start of round 6, each a 5 s contraction;
-  - for the round before each step, a warning ring shows the next size (the 900 ring during round 4, the 600 ring during round 5);
-  - damage is unchanged, and `simulationDurationMs` is 120,000.
+- **Zone escalation:** the closing zone (existing `ClosingZoneSystem`) only appears in rounds 5–6, pushing bots together late and forcing a result. `ClosingZoneConfig.timedRounds()` starts the zone at 60,000 ms, the start of round 5:
+  - the zone side goes from 1200 to 900 units at the start of round 5, then to 600 at the start of round 6 (75,000 ms), each a 5 s contraction;
+  - for the 15-second round before each step, a warning ring shows the next size (the 900 ring during round 4, the 600 ring during round 5);
+  - damage is unchanged, and `simulationDurationMs` is 90,000.
 - **Round limit:** after round 6, the bot with **higher HP wins**. This stops degenerate stalls such as two bots healing forever.
 - **Draw** only if both bots die on the same tick, or HP is equal at the round limit.
 - Match length varies, as it does in most competitive games. The zone and the round limit guarantee the match ends.
@@ -371,7 +371,7 @@ Prepared module libraries were considered and **not adopted**: they would move t
 
 No real-time server is needed. Each fight segment is an ordinary authoritative batch simulation.
 
-- **Approach: a brain schedule, not snapshots.** To produce segment *k*, the server re-runs the whole match from tick 0 with the original seed. It swaps each bot's brain and loadout at each round boundary, and records only segment *k*. This is deterministic by construction, needs no snapshot format, and costs milliseconds (at most 1,200 ticks).
+- **Approach: a brain schedule, not snapshots.** To produce segment *k*, the server re-runs the whole match from tick 0 with the original seed. It swaps each bot's brain and loadout at each round boundary, and records only segment *k*. This is deterministic by construction, needs no snapshot format, and costs milliseconds (at most 900 ticks).
 - **Persistence:** store each round's brains, picks, and variable resets plus the seed, so the whole match re-simulates exactly and stays auditable.
 - **Server-side checks:** submit ownership, brain validation and bounds, the offered-ability allowlist (a player can only pick from what they were offered), the weapon allowlist, no duplicate abilities, clock deadlines, and one final submit per player per round.
 - **Offer generation** stays deterministic from the match seed and round number (as `MatchLoadoutService` does today), now using the tier-per-two-rounds mapping and excluding abilities the player already owns.
@@ -387,7 +387,7 @@ No real-time server is needed. Each fight segment is an ordinary authoritative b
 
 ## 10. Open questions
 
-- The numbers: base clock, increment, pick time, weapon damage, and the zone sizes. Segment length (20 s), HP (300), the zone schedule and the 2v2 clock are set but still starting points. Whether 2v2 needs its own HP pool is a tuning item.
+- The numbers: base clock, increment, pick time, weapon damage, and the zone sizes. Segment length (15 s), HP (225), the zone schedule and the 2v2 clock are set but still starting points. Whether 2v2 needs its own HP pool is a tuning item.
 - **Round 1 brain:** does round 1 start from an empty brain or from a saved one? A saved brain makes round 1 faster but lets players prepare outside the clock, which the format otherwise avoids (prepared module libraries were not adopted).
 - The open items in section 5c: final weapon numbers and Heavy Slash vs. Cleave.
 - The open items in section 5a: optional depth (brace, back hits). Turning is decided (fast turn replaces Lock On).

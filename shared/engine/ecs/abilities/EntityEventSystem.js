@@ -31,6 +31,7 @@ export function dispatchEntityEvent(entity, eventType, {
     effectSources = null,
     collisionDistance = undefined,
     seekTargetId = null,
+    impacts = new Map(),
 } = {}) {
     const handler = phase?.on?.[eventType];
     if (!handler) return { entity, bots, emittedVisuals: [], spawned: [], hitConnected: false };
@@ -49,6 +50,7 @@ export function dispatchEntityEvent(entity, eventType, {
         effectSources,
         collisionDistance,
         seekTargetId,
+        impacts,
         entityStats: entityEffectStats(phase),
         eventReachesBots: eventTargetsKind(handler, TARGET_KINDS.BOT),
         emittedVisuals: [],

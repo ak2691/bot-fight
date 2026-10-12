@@ -1,6 +1,6 @@
-import { ABILITY_STATS, abilityMaxChargesForShape } from "./Abilities.js";
-import { findVerb, triggerVerbs, VERBS } from "../ecs/contracts/AbilityContracts.js";
-import { statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../ecs/contracts/StatusContracts.js";
+import { abilityMaxChargesForShape, abilityTiming } from "./Abilities.js";
+import { modifierFor } from "../ecs/contracts/StatusContracts.js";
+import { MODIFIER_STATS } from "./vocabulary.js";
 import { abilityChannel } from "./AbilityChannels.js";
 import {
     ABILITY_STAGES,
@@ -10,6 +10,7 @@ import {
     channelBusy,
     cooldownRemainingMs,
     endActiveStage,
+    markCastsInterrupted,
     patchAbilityRecord,
     pendingCooldownMs,
     readyAbilityRecord,
@@ -29,7 +30,7 @@ export function initialAbilityState(abilities, maxHp = null) {
 }
 
 /** Returns the canonical resource payload for one ability. */
-export function abilityResourceFor(shape, abilityId, stats = ABILITY_STATS[abilityId] ?? {}) {
+export function abilityResourceFor(shape, abilityId, stats = abilityTiming(abilityId)) {
     const maxCharges = positiveInteger(abilityMaxChargesForShape(abilityId, shape));
     if (maxCharges == null) {
         return { abilityId, stats, maxCharges: null, charges: null, rechargeMs: 0 };
@@ -161,7 +162,7 @@ export function interruptCurrentAbility(shape, options = {}) {
     ]);
     let next = shape;
     for (const abilityId of ids) next = interruptAbility(next, abilityId, options);
-    return next;
+    return markCastsInterrupted(next);
 }
 
 /**
@@ -178,7 +179,7 @@ export function interruptAbility(shape, abilityId, { cooldownMultiplier = null }
     const active = activeRemainingMs(shape, id) > 0;
     if (!preparing && !active) return shape;
 
-    const stats = ABILITY_STATS[id] ?? {};
+    const stats = abilityTiming(id);
     const multiplier = positiveMultiplier(cooldownMultiplier == null
         ? 1 / Number(shape.attackSpeedMultiplier ?? 1)
         : cooldownMultiplier);
@@ -208,7 +209,9 @@ export function interruptAbility(shape, abilityId, { cooldownMultiplier = null }
         next = setAbilityCooldownState(next, id, configuredCooldownMs);
     }
 
-    if (active && findVerb(triggerVerbs(id), VERBS.MOVE) != null) {
+    // An interrupted ability stops the move it started (a dash, or a lunge); a move another ability started keeps going.
+    if (active && Number(shape.moveAbilityId) === id) {
+        next.moveAbilityId = null;
         next.dashRemaining = 0;
         next.movementVelocityX = 0;
         next.movementVelocityY = 0;
@@ -291,16 +294,9 @@ function positiveMultiplier(value) {
     return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
 }
 
+/** The cooldown multiplier of new cooldowns and reloads: the strongest cooldown modifier of the active statuses. */
 export function cooldownStartMultiplier(shape) {
-    return statusIsActive(shape, "overclock")
-        ? Math.min(1, Math.max(0, statusEffectValue(
-            shape,
-            "overclock",
-            STATUS_EFFECT_APPLICATIONS.COOLDOWN_MODIFIER,
-            "multiplier",
-            1,
-        )))
-        : 1;
+    return modifierFor(shape, MODIFIER_STATS.COOLDOWN).multiply;
 }
 
 function positiveInteger(value) {

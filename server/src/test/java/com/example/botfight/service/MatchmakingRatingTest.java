@@ -60,7 +60,7 @@ class MatchmakingRatingTest {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
 
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 first,
                 "guest-one",
                 "guest-one@example.invalid",
@@ -69,7 +69,7 @@ class MatchmakingRatingTest {
                 null,
                 null,
                 QueuePool.GUEST));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 second,
                 "guest-two",
                 "guest-two@example.invalid",
@@ -96,7 +96,7 @@ class MatchmakingRatingTest {
             UUID guest = guests.get(index);
             String username = "guest-" + index;
             String principal = username + "@example.invalid";
-            service.joinQueue(new QueueJoinRequest(
+            service.joinQueue(com.example.botfight.support.TestKits.queue(
                     guest,
                     username,
                     principal,
@@ -108,7 +108,7 @@ class MatchmakingRatingTest {
         }
 
         UUID fourth = guests.getLast();
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 fourth,
                 "guest-3",
                 "guest-3@example.invalid",
@@ -132,7 +132,7 @@ class MatchmakingRatingTest {
         when(eloRatingService.ratingsFor(eq(List.of(second)), eq(MatchMode.ONES)))
                 .thenReturn(Map.of(second, 1150));
 
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 first,
                 "first",
                 "first@example.com",
@@ -141,7 +141,7 @@ class MatchmakingRatingTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 second,
                 "second",
                 "second@example.com",
@@ -176,7 +176,7 @@ class MatchmakingRatingTest {
         when(eloRatingService.ratingsFor(eq(List.of(newest)), eq(MatchMode.ONES)))
                 .thenReturn(Map.of(newest, 1160));
 
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 oldest,
                 "oldest",
                 "oldest@example.com",
@@ -185,7 +185,7 @@ class MatchmakingRatingTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 middle,
                 "middle",
                 "middle@example.com",
@@ -194,7 +194,7 @@ class MatchmakingRatingTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 newest,
                 "newest",
                 "newest@example.com",
@@ -227,7 +227,7 @@ class MatchmakingRatingTest {
         when(eloRatingService.ratingsFor(eq(List.of(fourth)), eq(MatchMode.TWOS)))
                 .thenReturn(Map.of(fourth, 1200));
 
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 first,
                 "first",
                 "first@example.com",
@@ -236,7 +236,7 @@ class MatchmakingRatingTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 second,
                 "second",
                 "second@example.com",
@@ -245,7 +245,7 @@ class MatchmakingRatingTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 third,
                 "third",
                 "third@example.com",
@@ -254,7 +254,7 @@ class MatchmakingRatingTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 fourth,
                 "fourth",
                 "fourth@example.com",
@@ -284,10 +284,10 @@ class MatchmakingRatingTest {
                 .thenReturn(Map.of(owner, 1000, teammate, 1301));
 
         List<MatchEntrant> party = List.of(
-                new MatchEntrant(owner, "owner", "owner@example.com", "owner-socket"),
-                new MatchEntrant(teammate, "teammate", "teammate@example.com", "teammate-socket"));
+                com.example.botfight.support.TestKits.entrant(owner, "owner", "owner@example.com", "owner-socket"),
+                com.example.botfight.support.TestKits.entrant(teammate, "teammate", "teammate@example.com", "teammate-socket"));
 
-        assertThatThrownBy(() -> service.joinQueue(new QueueJoinRequest(
+        assertThatThrownBy(() -> service.joinQueue(com.example.botfight.support.TestKits.queue(
                 owner,
                 "owner",
                 "owner@example.com",

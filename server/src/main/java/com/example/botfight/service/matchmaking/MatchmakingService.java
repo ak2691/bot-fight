@@ -133,6 +133,7 @@ public class MatchmakingService {
         if (resolvedMode == MatchMode.ONES && group.size() != 1) {
             throw new AuthException("A party can only queue for 2v2.");
         }
+        group.forEach(entrant -> com.example.botfight.service.match.MatchLoadoutService.validateEncodedKit(entrant.kit()));
         if (resolvedPool == QueuePool.GUEST && (partyId != null || group.size() != 1)) {
             throw new AuthException("Guests cannot join parties.");
         }
@@ -598,7 +599,6 @@ public class MatchmakingService {
                         .serverNow(now)
                         .message(message)
                         .roundBrains(List.of())
-                        .abilityOffers(List.of())
                         .matchAcceptanceEndsAt(pending.acceptanceEndsAt())
                         .acceptedByMe(acceptedByMe)
                         .otherPlayerAccepted(otherPlayerAccepted)
@@ -643,7 +643,7 @@ public class MatchmakingService {
                 requesterUsername,
                 requesterPrincipalName,
                 requesterSocketSessionId,
-                requester == null ? 0 : requester.teamNumber()));
+                requester == null ? 0 : requester.teamNumber(), requester == null ? null : requester.kit()));
         return List.copyOf(unique.values());
     }
 
@@ -1372,7 +1372,6 @@ public class MatchmakingService {
                         .rulesetVersion(MatchSimulationService.DUEL_RULESET_VERSION)
                         .message(message)
                         .roundBrains(List.of())
-                        .abilityOffers(List.of())
                         .viewerUserId(participant == null ? null : participant.userId())
                         .mode(mode.name())
                         .queueStartedAt(queueStartedAt).build());
@@ -1401,7 +1400,7 @@ public class MatchmakingService {
                                     member.username(),
                                     member.principalName(),
                                     socketSessionId,
-                                    member.teamNumber())
+                                    member.teamNumber(), member.kit())
                             : member)
                     .toList();
             return new QueuedGroup(
@@ -1509,7 +1508,7 @@ public class MatchmakingService {
                                     entrant.username(),
                                     entrant.principalName(),
                                     socketSessionId,
-                                    entrant.teamNumber())
+                                    entrant.teamNumber(), entrant.kit())
                             : entrant)
                     .toList();
             return new PendingMatch(

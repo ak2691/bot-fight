@@ -71,22 +71,22 @@ class SimulationSchemasTest {
         UUID b = UUID.randomUUID();
         JsonNode walk = brain("walk-and-loadout");
         DuelSimulationRequest request = new DuelSimulationRequest(
-                UUID.randomUUID(), "duel-v2", -4_611_686_018_427_387_904L,
-                new DuelArenaRequest(1_200, 1_200, 120_000),
+                UUID.randomUUID(), "duel-v3", -4_611_686_018_427_387_904L,
+                new DuelArenaRequest(1_200, 1_200, 90_000),
                 List.of(new DuelBotRequest(a, "alice", 1, 300, 600, 90.0, 60, "melee", walk, null, 1),
                         new DuelBotRequest(b, "bob", 2, 900, 600, 270.0, 60, "custom", brain("empty"), null, 2)),
-                List.of(new SegmentRequest(20_000, List.of()),
-                        new SegmentRequest(40_000, List.of(
+                List.of(new SegmentRequest(15_000, List.of()),
+                        new SegmentRequest(30_000, List.of(
                                 new SegmentBotRequest(1, "melee", walk, List.of()),
                                 new SegmentBotRequest(2, "custom", brain("lead-aim"), List.of("custom.count"))))),
-                20_000);
+                15_000);
         assertThat(errors(requestSchema, json(request))).isEmpty();
     }
 
     @Test
     void aPuzzleRequestWithStartingHpAndNoSegmentsValidates() throws IOException {
         DuelSimulationRequest request = new DuelSimulationRequest(
-                UUID.randomUUID(), "duel-v2", 7L, new DuelArenaRequest(1_200, 1_200, 30_000, 5_000),
+                UUID.randomUUID(), "duel-v3", 7L, new DuelArenaRequest(1_200, 1_200, 30_000, 5_000),
                 List.of(new DuelBotRequest(UUID.randomUUID(), "Puzzle Blue 1", 1, 100.5, 200.5, 0.0, 60, "melee",
                         brain("custom-variables-and-actions"), 150.0, 1)));
         assertThat(errors(requestSchema, json(request))).isEmpty();
@@ -94,7 +94,7 @@ class SimulationSchemasTest {
 
     @Test
     void aRequestWithAnInvalidBrainOrAnUnknownFieldIsRejected() throws IOException {
-        DuelSimulationRequest request = new DuelSimulationRequest(UUID.randomUUID(), "duel-v2", 1L,
+        DuelSimulationRequest request = new DuelSimulationRequest(UUID.randomUUID(), "duel-v3", 1L,
                 new DuelArenaRequest(1_200, 1_200, 30_000),
                 List.of(new DuelBotRequest(UUID.randomUUID(), "x", 1, 0, 0, null, 60, "melee", brain("empty"))));
         ObjectNode document = (ObjectNode) json(request);

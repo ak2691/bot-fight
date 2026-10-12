@@ -3,8 +3,8 @@ import { hasAbilityStrategyActions } from "./botlogic/code/BotCode.js";
 import { isAbilityEntity, tickAbilityEntityWorld } from "./ecs/abilities/AbilityEntitySystem.js";
 import { advanceEntityAge } from "./ecs/entities/EntityWorld.js";
 import { applyBotAction } from "./ecs/bots/ActionExecutionSystem.js";
-import { settleHealing } from "./ecs/abilities/effects.js";
-import { resolveTriggerVerbsForRoster } from "./ecs/abilities/verbs.js";
+import { settleHealing, settleSpentStatuses } from "./ecs/abilities/effects.js";
+import { resolveActivationVerbsForRoster } from "./ecs/abilities/verbs.js";
 import { settleAbilityHits } from "./gameconfig/AbilityHitRecord.js";
 import { isClosingZone, tickClosingZoneWorld } from "./ecs/entities/ClosingZoneSystem.js";
 import { ACTION_TO_ABILITY } from "./loadout/BotLoadout.js";
@@ -78,9 +78,11 @@ function stepFight(fight, options) {
         ]);
         const decisions = decide(fight, snapshot, options);
         act(fight, decisions);
-        resolveHits(fight);
+        // One impact queue per tick: the hits queue their effects on HP entities, and the entities stage lands them.
+        const impacts = new Map();
+        resolveHits(fight, impacts);
         spawn(fight);
-        entities(fight);
+        entities(fight, impacts);
         hazards(fight, options);
         settle(fight, snapshot);
     });
@@ -113,29 +115,29 @@ function decide(fight, snapshot, options) {
     });
 }
 
-/** Stamina timers, stun, cancel, movement, channels and the ability triggers of every bot. */
+/** Stamina timers, stun, cancel, movement, channels and the ability activations of every bot. */
 function act(fight, decisions) {
     setCombatStage("act");
     for (const { bot, action } of decisions) {
         bot.lastPredictedAction = action;
-        applyBotAction(bot, action, AUTO_STEP_MS);
+        applyBotAction(bot, action, AUTO_STEP_MS, fight.bots);
         bot.customVariables = action.customVariables;
         bot.chainStack = action.chainStack ?? [];
         bot.runningChain = action.runningChain ?? null;
     }
     for (const bot of fight.bots) {
         if (bot.triggeredAbility == null) continue;
-        logCombat("trigger", {
+        logCombat("activate", {
             source: botRef(bot),
             abilityId: ACTION_TO_ABILITY[bot.triggeredAbility] ?? bot.triggeredAbility,
         });
     }
 }
 
-/** The trigger verbs of the abilities that triggered this tick hit the opposing bots or apply to their owner. */
-function resolveHits(fight) {
+/** The activation verbs of the abilities that activated this tick hit the opposing bots or apply to their owner. */
+function resolveHits(fight, impacts) {
     setCombatStage("resolveHits");
-    resolveTriggerVerbsForRoster(fight.bots);
+    resolveActivationVerbsForRoster(fight.bots, fight.entities, impacts);
 }
 
 /** New ability entities join the world; the bots' one-tick spawn slot is cleared. */
@@ -155,7 +157,7 @@ function spawn(fight) {
 }
 
 /** Projectiles, zones, traps and summons advance and apply their effects. */
-function entities(fight) {
+function entities(fight, impacts) {
     setCombatStage("entities");
     const before = fight.entities;
     // The entities change in place, so what the log compares them with is noted first.
@@ -167,6 +169,7 @@ function entities(fight) {
         stepMs: AUTO_STEP_MS,
         width: ARENA_WIDTH_UNITS,
         height: ARENA_HEIGHT_UNITS,
+        impacts,
     });
     fight.entities = update.entities;
     logEntityChanges(before, update.entities, phaseBefore);
@@ -208,11 +211,13 @@ function hazards(fight, options) {
     fight.closingZone = update.zone;
 }
 
-/** Healing lands, hit stamina refunds are paid and the per-tick measurements roll over. */
+/** Healing lands, spent statuses end, hit stamina refunds are paid and the per-tick measurements roll over. */
 function settle(fight, snapshot) {
     setCombatStage("settle");
+    for (const entity of fight.entities) settleSpentStatuses(entity);
     for (const bot of fight.bots) {
         settleHealing(bot);
+        settleSpentStatuses(bot);
         bot.damageTakenLastTick = Number(bot.damageTakenThisTick ?? 0);
         bot.damageTakenThisTick = 0;
         bot.hpNetChangeLastTick = bot.hp - snapshot.core(bot).health.current;

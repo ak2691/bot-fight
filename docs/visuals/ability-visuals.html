@@ -1,0 +1,1069 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ability Visuals</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121820;
+    --panel-2: #0d1117;
+    --line: #253442;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #57b8ff;
+    --code: #0a0e13;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px 16px 80px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  h2 { font-size: 19px; margin: 0; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+  p, li { color: #c9d4de; }
+  .lede { color: var(--muted); max-width: 820px; }
+  p code, li code { overflow-wrap: anywhere; }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; }
+  .contract {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin: 20px 0 28px;
+  }
+  .contract ul { margin: 6px 0 0; padding-left: 20px; }
+  .toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 24px; }
+  .toc a {
+    color: var(--text); text-decoration: none; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; background: var(--panel);
+  }
+  .toc a:hover { border-color: var(--accent); }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin: 0 0 22px;
+    overflow: hidden;
+  }
+  .card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding: 14px 18px 0; }
+  .tag { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; }
+  .card-body { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 18px; padding: 14px 18px 18px; }
+  .stage {
+    width: 100%; aspect-ratio: 400 / 280; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  }
+  .stage canvas { width: 100% !important; height: 100% !important; display: block; }
+  .notes p { margin: 0 0 8px; }
+  .notes ul { margin: 0 0 8px; padding-left: 18px; }
+  .code-wrap { border-top: 1px solid var(--line); }
+  .code-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 18px; background: #0f141b; }
+  .code-bar span { font-size: 13px; color: var(--muted); }
+  button {
+    font: inherit; font-size: 13px; color: var(--text); background: #1b2633;
+    border: 1px solid #2f4155; border-radius: 6px; padding: 4px 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  pre { margin: 0; padding: 14px 18px; background: var(--code); overflow-x: auto; max-height: 420px; }
+  .scrub { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .scrub input { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .scrub output { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); width: 64px; text-align: right; }
+  details summary { cursor: pointer; padding: 8px 18px; color: var(--muted); font-size: 13px; background: #0f141b; }
+  @media (max-width: 760px) {
+    .card-body { grid-template-columns: 1fr; }
+    main { padding: 20px 16px 60px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ability visuals</h1>
+  <p class="lede">Procedural PixiJS v8 visuals for the abilities in <code>docs/ROSTER_DESIGN.md</code>. There are no
+    sprites: everything is drawn with <code>Graphics</code>. Each preview runs the exact code shown under it, looping a
+    scripted timeline. Blue is the caster and red is the target.</p>
+
+  <div class="contract">
+    <strong>How these map onto the renderer contract</strong>
+    <ul>
+      <li>Every visual is a <code>settings</code> object plus one or more <code>draw(g, frame, settings)</code>
+        functions. The settings go into <code>pixi/botAbilityPresentationDefinitions.js</code>. The draw functions go into
+        <code>pixi/renderers/&lt;type&gt;.js</code>, called from <code>update(ctx)</code> (bot visuals) or from
+        the entity layer for phase visuals.</li>
+      <li><code>g</code> is a <code>Graphics</code> whose origin is the effect's anchor (the bot centre, or the entity
+        centre), in arena units. The renderer positions it and calls <code>g.clear()</code> each frame.</li>
+      <li><code>frame.angle</code> is in radians: <code>compassDegreesToRadians(rotation)</code>, as in
+        <code>activeVisualFrame</code>. <code>frame.progress</code> is 0→1 through the phase or visual window.
+        <code>frame.elapsedMs</code> drives looping motion. Other fields are named per visual.</li>
+      <li>No <code>Math.random</code>. Variation comes from <code>seededRandom(seed)</code>, the helper already in
+        <code>rendererHelpers.js</code>. The helpers below are copies of <code>rotatePoint</code>,
+        <code>rectanglePoints</code>, <code>sectorPoints</code> and <code>seededRandom</code>, with the same signatures. One helper is new: <code>arcPath</code>, because Pixi v8 joins an <code>arc</code> to the previous point unless the path starts on the arc.</li>
+      <li>Rendering never decides gameplay. Every number a visual needs comes from state or the ability contract
+        (hitbox sizes, durations, charges).</li>
+    </ul>
+  </div>
+
+  <nav class="toc" id="toc"></nav>
+  <div id="cards"></div>
+
+  <div class="card" id="helpers">
+    <div class="card-head"><h2>Shared helpers</h2><span class="tag">rendererHelpers.js (arcPath is new: add it there)</span></div>
+    <div class="code-wrap">
+      <div class="code-bar"><span>The first five are copies of the repo's; add arcPath.</span><button data-copy="helpers-code">Copy</button></div>
+      <pre><code id="helpers-code"></code></pre>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.js"></script>
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ shared helpers (repo copies) */
+function radians(degrees) { return (degrees * Math.PI) / 180; }
+function rotatePoint(angle, forward, lateral) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return [forward * cos - lateral * sin, forward * sin + lateral * cos];
+}
+function rectanglePoints(angle, ox, oy, length, width) {
+    return [[0, -width / 2], [length, -width / 2], [length, width / 2], [0, width / 2]]
+        .flatMap(([forward, lateral]) => {
+            const [x, y] = rotatePoint(angle, forward, lateral);
+            return [ox + x, oy + y];
+        });
+}
+function sectorPoints(angle, ox, oy, range, arcDegrees) {
+    const half = radians(arcDegrees) / 2;
+    const steps = Math.max(4, Math.ceil(arcDegrees / 10));
+    const points = [ox, oy];
+    for (let step = 0; step <= steps; step += 1) {
+        const [x, y] = rotatePoint(angle - half + (half * 2 * step) / steps, range, 0);
+        points.push(ox + x, oy + y);
+    }
+    return points;
+}
+function seededRandom(seed) {
+    let state = Math.max(1, Math.floor(Number(seed) || 1)) % 2147483647 || 1;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+}
+/** New helper (not yet in rendererHelpers.js): Pixi v8 joins an arc to the previous point unless the path starts on the arc. */
+function arcPath(g, cx, cy, radius, start, end) {
+    return g.moveTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius).arc(cx, cy, radius, start, end);
+}
+const HELPERS = [radians, rotatePoint, rectanglePoints, sectorPoints, seededRandom, arcPath];
+
+/* small math used only by the preview timelines */
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const phaseOf = (ms, start, length) => clamp01((ms - start) / length);
+
+/* ================================================================== VISUALS */
+
+/* ---------- Lunge (38): crouch, leap, stab --------------------------------- */
+const LUNGE = {
+    color: 0xf87171,
+    blood: 0xb91c1c,
+    ringRadius: 38, ringSquash: 8,
+    chevrons: 3, chevronStart: 40, chevronSpacing: 16, chevronDepth: 10, chevronHalf: 12, chevronWidth: 3,
+    afterimages: 3, botRadius: 30,
+    stabLength: 120, stabWidth: 40, extendFraction: 0.3, holdFraction: 0.45, droplets: 5, seed: 38,
+};
+function drawLungeCrouch(g, f, s) {
+    const { angle, progress } = f;
+    g.circle(0, 0, s.ringRadius - s.ringSquash * progress)
+        .stroke({ color: s.color, alpha: 0.2 + 0.55 * progress, width: 2 });
+    for (let i = 0; i < s.chevrons; i += 1) {
+        const lit = clamp01(progress * s.chevrons - i);
+        const forward = s.chevronStart + i * s.chevronSpacing;
+        const [tx, ty] = rotatePoint(angle, forward + s.chevronDepth, 0);
+        const [lx, ly] = rotatePoint(angle, forward, -s.chevronHalf);
+        const [rx, ry] = rotatePoint(angle, forward, s.chevronHalf);
+        g.moveTo(lx, ly).lineTo(tx, ty).lineTo(rx, ry)
+            .stroke({ color: s.color, alpha: 0.12 + 0.8 * lit, width: s.chevronWidth, cap: "round", join: "round" });
+    }
+}
+function drawLungeLeap(g, f, s) {
+    // frame.travel: units covered by the leap so far (the anchor is the bot's current position).
+    const { angle, progress, travel } = f;
+    const fade = 1 - progress;
+    for (let i = 0; i < s.afterimages; i += 1) {
+        const back = (travel * (i + 1)) / (s.afterimages + 1);
+        const [x, y] = rotatePoint(angle, -back, 0);
+        g.circle(x, y, s.botRadius * (1 - i * 0.12)).fill({ color: s.color, alpha: fade * 0.28 * (1 - i / s.afterimages) });
+    }
+    for (const lateral of [-s.botRadius * 0.6, 0, s.botRadius * 0.6]) {
+        const [x0, y0] = rotatePoint(angle, -travel, lateral);
+        const [x1, y1] = rotatePoint(angle, -s.botRadius, lateral);
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: 0xffffff, alpha: fade * 0.5, width: 2, cap: "round" });
+    }
+}
+function drawLungeStab(g, f, s) {
+    const { angle, progress } = f;
+    const extend = clamp01(progress / s.extendFraction);
+    const fade = progress < s.holdFraction ? 1 : 1 - (progress - s.holdFraction) / (1 - s.holdFraction);
+    const length = s.stabLength * extend;
+    g.poly(rectanglePoints(angle, 0, 0, s.stabLength, s.stabWidth)).stroke({ color: s.color, alpha: 0.18 * fade, width: 1.5 });
+    const [bx0, by0] = rotatePoint(angle, s.botRadius, -s.stabWidth * 0.14);
+    const [bx1, by1] = rotatePoint(angle, s.botRadius, s.stabWidth * 0.14);
+    const [tipX, tipY] = rotatePoint(angle, Math.max(s.botRadius, length) + 14, 0);
+    g.poly([bx0, by0, tipX, tipY, bx1, by1]).fill({ color: 0xffffff, alpha: 0.9 * fade });
+    g.poly([bx0, by0, tipX, tipY, bx1, by1]).stroke({ color: s.color, alpha: fade, width: 2 });
+    const random = seededRandom(s.seed);
+    for (let i = 0; i < s.droplets; i += 1) {
+        const spread = (random() - 0.5) * 1.6;
+        const reach = 14 + random() * 26;
+        const [dx, dy] = rotatePoint(angle + spread, reach * clamp01(progress * 1.6), 0);
+        g.circle(tipX + dx, tipY + dy, 2 + random() * 2.5).fill({ color: s.blood, alpha: fade * (extend >= 1 ? 1 : 0) });
+    }
+}
+
+/* ---------- Shotgun Blast (39): wind-up cone, muzzle blast, pellets ---------- */
+const SHOTGUN = {
+    color: 0xfbbf24, flash: 0xfff7d6,
+    range: 180, arc: 40, pellets: 7, muzzle: 34,
+    tracer: 22, pelletRadius: 3,
+};
+function drawShotgunWindup(g, f, s) {
+    const { angle, progress } = f;
+    g.poly(sectorPoints(angle, 0, 0, s.range, s.arc)).fill({ color: s.color, alpha: 0.05 + 0.08 * progress });
+    g.poly(sectorPoints(angle, 0, 0, s.range, s.arc)).stroke({ color: s.color, alpha: 0.2 + 0.5 * progress, width: 1.5 });
+    for (let i = 0; i < s.pellets; i += 1) {
+        const offset = radians(-s.arc / 2 + (s.arc * i) / (s.pellets - 1));
+        const [x0, y0] = rotatePoint(angle + offset, s.muzzle, 0);
+        const [x1, y1] = rotatePoint(angle + offset, s.muzzle + (s.range - s.muzzle) * progress, 0);
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: s.color, alpha: 0.25 * progress, width: 1 });
+    }
+}
+function drawShotgunBlast(g, f, s) {
+    const { angle, progress } = f;
+    const fade = 1 - progress;
+    g.poly(sectorPoints(angle, 0, 0, s.muzzle + 70 * (0.6 + 0.4 * progress), s.arc + 10)).fill({ color: s.flash, alpha: 0.35 * fade });
+    const [mx, my] = rotatePoint(angle, s.muzzle, 0);
+    const spikes = 6;
+    const points = [];
+    for (let i = 0; i < spikes * 2; i += 1) {
+        const r = i % 2 === 0 ? 18 * fade + 6 : 6;
+        const [x, y] = rotatePoint(angle + (Math.PI * i) / spikes, r, 0);
+        points.push(mx + x, my + y);
+    }
+    g.poly(points).fill({ color: s.flash, alpha: fade });
+}
+function drawPellet(g, f, s) {
+    // Entity visual: anchor is the pellet; frame.angle is its heading.
+    const { angle, progress } = f;
+    const [tx, ty] = rotatePoint(angle, -s.tracer, 0);
+    g.moveTo(tx, ty).lineTo(0, 0).stroke({ color: s.color, alpha: 0.55 * (1 - progress * 0.5), width: 2, cap: "round" });
+    g.circle(0, 0, s.pelletRadius).fill({ color: s.flash, alpha: 1 });
+}
+
+/* ---------- Boomerang (40): spinning crescent, out and back ---------------- */
+const BOOMERANG = {
+    color: 0xf59e0b, returnColor: 0xfde68a,
+    armLength: 16, armWidth: 6, spinTurnsPerSecond: 3,
+    trailDots: 5, trailSpacing: 12,
+};
+function drawBoomerang(g, f, s) {
+    // frame.returning: true in the return phase; frame.heading: direction of travel (radians).
+    const { elapsedMs, returning, heading } = f;
+    const spin = (elapsedMs / 1000) * s.spinTurnsPerSecond * Math.PI * 2;
+    const color = returning ? s.returnColor : s.color;
+    for (let i = 1; i <= s.trailDots; i += 1) {
+        const [x, y] = rotatePoint(heading, -i * s.trailSpacing, 0);
+        g.circle(x, y, s.armWidth / 2 * (1 - i / (s.trailDots + 1))).fill({ color, alpha: 0.35 * (1 - i / (s.trailDots + 1)) });
+    }
+    const [ax, ay] = rotatePoint(spin, s.armLength, -s.armLength * 0.55);
+    const [bx, by] = rotatePoint(spin, s.armLength, s.armLength * 0.55);
+    const [cx, cy] = rotatePoint(spin, -s.armLength * 0.35, 0);
+    g.moveTo(ax, ay).quadraticCurveTo(cx, cy, bx, by)
+        .stroke({ color, width: s.armWidth, cap: "round", alpha: 1 });
+    g.moveTo(ax, ay).quadraticCurveTo(cx, cy, bx, by)
+        .stroke({ color: 0xffffff, width: 1.5, cap: "round", alpha: 0.6 });
+}
+
+/* ---------- Parry (41): stance window and success burst -------------------- */
+const PARRY = {
+    color: 0xfef3c7, edge: 0xfacc15,
+    radius: 46, arc: 120, width: 6, flickerPeriodMs: 70,
+    burstSpikes: 10, burstLength: 34,
+};
+function drawParryStance(g, f, s) {
+    // progress: 0 → 1 across the 300 ms window; the inner arc shows the time left.
+    const { angle, progress, elapsedMs } = f;
+    const half = radians(s.arc) / 2;
+    const flicker = 0.75 + 0.25 * Math.sin((elapsedMs / s.flickerPeriodMs) * Math.PI * 2);
+    arcPath(g, 0, 0, s.radius, angle - half, angle + half).stroke({ color: s.edge, alpha: 0.25 * flicker, width: s.width * 2.4 });
+    arcPath(g, 0, 0, s.radius, angle - half, angle + half).stroke({ color: s.color, alpha: flicker, width: s.width, cap: "round" });
+    const left = (1 - progress) * half;
+    arcPath(g, 0, 0, s.radius - 9, angle - left, angle + left).stroke({ color: s.edge, alpha: 0.85, width: 2, cap: "round" });
+    for (const side of [-1, 1]) {
+        const [x0, y0] = rotatePoint(angle + side * half, s.radius - 7, 0);
+        const [x1, y1] = rotatePoint(angle + side * half, s.radius + 7, 0);
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: s.color, alpha: flicker, width: 2.5, cap: "round" });
+    }
+}
+function drawParrySuccess(g, f, s) {
+    // Anchor at the contact point (the front of the shield).
+    const { angle, progress } = f;
+    const fade = 1 - progress;
+    g.circle(0, 0, 10 + 40 * progress).stroke({ color: s.color, alpha: fade, width: 3 * fade + 1 });
+    for (let i = 0; i < s.burstSpikes; i += 1) {
+        const a = angle + (Math.PI * 2 * i) / s.burstSpikes;
+        const [x0, y0] = rotatePoint(a, 6 + 16 * progress, 0);
+        const [x1, y1] = rotatePoint(a, 6 + 16 * progress + s.burstLength * (i % 2 ? 0.6 : 1) * fade, 0);
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: i % 2 ? s.edge : s.color, alpha: fade, width: 2.5, cap: "round" });
+    }
+    g.circle(0, 0, 9 * fade).fill({ color: 0xffffff, alpha: fade });
+}
+
+/* ---------- Overdrive (42): free-stamina aura ------------------------------ */
+const OVERDRIVE = {
+    color: 0x34d399, bright: 0xa7f3d0,
+    ringRadius: 40, segments: 8, ringTurnsPerSecond: 0.8,
+    chevrons: 3, chevronSpacing: 16, chevronHalf: 11, scrollUnitsPerSecond: 90,
+};
+function drawOverdriveAura(g, f, s) {
+    // progress: 0 → 1 across the 2.5 s status; frame.moveAngle: the bot's movement heading (null when still).
+    const { progress, elapsedMs, moveAngle } = f;
+    const turn = (elapsedMs / 1000) * s.ringTurnsPerSecond * Math.PI * 2;
+    const span = (Math.PI * 2) / s.segments;
+    for (let i = 0; i < s.segments; i += 1) {
+        const start = turn + i * span;
+        arcPath(g, 0, 0, s.ringRadius, start, start + span * 0.55).stroke({ color: s.color, alpha: 0.75, width: 3, cap: "round" });
+    }
+    arcPath(g, 0, 0, s.ringRadius + 7, -Math.PI / 2, -Math.PI / 2 + (1 - progress) * Math.PI * 2)
+        .stroke({ color: s.bright, alpha: 0.55, width: 1.5 });
+    if (moveAngle == null) return;
+    const scroll = ((elapsedMs / 1000) * s.scrollUnitsPerSecond) % s.chevronSpacing;
+    for (let i = 0; i < s.chevrons; i += 1) {
+        const back = s.ringRadius + 6 + i * s.chevronSpacing + scroll;
+        const alpha = 0.7 * (1 - (i * s.chevronSpacing + scroll) / (s.chevrons * s.chevronSpacing));
+        const [tx, ty] = rotatePoint(moveAngle, -back + 8, 0);
+        const [lx, ly] = rotatePoint(moveAngle, -back, -s.chevronHalf);
+        const [rx, ry] = rotatePoint(moveAngle, -back, s.chevronHalf);
+        g.moveTo(lx, ly).lineTo(tx, ty).lineTo(rx, ry).stroke({ color: s.bright, alpha, width: 2.5, cap: "round", join: "round" });
+    }
+}
+
+/* ---------- Tar Pit (43): thrown glob, then a bubbling pool ----------------- */
+const TAR_PIT = {
+    pool: 0x1c1917, edge: 0x92400e, bubble: 0xa8a29e,
+    radius: 130, lobes: 16, seed: 43, wobble: 3,
+    bubbles: 7, bubbleMinMs: 900, bubbleSpanMs: 700,
+    globRadius: 14, arcHeight: 60,
+};
+function drawTarGlob(g, f, s) {
+    // Entity visual while thrown: progress 0 → 1 along the flight; the anchor is the ground point under the glob.
+    const { progress } = f;
+    const lift = Math.sin(progress * Math.PI) * s.arcHeight;
+    g.ellipse(0, 0, s.globRadius * (1 - lift / s.arcHeight * 0.4), s.globRadius * 0.45).fill({ color: 0x000000, alpha: 0.35 });
+    g.circle(0, -lift, s.globRadius).fill({ color: s.pool, alpha: 1 });
+    g.circle(0, -lift, s.globRadius).stroke({ color: s.edge, alpha: 0.9, width: 2 });
+    g.circle(-4, -lift - 4, 3).fill({ color: s.bubble, alpha: 0.9 });
+}
+function drawTarPool(g, f, s) {
+    // progress: 0 → 1 across the pool's life; elapsedMs drives the bubbles.
+    const { progress, elapsedMs } = f;
+    const grow = clamp01(progress / 0.06);
+    const fadeOut = progress > 0.92 ? 1 - (progress - 0.92) / 0.08 : 1;
+    const random = seededRandom(s.seed);
+    const points = [];
+    for (let i = 0; i < s.lobes; i += 1) {
+        const a = (Math.PI * 2 * i) / s.lobes;
+        const r = s.radius * grow * (0.88 + random() * 0.18) + Math.sin(elapsedMs / 500 + i * 1.7) * s.wobble;
+        points.push(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    g.poly(points).fill({ color: s.pool, alpha: 0.82 * fadeOut });
+    g.poly(points).stroke({ color: s.edge, alpha: 0.85 * fadeOut, width: 3, join: "round" });
+    for (let i = 0; i < s.bubbles; i += 1) {
+        const a = random() * Math.PI * 2;
+        const d = random() * s.radius * 0.7 * grow;
+        const period = s.bubbleMinMs + random() * s.bubbleSpanMs;
+        const t = ((elapsedMs + random() * period) % period) / period;
+        const x = Math.cos(a) * d;
+        const y = Math.sin(a) * d;
+        if (t < 0.8) g.circle(x, y, 2 + 6 * (t / 0.8)).fill({ color: s.bubble, alpha: 0.9 * fadeOut });
+        else g.circle(x, y, 8 + 10 * ((t - 0.8) / 0.2)).stroke({ color: s.bubble, alpha: (1 - (t - 0.8) / 0.2) * fadeOut, width: 1.5 });
+    }
+    if (progress < 0.12) {
+        const splash = progress / 0.12;
+        g.circle(0, 0, s.radius * (0.4 + 0.75 * splash)).stroke({ color: s.edge, alpha: 1 - splash, width: 3 });
+    }
+}
+
+/* ---------- Overcharge (44): charge pips and a live weapon ------------------ */
+const OVERCHARGE = {
+    color: 0xfacc15, glow: 0xfef08a, arc: 0xffffff,
+    orbitRadius: 44, pipSize: 7, orbitTurnsPerSecond: 0.6,
+    crackleFrom: 34, crackleTo: 64, crackleEveryMs: 80, crackleSegments: 5, crackleJitter: 9,
+};
+function drawOverchargeAura(g, f, s) {
+    // frame.charges: charges left (0–4); frame.pop: 0 → 1 while a just-spent pip flies off, else null.
+    const { angle, elapsedMs, charges, pop } = f;
+    const turn = (elapsedMs / 1000) * s.orbitTurnsPerSecond * Math.PI * 2;
+    const diamond = (cx, cy, size, a) => {
+        const pts = [];
+        for (let i = 0; i < 4; i += 1) {
+            const [x, y] = rotatePoint(a + (Math.PI / 2) * i, i % 2 ? size * 0.6 : size, 0);
+            pts.push(cx + x, cy + y);
+        }
+        return pts;
+    };
+    for (let i = 0; i < charges; i += 1) {
+        const a = turn + (Math.PI * 2 * i) / 4;
+        const [x, y] = rotatePoint(a, s.orbitRadius, 0);
+        g.circle(x, y, s.pipSize * 1.6).fill({ color: s.glow, alpha: 0.18 });
+        g.poly(diamond(x, y, s.pipSize, a)).fill({ color: s.color, alpha: 1 });
+    }
+    if (pop != null) {
+        const a = turn + (Math.PI * 2 * charges) / 4;
+        const [x, y] = rotatePoint(a, s.orbitRadius + 40 * pop, 0);
+        g.poly(diamond(x, y, s.pipSize * (1 + pop), a)).stroke({ color: s.glow, alpha: 1 - pop, width: 2 });
+    }
+    if (charges === 0) return;
+    const random = seededRandom(1 + Math.floor(elapsedMs / s.crackleEveryMs));
+    for (let strand = 0; strand < 2; strand += 1) {
+        let [px, py] = rotatePoint(angle, s.crackleFrom, (random() - 0.5) * s.crackleJitter);
+        g.moveTo(px, py);
+        for (let i = 1; i <= s.crackleSegments; i += 1) {
+            const forward = s.crackleFrom + ((s.crackleTo - s.crackleFrom) * i) / s.crackleSegments;
+            [px, py] = rotatePoint(angle, forward, (random() - 0.5) * s.crackleJitter * 2);
+            g.lineTo(px, py);
+        }
+        g.stroke({ color: strand ? s.arc : s.color, alpha: 0.85, width: strand ? 1 : 2, join: "round" });
+    }
+}
+
+/* ---------- Execute (45): long telegraph, heavy strike ---------------------- */
+const EXECUTE = {
+    color: 0xdc2626, light: 0xfca5a5,
+    length: 220, width: 50, chevronSpacing: 28, chevronHalf: 10, reticleRadius: 16,
+};
+function drawExecuteWindup(g, f, s) {
+    const { angle, progress, elapsedMs } = f;
+    const filled = s.length * progress;
+    g.poly(rectanglePoints(angle, 0, 0, s.length, s.width)).stroke({ color: s.color, alpha: 0.35 + 0.4 * progress, width: 2 });
+    g.poly(rectanglePoints(angle, 0, 0, filled, s.width)).fill({ color: s.color, alpha: 0.12 + 0.18 * progress });
+    const scroll = (elapsedMs * 0.12) % s.chevronSpacing;
+    for (let forward = 34 + scroll; forward < filled - 6; forward += s.chevronSpacing) {
+        const [tx, ty] = rotatePoint(angle, forward + 8, 0);
+        const [lx, ly] = rotatePoint(angle, forward, -s.chevronHalf);
+        const [rx, ry] = rotatePoint(angle, forward, s.chevronHalf);
+        g.moveTo(lx, ly).lineTo(tx, ty).lineTo(rx, ry).stroke({ color: s.light, alpha: 0.6, width: 2, cap: "round", join: "round" });
+    }
+    const [cx, cy] = rotatePoint(angle, s.length, 0);
+    const spin = progress * Math.PI;
+    g.circle(cx, cy, s.reticleRadius).stroke({ color: s.light, alpha: progress, width: 2 });
+    for (let i = 0; i < 4; i += 1) {
+        const [x0, y0] = rotatePoint(spin + (Math.PI / 2) * i, s.reticleRadius - 5, 0);
+        const [x1, y1] = rotatePoint(spin + (Math.PI / 2) * i, s.reticleRadius + 7, 0);
+        g.moveTo(cx + x0, cy + y0).lineTo(cx + x1, cy + y1).stroke({ color: s.light, alpha: progress, width: 2 });
+    }
+}
+function drawExecuteStrike(g, f, s) {
+    // frame.bonus: true when the below-30% bonus landed (read from the combat result, not decided here).
+    const { angle, progress, bonus } = f;
+    const fade = 1 - progress;
+    const [b0x, b0y] = rotatePoint(angle, 30, -s.width * 0.12);
+    const [b1x, b1y] = rotatePoint(angle, 30, s.width * 0.12);
+    const [t0x, t0y] = rotatePoint(angle, s.length, -s.width * 0.5);
+    const [t1x, t1y] = rotatePoint(angle, s.length + 16, 0);
+    const [t2x, t2y] = rotatePoint(angle, s.length, s.width * 0.5);
+    const blade = [b0x, b0y, t0x, t0y, t1x, t1y, t2x, t2y, b1x, b1y];
+    g.poly(blade).fill({ color: progress < 0.15 ? 0xffffff : s.color, alpha: fade * 0.85 });
+    g.poly(blade).stroke({ color: s.light, alpha: fade, width: 2, join: "round" });
+    if (!bonus) return;
+    const [cx, cy] = rotatePoint(angle, s.length * 0.75, 0);
+    const size = 20 + 22 * progress;
+    for (const a of [Math.PI / 4, -Math.PI / 4]) {
+        const [x0, y0] = rotatePoint(a, -size, 0);
+        const [x1, y1] = rotatePoint(a, size, 0);
+        g.moveTo(cx + x0, cy + y0).lineTo(cx + x1, cy + y1).stroke({ color: 0x0d1117, alpha: fade, width: 11, cap: "round" });
+        g.moveTo(cx + x0, cy + y0).lineTo(cx + x1, cy + y1).stroke({ color: s.color, alpha: fade, width: 7, cap: "round" });
+        g.moveTo(cx + x0, cy + y0).lineTo(cx + x1, cy + y1).stroke({ color: 0xffffff, alpha: fade * 0.8, width: 2, cap: "round" });
+    }
+}
+
+/* ---------- Fan of Blades (46): spinning three-point blades ----------------- */
+const FAN_OF_BLADES = {
+    fill: 0xe2e8f0, edge: 0x22d3ee,
+    outer: 13, inner: 4, points: 3, spinTurnsPerSecond: 4, ghosts: 2, ghostSpacing: 10,
+};
+function drawBlade(g, f, s) {
+    // Entity visual; frame.heading: direction of travel (radians), for the ghost trail.
+    const { elapsedMs, heading } = f;
+    const spin = (elapsedMs / 1000) * s.spinTurnsPerSecond * Math.PI * 2;
+    const star = (ox, oy) => {
+        const pts = [];
+        for (let i = 0; i < s.points * 2; i += 1) {
+            const [x, y] = rotatePoint(spin + (Math.PI * i) / s.points, i % 2 ? s.inner : s.outer, 0);
+            pts.push(ox + x, oy + y);
+        }
+        return pts;
+    };
+    for (let i = s.ghosts; i >= 1; i -= 1) {
+        const [gx, gy] = rotatePoint(heading, -i * s.ghostSpacing, 0);
+        g.poly(star(gx, gy)).fill({ color: s.edge, alpha: 0.18 / i });
+    }
+    g.poly(star(0, 0)).fill({ color: s.fill, alpha: 1 });
+    g.poly(star(0, 0)).stroke({ color: s.edge, alpha: 1, width: 1.5, join: "round" });
+}
+
+/* ---------- Tether Link (47): the bolt and the chain ----------------------- */
+const TETHER_LINK = {
+    slack: 0x94a3b8, taut: 0xef4444, head: 0xe2e8f0,
+    leash: 200, linkSpacing: 13, linkRadius: 4.5, sag: 38, pullChevrons: 2,
+};
+function drawTetherBolt(g, f, s) {
+    // Entity visual: the anchor is the bolt; frame.fromX/fromY: the caster, relative to the bolt.
+    const { angle, fromX, fromY } = f;
+    g.moveTo(fromX, fromY).lineTo(0, 0).stroke({ color: s.slack, alpha: 0.5, width: 1.5 });
+    const [tx, ty] = rotatePoint(angle, 12, 0);
+    const [lx, ly] = rotatePoint(angle, -6, -7);
+    const [rx, ry] = rotatePoint(angle, -6, 7);
+    g.poly([tx, ty, lx, ly, rx, ry]).fill({ color: s.head, alpha: 1 });
+    const [kx, ky] = rotatePoint(angle, -12, 0);
+    g.circle(kx, ky, s.linkRadius).stroke({ color: s.head, alpha: 1, width: 2 });
+}
+function drawTetherChain(g, f, s) {
+    // Status visual on the tethered target: anchor at the caster; frame.toX/toY: the target, relative to it.
+    // Taut (red, straight) beyond the leash, slack (grey, sagging) inside it.
+    const { toX, toY, elapsedMs } = f;
+    const distance = Math.hypot(toX, toY);
+    const taut = distance > s.leash;
+    const sag = taut ? 0 : s.sag * (1 - distance / s.leash);
+    const cx = toX / 2 - (toY / Math.max(1, distance)) * sag * 0.3;
+    const cy = toY / 2 + sag;
+    const count = Math.max(2, Math.floor(distance / s.linkSpacing));
+    const color = taut ? s.taut : s.slack;
+    const pulse = taut ? 0.7 + 0.3 * Math.sin(elapsedMs / 60) : 1;
+    for (let i = 1; i < count; i += 1) {
+        const t = i / count;
+        const x = (1 - t) * (1 - t) * 0 + 2 * (1 - t) * t * cx + t * t * toX;
+        const y = (1 - t) * (1 - t) * 0 + 2 * (1 - t) * t * cy + t * t * toY;
+        if (i % 2) g.circle(x, y, s.linkRadius).stroke({ color, alpha: pulse, width: 2 });
+        else g.ellipse(x, y, s.linkRadius * 1.3, s.linkRadius * 0.6).stroke({ color, alpha: pulse, width: 2 });
+    }
+    if (!taut) return;
+    const back = Math.atan2(-toY, -toX);
+    for (let i = 0; i < s.pullChevrons; i += 1) {
+        const ox = toX + Math.cos(back) * (40 + i * 14);
+        const oy = toY + Math.sin(back) * (40 + i * 14);
+        const [tx, ty] = rotatePoint(back, 8, 0);
+        const [lx, ly] = rotatePoint(back, 0, -9);
+        const [rx, ry] = rotatePoint(back, 0, 9);
+        g.moveTo(ox + lx, oy + ly).lineTo(ox + tx, oy + ty).lineTo(ox + rx, oy + ry)
+            .stroke({ color: s.taut, alpha: pulse, width: 2.5, cap: "round", join: "round" });
+    }
+}
+
+/* ---------- Orbital Strike (22): marker, then blast ------------------------ */
+const ORBITAL_STRIKE = {
+    color: 0x93c5fd, core: 0xffffff, warn: 0x60a5fa,
+    radius: 140, brackets: 4, spikes: 12, seed: 22,
+};
+function drawOrbitalMarker(g, f, s) {
+    // progress: 0 → 1 across the 1200 ms marker; the closing ring reaches the centre when the blast lands.
+    const { progress, elapsedMs } = f;
+    g.circle(0, 0, s.radius).fill({ color: s.warn, alpha: 0.06 + 0.1 * progress });
+    g.circle(0, 0, s.radius).stroke({ color: s.color, alpha: 0.5 + 0.4 * progress, width: 2 });
+    g.circle(0, 0, s.radius * (1 - progress)).stroke({ color: s.core, alpha: 0.8, width: 2 });
+    const spin = elapsedMs / 400;
+    for (let i = 0; i < s.brackets; i += 1) {
+        const a = spin + (Math.PI * 2 * i) / s.brackets;
+        arcPath(g, 0, 0, s.radius + 10, a - 0.22, a + 0.22).stroke({ color: s.color, alpha: 0.9, width: 3, cap: "round" });
+    }
+    for (const a of [0, Math.PI / 2]) {
+        const [x0, y0] = rotatePoint(a, -16, 0);
+        const [x1, y1] = rotatePoint(a, 16, 0);
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: s.core, alpha: 0.5 + 0.5 * progress, width: 2 });
+    }
+}
+function drawOrbitalBlast(g, f, s) {
+    const { progress } = f;
+    const fade = 1 - progress;
+    g.circle(0, 0, s.radius * (0.55 + 0.45 * progress)).fill({ color: s.core, alpha: 0.75 * fade * fade });
+    g.circle(0, 0, s.radius * (1 + 0.35 * progress)).stroke({ color: s.color, alpha: fade, width: 6 * fade + 1 });
+    const random = seededRandom(s.seed);
+    for (let i = 0; i < s.spikes; i += 1) {
+        const a = (Math.PI * 2 * i) / s.spikes + random() * 0.2;
+        const reach = s.radius * (0.9 + random() * 0.5);
+        const [x0, y0] = rotatePoint(a, s.radius * 0.3, 0);
+        const [x1, y1] = rotatePoint(a, reach * (0.5 + 0.5 * progress), 0);
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: s.color, alpha: fade, width: 2, cap: "round" });
+    }
+}
+
+/* ---------- Phase Strike Backstab (25): the follow-up stab ----------------- */
+const BACKSTAB = {
+    color: 0xc4b5fd, bonus: 0xf5f3ff,
+    radius: 44, sweep: 70, width: 5, sparks: 6, seed: 25,
+};
+function drawBackstab(g, f, s) {
+    // Anchor at the caster; frame.bonus: the from-behind bonus landed.
+    const { angle, progress, bonus } = f;
+    const fade = 1 - progress;
+    const half = radians(s.sweep) / 2;
+    const head = angle - half + half * 2 * clamp01(progress * 2.2);
+    arcPath(g, 0, 0, s.radius, angle - half, head).stroke({ color: s.color, alpha: fade, width: s.width, cap: "round" });
+    arcPath(g, 0, 0, s.radius, Math.max(angle - half, head - 0.35), head).stroke({ color: 0xffffff, alpha: fade, width: 2, cap: "round" });
+    if (!bonus) return;
+    const [cx, cy] = rotatePoint(angle, s.radius + 20, 0);
+    g.circle(cx, cy, 8 + 26 * progress).stroke({ color: s.bonus, alpha: fade, width: 2.5 });
+    const random = seededRandom(s.seed);
+    for (let i = 0; i < s.sparks; i += 1) {
+        const a = random() * Math.PI * 2;
+        const [x0, y0] = rotatePoint(a, 6 + 20 * progress, 0);
+        const [x1, y1] = rotatePoint(a, 16 + 28 * progress, 0);
+        g.moveTo(cx + x0, cy + y0).lineTo(cx + x1, cy + y1).stroke({ color: s.bonus, alpha: fade, width: 2, cap: "round" });
+    }
+}
+
+/* ---------- Disruptive Beam counter-hit (30): the punish flash ------------- */
+const COUNTER_HIT = {
+    color: 0x22d3ee, core: 0xecfeff,
+    radius: 36, points: 18, jitter: 9, flickerMs: 50, sparks: 8,
+};
+function drawCounterHit(g, f, s) {
+    // Anchor at the target, shown only when the stun's `when windingUp` passed.
+    const { progress, elapsedMs } = f;
+    const fade = 1 - progress;
+    const random = seededRandom(30 + Math.floor(elapsedMs / s.flickerMs));
+    const points = [];
+    const r = s.radius * (0.8 + 0.5 * progress);
+    for (let i = 0; i < s.points; i += 1) {
+        const a = (Math.PI * 2 * i) / s.points;
+        const d = r + (i % 2 ? s.jitter : -s.jitter * 0.4) * random();
+        points.push(Math.cos(a) * d, Math.sin(a) * d);
+    }
+    g.poly(points).stroke({ color: s.color, alpha: fade, width: 2.5, join: "round" });
+    for (let i = 0; i < s.sparks; i += 1) {
+        const a = (Math.PI * 2 * i) / s.sparks + 0.3;
+        const [x0, y0] = rotatePoint(a, r + 4, 0);
+        const [x1, y1] = rotatePoint(a, r + 4 + 20 * fade, 0);
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: s.core, alpha: fade, width: 2, cap: "round" });
+    }
+    g.circle(0, 0, 10 * fade).fill({ color: s.core, alpha: fade * 0.8 });
+}
+
+/* ================================================================== CATALOGUE
+ * Each entry: the copyable code (settings + draw functions) and a preview timeline.
+ * preview(api, ms) runs every frame with the loop time in ms; api.fx(x, y) hands out a cleared Graphics at a point (over the bots); api.ground(x, y) one under them.
+ */
+const CATALOGUE = [
+    {
+        id: "lunge", zoom: 1.0, title: "Lunge", ability: "38, Tier 1", type: "lunge",
+        where: "Attached entity phase visuals: <code>crouch</code> → <code>leap</code> (the move) → <code>stab</code>.",
+        drives: ["crouch: progress = phase time / 200 ms", "leap: travel = units moved by the move so far", "stab: progress over the 400 ms visible window"],
+        settingsName: "LUNGE", settings: LUNGE, draws: [drawLungeCrouch, drawLungeLeap, drawLungeStab],
+        loopMs: 1600,
+        preview(api, ms) {
+            const angle = 0;
+            const leapP = phaseOf(ms, 200, 100);
+            const botX = lerp(-120, 30, leapP);
+            api.target(150, 0);
+            api.bot(botX, 0, angle);
+            if (ms < 200) drawLungeCrouch(api.fx(botX, 0), { angle, progress: ms / 200 }, LUNGE);
+            if (ms >= 200 && ms < 450) drawLungeLeap(api.fx(botX, 0), { angle, progress: phaseOf(ms, 200, 250), travel: 150 * leapP }, LUNGE);
+            if (ms >= 300 && ms < 700) drawLungeStab(api.fx(botX, 0), { angle, progress: phaseOf(ms, 300, 400) }, LUNGE);
+        },
+    },
+    {
+        id: "shotgun", zoom: 1.05, title: "Shotgun Blast", ability: "39, Tier 1", type: "shotgunBlast + pellet",
+        where: "Bot visual for the muzzle blast; entity phase visual <code>pellet</code> for each pellet. <strong>Don't ship <code>drawShotgunWindup</code>:</strong> wind-ups all share one look (SOLVED_MATCHUPS.md), so it stays here only as a design reference.",
+        drives: ["wind-up: windupProgress(ctx)", "blast: progress over the verb's visibleMs", "pellet: angle = pellet heading, progress = age / lifetime"],
+        settingsName: "SHOTGUN", settings: SHOTGUN, draws: [drawShotgunWindup, drawShotgunBlast, drawPellet],
+        loopMs: 1500,
+        preview(api, ms) {
+            const angle = 0;
+            api.target(150, 10);
+            api.bot(-60, 0, angle);
+            if (ms < 200) drawShotgunWindup(api.fx(-60, 0), { angle, progress: ms / 200 }, SHOTGUN);
+            if (ms >= 200 && ms < 380) drawShotgunBlast(api.fx(-60, 0), { angle, progress: phaseOf(ms, 200, 180) }, SHOTGUN);
+            if (ms >= 200 && ms < 500) {
+                const life = phaseOf(ms, 200, 300);
+                for (let i = 0; i < SHOTGUN.pellets; i += 1) {
+                    const a = radians(-SHOTGUN.arc / 2 + (SHOTGUN.arc * i) / (SHOTGUN.pellets - 1));
+                    const d = SHOTGUN.muzzle + 180 * life;
+                    drawPellet(api.fx(-60 + Math.cos(a) * d, Math.sin(a) * d), { angle: a, progress: life }, SHOTGUN);
+                }
+            }
+        },
+    },
+    {
+        id: "boomerang", zoom: 0.72, title: "Boomerang", ability: "40, Tier 1", type: "boomerang",
+        where: "Entity phase visual, shared by the <code>out</code> and <code>return</code> phases.",
+        drives: ["returning = phase id is the return phase", "heading = the entity's travel direction", "elapsedMs = entity age (spin)"],
+        settingsName: "BOOMERANG", settings: BOOMERANG, draws: [drawBoomerang],
+        loopMs: 2400,
+        preview(api, ms) {
+            api.bot(-170, 0, 0);
+            api.target(140, -30);
+            const out = ms < 1000;
+            const p = out ? ms / 1000 : phaseOf(ms, 1000, 1000);
+            const x = out ? lerp(-140, 230, p) : lerp(230, -140, p);
+            const y = out ? -Math.sin(p * Math.PI) * 40 : Math.sin(p * Math.PI) * 50;
+            const heading = out ? 0 : Math.PI;
+            if (ms < 2000) drawBoomerang(api.fx(x, y), { elapsedMs: ms, returning: !out, heading }, BOOMERANG);
+        },
+    },
+    {
+        id: "parry", zoom: 1.25, title: "Parry", ability: "41, Tier 1", type: "parry",
+        where: "Bot visual driven by the <code>parry</code> status (stance), plus a one-shot burst when the status's <code>hit</code> reaction fires.",
+        drives: ["stance: progress = 1 − remainingMs / 300", "success: progress over 350 ms after the reaction, anchored at the shield front"],
+        settingsName: "PARRY", settings: PARRY, draws: [drawParryStance, drawParrySuccess],
+        loopMs: 1800,
+        preview(api, ms) {
+            const angle = 0;
+            api.bot(-40, 0, angle);
+            api.target(170, 0, ms > 460 && ms < 1260);
+            if (ms < 500) {
+                const bx = lerp(150, 10, clamp01(ms / 450));
+                api.fx(bx, 0).circle(0, 0, 5).fill({ color: 0xff7166 });
+            }
+            if (ms >= 200 && ms < 500) drawParryStance(api.fx(-40, 0), { angle, progress: phaseOf(ms, 200, 300), elapsedMs: ms }, PARRY);
+            if (ms >= 450 && ms < 800) drawParrySuccess(api.fx(-40 + PARRY.radius, 0), { angle: Math.PI, progress: phaseOf(ms, 450, 350) }, PARRY);
+        },
+    },
+    {
+        id: "overdrive", zoom: 1.0, title: "Overdrive", ability: "42, Tier 2", type: "overdrive",
+        where: "Bot visual driven by the <code>overdrive</code> status; drawn in the body pass, under the status icons.",
+        drives: ["progress = 1 − remainingMs / 2500", "moveAngle = the bot's movement heading (null when still)"],
+        settingsName: "OVERDRIVE", settings: OVERDRIVE, draws: [drawOverdriveAura],
+        loopMs: 2500,
+        preview(api, ms) {
+            const p = ms / 2500;
+            const x = Math.sin(p * Math.PI * 2) * 120;
+            const y = Math.sin(p * Math.PI * 4) * 40;
+            const vx = Math.cos(p * Math.PI * 2);
+            const vy = Math.cos(p * Math.PI * 4) * 0.66;
+            const move = Math.atan2(vy, vx);
+            api.bot(x, y, move);
+            drawOverdriveAura(api.fx(x, y), { progress: p, elapsedMs: ms, moveAngle: move }, OVERDRIVE);
+        },
+    },
+    {
+        id: "tar-pit", zoom: 0.62, title: "Tar Pit", ability: "43, Tier 2", type: "tarGlob + tarPit",
+        where: "Two entity phase visuals: <code>thrown</code> (the glob) and <code>pool</code>.",
+        drives: ["thrown: progress = phase time / flight time", "pool: progress = phase time / 4000 ms; elapsedMs drives the bubbles"],
+        settingsName: "TAR_PIT", settings: TAR_PIT, draws: [drawTarGlob, drawTarPool],
+        loopMs: 4600,
+        preview(api, ms) {
+            api.bot(-180, 40, 0);
+            if (ms < 400) {
+                const p = ms / 400;
+                drawTarGlob(api.fx(lerp(-150, 60, p), lerp(40, 0, p)), { progress: p }, TAR_PIT);
+            } else {
+                drawTarPool(api.ground(60, 0), { progress: phaseOf(ms, 400, 4000), elapsedMs: ms - 400 }, TAR_PIT);
+            }
+            api.target(lerp(40, 160, phaseOf(ms, 1200, 3000)), 10);
+        },
+    },
+    {
+        id: "overcharge", zoom: 1.45, title: "Overcharge", ability: "44, Tier 3", type: "overcharge",
+        where: "Bot visual driven by the <code>overcharge</code> status and its charges.",
+        drives: ["charges = the status's charges left", "pop = 0 → 1 over 300 ms after a charge is spent, else null", "angle = facing (the crackle sits on the weapon)"],
+        settingsName: "OVERCHARGE", settings: OVERCHARGE, draws: [drawOverchargeAura],
+        loopMs: 4000,
+        preview(api, ms) {
+            const angle = 0;
+            api.bot(-30, 0, angle);
+            api.target(70, 0);
+            const spent = Math.min(4, Math.floor(Math.max(0, ms - 600) / 800) + (ms >= 600 ? 1 : 0));
+            const sinceSpend = ms >= 600 ? (ms - 600) % 800 : null;
+            const pop = sinceSpend != null && sinceSpend < 300 && spent <= 4 ? sinceSpend / 300 : null;
+            drawOverchargeAura(api.fx(-30, 0), { angle, elapsedMs: ms, charges: 4 - spent, pop }, OVERCHARGE);
+        },
+    },
+    {
+        id: "execute", zoom: 0.95, title: "Execute", ability: "45, Tier 3", type: "execute",
+        where: "Bot visual for the strike. <code>bonus</code> comes from the resolved hit, never from the renderer. <strong>Don't ship <code>drawExecuteWindup</code>:</strong> wind-ups all share one look (SOLVED_MATCHUPS.md); Execute's tell is its 600 ms length.",
+        drives: ["wind-up: windupProgress(ctx) over 600 ms", "strike: progress over the verb's visibleMs", "bonus = the conditional effect landed this activation"],
+        settingsName: "EXECUTE", settings: EXECUTE, draws: [drawExecuteWindup, drawExecuteStrike],
+        loopMs: 2400,
+        preview(api, ms) {
+            const angle = 0;
+            const second = ms >= 1200;
+            const local = ms % 1200;
+            api.bot(-130, 0, angle);
+            api.target(60, 0, false, second ? 0.25 : 0.8);
+            if (local < 600) drawExecuteWindup(api.fx(-130, 0), { angle, progress: local / 600, elapsedMs: ms }, EXECUTE);
+            if (local >= 600 && local < 1000) drawExecuteStrike(api.fx(-130, 0), { angle, progress: phaseOf(local, 600, 400), bonus: second }, EXECUTE);
+        },
+    },
+    {
+        id: "fan-of-blades", zoom: 1.0, title: "Fan of Blades", ability: "46, Tier 3", type: "blade",
+        where: "Entity phase visual for each of the 8 blades (<code>out</code> and <code>return</code>).",
+        drives: ["heading = the blade's travel direction", "elapsedMs = entity age (spin)"],
+        settingsName: "FAN_OF_BLADES", settings: FAN_OF_BLADES, draws: [drawBlade],
+        loopMs: 2000,
+        preview(api, ms) {
+            api.bot(0, 0, 0);
+            const out = ms < 800;
+            const p = out ? ms / 800 : phaseOf(ms, 800, 800);
+            const d = out ? lerp(34, 120, p) : lerp(120, 34, p);
+            if (ms < 1600) {
+                for (let i = 0; i < 8; i += 1) {
+                    const a = (Math.PI * 2 * i) / 8;
+                    drawBlade(api.fx(Math.cos(a) * d, Math.sin(a) * d), { elapsedMs: ms, heading: out ? a : a + Math.PI }, FAN_OF_BLADES);
+                }
+            }
+        },
+    },
+    {
+        id: "tether-link", zoom: 0.82, title: "Tether Link", ability: "47, Tier 3", type: "tetherBolt + tetherChain",
+        where: "Entity phase visual for the bolt; a status visual for <code>tethered</code>, drawn from the caster to the holder.",
+        drives: ["bolt: fromX/fromY = caster relative to the bolt", "chain: toX/toY = holder relative to the caster; taut beyond the 200 leash"],
+        settingsName: "TETHER_LINK", settings: TETHER_LINK, draws: [drawTetherBolt, drawTetherChain],
+        loopMs: 4200,
+        preview(api, ms) {
+            const casterX = -150;
+            api.bot(casterX, 0, 0);
+            if (ms < 400) {
+                const bx = lerp(casterX + 30, 0, ms / 400);
+                drawTetherBolt(api.fx(bx, 0), { angle: 0, fromX: casterX - bx, fromY: 0 }, TETHER_LINK);
+                api.target(30, 0);
+                return;
+            }
+            const t = (ms - 400) / 3800;
+            const away = 90 + Math.min(1, t * 2) * 170;
+            const pulled = t > 0.5 ? (t - 0.5) * 2 * 120 : 0;
+            const tx = casterX + Math.max(150, away - pulled);
+            const ty = Math.sin(t * Math.PI) * 50;
+            api.target(tx, ty);
+            drawTetherChain(api.fx(casterX, 0), { toX: tx - casterX, toY: ty, elapsedMs: ms }, TETHER_LINK);
+        },
+    },
+    {
+        id: "orbital", zoom: 0.68, title: "Orbital Strike (rework)", ability: "22, Tier 3", type: "orbitalMarker + orbitalBlast",
+        where: "Entity phase visuals: <code>marker</code> (1200 ms) and <code>blast</code>.",
+        drives: ["marker: progress = phase time / 1200 ms; elapsedMs spins the brackets", "blast: progress over 400 ms"],
+        settingsName: "ORBITAL_STRIKE", settings: ORBITAL_STRIKE, draws: [drawOrbitalMarker, drawOrbitalBlast],
+        loopMs: 2300,
+        preview(api, ms) {
+            api.bot(-220, 90, -0.3);
+            api.target(lerp(20, 130, phaseOf(ms, 300, 900)), 0);
+            if (ms < 1200) drawOrbitalMarker(api.ground(20, 0), { progress: ms / 1200, elapsedMs: ms }, ORBITAL_STRIKE);
+            if (ms >= 1200 && ms < 1600) drawOrbitalBlast(api.ground(20, 0), { progress: phaseOf(ms, 1200, 400) }, ORBITAL_STRIKE);
+        },
+    },
+    {
+        id: "backstab", zoom: 1.5, title: "Phase Strike: Backstab", ability: "25, Tier 2", type: "backstab",
+        where: "Attached entity phase visual for the 200 ms follow-up after the blink. <code>bonus</code> comes from the resolved hit.",
+        drives: ["progress over the phase's visible window", "angle = the caster's facing", "bonus = the fromBehind effect landed"],
+        settingsName: "BACKSTAB", settings: BACKSTAB, draws: [drawBackstab],
+        loopMs: 1800,
+        preview(api, ms) {
+            const second = ms >= 900;
+            const local = ms % 900;
+            api.target(-20, 0, false, 1, second ? Math.PI : 0);
+            api.bot(60, 0, Math.PI);
+            if (local < 400) drawBackstab(api.fx(60, 0), { angle: Math.PI, progress: local / 400, bonus: second }, BACKSTAB);
+        },
+    },
+    {
+        id: "counter-hit", zoom: 0.95, title: "Disruptive Beam: counter-hit", ability: "30, Tier 2", type: "counterHit",
+        where: "One-shot effect on the target when the stun's <code>when: windingUp</code> passed. The beam itself is the existing <code>disruptorDart</code> ray.",
+        drives: ["progress over 400 ms after the hit", "elapsedMs drives the jagged flicker"],
+        settingsName: "COUNTER_HIT", settings: COUNTER_HIT, draws: [drawCounterHit],
+        loopMs: 1400,
+        preview(api, ms) {
+            api.bot(-160, 0, 0);
+            api.target(90, 0, ms >= 300 && ms < 1300);
+            if (ms < 300) {
+                const g = api.fx(-160, 0);
+                g.circle(110, 0, 18 + 6 * Math.sin(ms / 30)).stroke({ color: 0xff7166, alpha: 0.6, width: 2 });
+                g.circle(250, 0, 14).stroke({ color: 0xffd166, alpha: 0.8, width: 2 });
+            }
+            if (ms >= 300 && ms < 420) {
+                api.fx(-160, 0).moveTo(30, 0).lineTo(250, 0).stroke({ color: 0x22d3ee, alpha: 1 - phaseOf(ms, 300, 120), width: 5 });
+            }
+            if (ms >= 300 && ms < 700) drawCounterHit(api.fx(90, 0), { progress: phaseOf(ms, 300, 400), elapsedMs: ms }, COUNTER_HIT);
+        },
+    },
+];
+
+/* ================================================================== PAGE */
+function hex(n) { return "0x" + n.toString(16).padStart(6, "0"); }
+function settingsSource(name, settings) {
+    const body = Object.entries(settings).map(([key, value]) => {
+        const shown = typeof value === "number" && Number.isInteger(value) && value > 0xffff && /color|edge|pool|blood|flash|fill|glow|core|warn|light|bright|bubble|slack|taut|head|bonus|arc|returnColor/i.test(key)
+            ? hex(value) : JSON.stringify(value);
+        return `    ${key}: ${shown},`;
+    }).join("\n");
+    return `export const ${name} = Object.freeze({\n${body}\n});`;
+}
+function cardCode(entry) {
+    return [
+        `// ${entry.title}: settings (botAbilityPresentationDefinitions.js) and draw functions (renderers/${entry.id}.js)`,
+        settingsSource(entry.settingsName, entry.settings),
+        ...entry.draws.map((fn) => `export ${fn.toString()}`),
+    ].join("\n\n");
+}
+
+document.getElementById("helpers-code").textContent =
+    "/* Same as frontend/src/gameArena/pixi/renderers/rendererHelpers.js; clamp01 = (v) => Math.max(0, Math.min(1, v)) */\n\n"
+    + HELPERS.map((fn) => fn.toString()).join("\n\n");
+
+const cards = document.getElementById("cards");
+const toc = document.getElementById("toc");
+for (const entry of CATALOGUE) {
+    const link = document.createElement("a");
+    link.href = `#${entry.id}`;
+    link.textContent = entry.title;
+    toc.appendChild(link);
+
+    const card = document.createElement("section");
+    card.className = "card";
+    card.id = entry.id;
+    card.innerHTML = `
+      <div class="card-head"><h2>${entry.title}</h2><span class="tag">ID ${entry.ability}</span><span class="tag">type: ${entry.type}</span></div>
+      <div class="card-body">
+        <div>
+          <div class="stage" data-stage="${entry.id}"></div>
+          <div class="scrub">
+            <button data-play="${entry.id}">Pause</button>
+            <input type="range" min="0" max="${entry.loopMs}" step="10" value="0" data-scrub="${entry.id}" aria-label="Preview time for ${entry.title}">
+            <output data-time="${entry.id}">0 ms</output>
+          </div>
+        </div>
+        <div class="notes">
+          <h3>Where it renders</h3><p>${entry.where}</p>
+          <h3>What drives it</h3><ul>${entry.drives.map((d) => `<li>${d}</li>`).join("")}</ul>
+        </div>
+      </div>
+      <div class="code-wrap">
+        <details>
+          <summary>Show code</summary>
+          <div class="code-bar"><span>settings + draw functions</span><button data-copy="code-${entry.id}">Copy</button></div>
+          <pre><code id="code-${entry.id}"></code></pre>
+        </details>
+      </div>`;
+    cards.appendChild(card);
+    card.querySelector(`#code-${entry.id}`).textContent = cardCode(entry);
+}
+
+document.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-copy]");
+    if (!button) return;
+    const text = document.getElementById(button.dataset.copy).textContent;
+    try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = "Copied";
+    } catch {
+        button.textContent = "Select and copy";
+    }
+    setTimeout(() => { button.textContent = "Copy"; }, 1400);
+});
+
+/* ---- previews: one Pixi app per card, paused while off screen ---- */
+const WORLD_SCALE = 0.62;
+async function mountPreview(entry, host) {
+    const app = new PIXI.Application();
+    await app.init({ width: 400, height: 280, background: 0x0d1117, antialias: true, resolution: Math.min(2, window.devicePixelRatio || 1), autoDensity: true });
+    host.appendChild(app.canvas);
+
+    const world = new PIXI.Container();
+    world.position.set(200, 140);
+    world.scale.set(entry.zoom ?? WORLD_SCALE);
+    app.stage.addChild(world);
+
+    const grid = new PIXI.Graphics();
+    for (let x = -400; x <= 400; x += 50) grid.moveTo(x, -260).lineTo(x, 260);
+    for (let y = -250; y <= 250; y += 50) grid.moveTo(-340, y).lineTo(340, y);
+    grid.stroke({ color: 0x253442, alpha: 0.5, width: 1 });
+    world.addChild(grid);
+
+    const groundLayer = new PIXI.Container();
+    world.addChild(groundLayer);
+    const groundPool = [];
+    let groundUsed = 0;
+    const actors = new PIXI.Graphics();
+    world.addChild(actors);
+    const pool = [];
+    let used = 0;
+    const api = {
+        fx(x, y) {
+            let g = pool[used];
+            if (!g) { g = new PIXI.Graphics(); pool.push(g); world.addChild(g); }
+            used += 1;
+            g.visible = true;
+            g.clear();
+            g.position.set(x, y);
+            return g;
+        },
+        ground(x, y) {
+            let g = groundPool[groundUsed];
+            if (!g) { g = new PIXI.Graphics(); groundPool.push(g); groundLayer.addChild(g); }
+            groundUsed += 1;
+            g.visible = true;
+            g.clear();
+            g.position.set(x, y);
+            return g;
+        },
+        bot(x, y, angle) { drawActor(actors, x, y, angle, 0x57b8ff, 1); },
+        target(x, y, stunned = false, hp = 1, angle = Math.PI) { drawActor(actors, x, y, angle, 0xff7166, hp, stunned); },
+    };
+    let start = performance.now();
+    let paused = false;
+    let pausedMs = 0;
+    const playButton = document.querySelector(`[data-play="${entry.id}"]`);
+    const scrubber = document.querySelector(`[data-scrub="${entry.id}"]`);
+    const readout = document.querySelector(`[data-time="${entry.id}"]`);
+    playButton.addEventListener("click", () => {
+        paused = !paused;
+        if (paused) pausedMs = (performance.now() - start) % entry.loopMs;
+        else start = performance.now() - pausedMs;
+        playButton.textContent = paused ? "Play" : "Pause";
+    });
+    scrubber.addEventListener("input", () => {
+        paused = true;
+        pausedMs = Number(scrubber.value);
+        playButton.textContent = "Play";
+    });
+    const tick = () => {
+        const ms = paused ? pausedMs : (performance.now() - start) % entry.loopMs;
+        if (!paused) scrubber.value = String(Math.round(ms));
+        readout.textContent = `${Math.round(ms)} ms`;
+        actors.clear();
+        used = 0;
+        groundUsed = 0;
+        entry.preview(api, ms);
+        for (let i = used; i < pool.length; i += 1) pool[i].visible = false;
+        for (let i = groundUsed; i < groundPool.length; i += 1) groundPool[i].visible = false;
+    };
+    app.ticker.add(tick);
+    const observer = new IntersectionObserver(([seen]) => {
+        if (seen.isIntersecting) app.ticker.start(); else app.ticker.stop();
+    });
+    observer.observe(host);
+}
+function drawActor(g, x, y, angle, color, hp = 1, stunned = false) {
+    g.circle(x, y, 30).fill({ color, alpha: 0.9 }).stroke({ color: 0xf8fafc, alpha: 0.35, width: 2 });
+    const [nx, ny] = rotatePoint(angle, 30, 0);
+    g.moveTo(x, y).lineTo(x + nx, y + ny).stroke({ color: 0x0d1117, width: 4, cap: "round" });
+    g.roundRect(x - 30, y - 46, 60, 7, 2).fill({ color: 0x09090b });
+    g.roundRect(x - 30, y - 46, 60 * hp, 7, 2).fill({ color: hp < 0.3 ? 0xdc2626 : 0x22c55e });
+    if (stunned) {
+        for (let i = 0; i < 3; i += 1) {
+            const a = performance.now() / 300 + (Math.PI * 2 * i) / 3;
+            g.circle(x + Math.cos(a) * 22, y - 38 + Math.sin(a) * 6, 4).fill({ color: 0xfde047 });
+        }
+    }
+}
+
+if (window.PIXI) {
+    for (const entry of CATALOGUE) mountPreview(entry, document.querySelector(`[data-stage="${entry.id}"]`));
+} else {
+    for (const stage of document.querySelectorAll(".stage")) stage.textContent = "PixiJS failed to load (offline?). The code below is still valid.";
+}
+</script>
+</body>
+</html>

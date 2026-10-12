@@ -15,13 +15,12 @@ class MatchmakingEventDTOJsonTest {
         MatchmakingEventDTO event = MatchmakingEventDTO.builder()
                         .type(MatchEventType.MATCH_ROUND_READY)
                         .matchId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
-                        .status("LOADOUT_SELECT")
+                        .status("PREP")
                         .serverNow(Instant.parse("2026-10-09T12:00:00Z"))
-                        .loadoutSelectionEndsAt(Instant.parse("2026-10-09T12:00:22Z"))
-                        .roundNumber(2)
-                        .abilityOffers(List.of(11, 12, 13)).build();
+                        .countdownEndsAt(Instant.parse("2026-10-09T12:00:00Z"))
+                        .roundNumber(2).build();
         assertThat(mapper.readTree(mapper.writeValueAsString(event))).isEqualTo(mapper.readTree("""
-                {"type":"MATCH_ROUND_READY","matchId":"00000000-0000-0000-0000-000000000001","status":"LOADOUT_SELECT","serverNow":"2026-10-09T12:00:00Z","loadoutSelectionEndsAt":"2026-10-09T12:00:22Z","roundNumber":2,"abilityOffers":[11,12,13],"eventSchemaVersion":2}
+                {"type":"MATCH_ROUND_READY","matchId":"00000000-0000-0000-0000-000000000001","status":"PREP","serverNow":"2026-10-09T12:00:00Z","countdownEndsAt":"2026-10-09T12:00:00Z","roundNumber":2,"eventSchemaVersion":2}
                 """));
     }
 

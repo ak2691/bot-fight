@@ -3,16 +3,14 @@ import { clamp, normalizeAngle } from "../../gameconfig/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, ROTATION_STEP_DEG } from "../../modelPayloads/arenaConstants.js";
 import { tickBotState } from "./BotStateSystem.js";
 import { effectiveMovementSpeedMultiplier, effectiveRotationSpeedMultiplier } from "../../gameconfig/HitStagger.js";
-import { abilityResourceReady, abilityTimingReady, anotherAbilityActive, consumeAbilityCharges, cooldownStartMultiplier, setAbilityCooldownState, startAbilityActive } from "../../gameconfig/AbilityResourceSystem.js";
-import { ABILITY_STAGES, abilityRecord, channelActive, clearWindup, isWindingUp, patchAbilityRecord, preparingAbilityId, preparingRemainingMs, readyAbilityRecord } from "../../gameconfig/AbilityState.js";
-import { DASH_CHANNEL, abilityChannel, abilityStaminaCost, channelBlockingStatuses } from "../../gameconfig/AbilityChannels.js";
+import { abilityResourceReady, abilityTimingReady, anotherAbilityActive, consumeAbilityCharges, cooldownStartMultiplier, interruptCurrentAbility, setAbilityCooldownState, startAbilityActive } from "../../gameconfig/AbilityResourceSystem.js";
+import { ABILITY_STAGES, abilityRecord, clearWindup, isWindingUp, patchAbilityRecord, preparingAbilityId, preparingRemainingMs, readyAbilityRecord, startActivationLedger } from "../../gameconfig/AbilityState.js";
+import { DASH_CHANNEL, abilityChannel, abilityStaminaCost } from "../../gameconfig/AbilityChannels.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
-import { statusIsActive } from "../contracts/StatusContracts.js";
-import { interrupt } from "../abilities/effects.js";
-import { EFFECT_TYPES, triggerEffects } from "../contracts/AbilityContracts.js";
-import { applyActivationVerbs, dueTimelineSteps, spawnDueEntities, spawnTriggerEntities, stampTimelineSerial, startTimeline } from "../abilities/verbs.js";
+import { blockedActions, hasActiveEffect, isBlocked } from "../contracts/StatusContracts.js";
+import { applyActivationVerbs, spawnActivationEntities } from "../abilities/verbs.js";
 import { MOVEMENT_CONFIG } from "../../gameconfig/MovementConfig.js";
-import { advanceStaminaTimers, botStamina, canCancelWindup, cancelWindup, spendAbilityStamina, spendStamina, withFastTurning, withSprinting } from "../../gameconfig/StaminaSystem.js";
+import { advanceStaminaTimers, botStamina, canCancelWindup, cancelWindup, spendAbilityStamina, spendStamina, staminaCostFor, withFastTurning, withSprinting } from "../../gameconfig/StaminaSystem.js";
 
 /**
  * Converts one selected action payload into the bot's next state, changing the bot in place. Returns the bot.
@@ -20,8 +18,8 @@ import { advanceStaminaTimers, botStamina, canCancelWindup, cancelWindup, spendA
  * left, which is what the planner and conditions saw, exactly like ability cooldowns, so they are read before
  * this tick changes anything.
  */
-export function applyBotAction(bot, action, elapsedMs) {
-    if ((bot.hp ?? 0) <= 0) return tickBotState(bot, elapsedMs);
+export function applyBotAction(bot, action, elapsedMs, bots = []) {
+    if ((bot.hp ?? 0) <= 0) return tickBotState(bot, elapsedMs, null, bots);
     const staminaBefore = botStamina(bot);
     const canCancel = canCancelWindup(bot);
     const wasSprinting = Boolean(bot.sprinting);
@@ -31,13 +29,14 @@ export function applyBotAction(bot, action, elapsedMs) {
     advanceStaminaTimers(bot, elapsedMs);
     const seconds = Math.max(elapsedMs / 1000, 0.001);
     const cooldownMultiplier = 1 / Number(bot.attackSpeedMultiplier ?? 1);
-    const slowedWasActive = statusIsActive(bot, "slow");
-    const stunned = statusIsActive(bot, "stun");
-    const movementLocked = statusIsActive(bot, "movement-lock");
+    // The blocks active at the start of the tick: an ability's channel still counts a block that expired during the tick.
+    const blockedAtStart = blockedActions(bot);
+    const stunned = hasActiveEffect(bot, "stun");
+    const movementLocked = isBlocked(bot, "move");
     const speedMultiplier = effectiveMovementSpeedMultiplier(bot);
     const maxMoveSpeed = Number(bot.moveSpeed ?? BASE_BOT_STATS.moveSpeed) * speedMultiplier;
-    const rotationMultiplier = effectiveRotationSpeedMultiplier(bot);
-    const preparationLocked = isWindingUp(bot) && !statusIsActive(bot, "silence");
+    const turnSpeedMultiplier = effectiveRotationSpeedMultiplier(bot);
+    const preparationLocked = isWindingUp(bot) && !isBlocked(bot, "ability");
     const magnitude = Math.hypot(action.dx ?? 0, action.dy ?? 0);
     const dx = magnitude > 0.001 ? action.dx / magnitude : 0;
     const dy = magnitude > 0.001 ? action.dy / magnitude : 0;
@@ -46,14 +45,16 @@ export function applyBotAction(bot, action, elapsedMs) {
     const turn = clamp(action.dRot ?? 0, -1, 1);
     const fastTurning = action.fastTurn === true
         && Math.abs(turn) > 0.001
-        && staminaBefore >= MOVEMENT_CONFIG.fastTurnDrainPerTick
-        && !stunned;
+        && staminaBefore >= staminaCostFor(bot, MOVEMENT_CONFIG.fastTurnDrainPerTick)
+        && !stunned
+        && !isBlocked(bot, "fastTurn");
     const rotationStep = ROTATION_STEP_DEG * (fastTurning ? MOVEMENT_CONFIG.fastTurnMultiplier : 1);
-    bot.rotation = normalizeAngle(bot.rotation + turn * rotationStep * rotationMultiplier);
+    bot.rotation = normalizeAngle(bot.rotation + turn * rotationStep * turnSpeedMultiplier);
     if (stunned) {
-        interrupt(bot);
-        tickBotState(bot, elapsedMs);
+        interruptCurrentAbility(bot);
+        tickBotState(bot, elapsedMs, null, bots);
         bot.dashRemaining = 0;
+        bot.moveAbilityId = null;
         bot.movementVelocityX = 0;
         bot.movementVelocityY = 0;
         bot.velocityX = 0;
@@ -102,15 +103,16 @@ export function applyBotAction(bot, action, elapsedMs) {
             phaseFacingMode: dashSource?.phaseFacingMode,
         }
         : null;
-    const abilityOptions = { slowedWasActive, staminaBefore };
-    const sprinting = action.sprint === true && magnitude > 0.001 && staminaBefore > 0 && !movementLocked;
+    const abilityOptions = { blockedAtStart, staminaBefore };
+    const sprinting = action.sprint === true && magnitude > 0.001 && staminaBefore > 0
+        && !movementLocked && !isBlocked(bot, "sprint");
     applyMovement(bot, movementLocked, {
         dx, dy, magnitude, seconds,
         maxMoveSpeed: sprinting ? maxMoveSpeed * MOVEMENT_CONFIG.sprintMultiplier : maxMoveSpeed,
     });
-    if (sprinting) spendStamina(bot, MOVEMENT_CONFIG.sprintDrainPerTick);
+    if (sprinting) spendStamina(bot, staminaCostFor(bot, MOVEMENT_CONFIG.sprintDrainPerTick));
     withSprinting(bot, sprinting);
-    if (fastTurning) spendStamina(bot, MOVEMENT_CONFIG.fastTurnDrainPerTick);
+    if (fastTurning) spendStamina(bot, staminaCostFor(bot, MOVEMENT_CONFIG.fastTurnDrainPerTick));
     withFastTurning(bot, fastTurning);
     // The ability starts first, then the dash, so a dash that moves the bot never changes where the same
     // tick's ability was captured; the hit and spawn are resolved after both, from the final pose.
@@ -122,8 +124,8 @@ export function applyBotAction(bot, action, elapsedMs) {
     // the activation that made it.
     const activationSerial = (Math.trunc(Number(bot.activationSerial)) || 0)
         + (abilityResult.triggered != null ? 1 : 0) + (dashResult.triggered != null ? 1 : 0);
-    // The spawn verbs of the ability that triggered create their entities from the final pose, in order.
-    const abilitySpawn = spawnTriggerEntities(bot, abilityResult.triggeredPayload, {
+    // The spawn verbs of the ability that activated create their entities from the final pose, in order.
+    const abilitySpawn = spawnActivationEntities(bot, abilityResult.triggeredPayload, {
         serial: entitySerial,
         targetX: abilityResult.triggeredPayload?.targetX,
         targetY: abilityResult.triggeredPayload?.targetY,
@@ -133,32 +135,26 @@ export function applyBotAction(bot, action, elapsedMs) {
     // Every ability that activated this step keeps its stages for the step, so a dash started beside an
     // ability gets the same active/cooldown timing as a dash started alone.
     const justActivatedIds = [abilityResult.triggeredPayload?.abilityId, dashResult.triggeredPayload?.abilityId];
-    // The timeline steps that come due on this tick (derived from the active time left, before the stage
-    // advances): their spawn verbs create entities now, from the pose they name; their hit and applyEffects
-    // verbs resolve with the trigger verbs.
-    for (const abilityId of justActivatedIds) if (abilityId != null) stampTimelineSerial(bot, abilityId, activationSerial);
-    const dueSteps = dueTimelineSteps(bot, elapsedMs, justActivatedIds);
-    const delayedSpawn = spawnDueEntities(bot, dueSteps, { serial: entitySerial + abilitySpawn.length, clampFn: clamp });
-    tickBotState(bot, elapsedMs, justActivatedIds);
+    // Each ability that activated starts a new "already hit" memory under this activation's serial; the hits and
+    // the entities of the cast read it through that serial.
+    for (const abilityId of justActivatedIds) if (abilityId != null) startActivationLedger(bot, abilityId, activationSerial);
+    tickBotState(bot, elapsedMs, justActivatedIds, bots);
     const phaseFacing = triggeredPayloadOptions(abilityResult, abilityPayload, dashPayload);
     bot.activationSerial = activationSerial;
-    const spawned = [...abilitySpawn, ...delayedSpawn.map(({ entity }) => entity)];
-    bot.entityActivations = spawned.length > 0
+    bot.entityActivations = abilitySpawn.length > 0
         ? {
             ...(bot.entityActivations ?? {}),
             ...Object.fromEntries(abilitySpawn.map((entity) => [entity.id, activationSerial])),
-            ...Object.fromEntries(delayedSpawn.map(({ entity, serial }) => [entity.id, serial])),
         }
         : bot.entityActivations ?? {};
-    bot.abilityEntitySerial = entitySerial + spawned.length;
-    bot.dueSteps = dueSteps;
+    bot.abilityEntitySerial = entitySerial + abilitySpawn.length;
     bot.triggeredAbility = triggered;
     bot.triggeredPhaseFacingMode = triggered == null
         ? null
         : phaseFacing?.phaseFacingMode ?? phaseFacing?.activation?.phaseFacingDefault ?? null;
     bot.abilityTargetX = (abilityPayload ?? dashPayload)?.targetX;
     bot.abilityTargetY = (abilityPayload ?? dashPayload)?.targetY;
-    bot.abilitySpawn = spawned;
+    bot.abilitySpawn = abilitySpawn;
     return bot;
 }
 
@@ -168,7 +164,7 @@ function isDashAction(source) {
     return abilityChannel(abilityExecutionPayload(source.abilityPayload ?? source)?.abilityId) === DASH_CHANNEL;
 }
 
-/** The payload that owns this tick's trigger: the ability's when it started, otherwise the dash's. */
+/** The payload that owns this tick's activation: the ability's when it started, otherwise the dash's. */
 function triggeredPayloadOptions(abilityResult, abilityPayload, dashPayload) {
     return abilityResult.triggered != null ? abilityPayload : dashPayload;
 }
@@ -182,13 +178,14 @@ function applyMovement(bot, locked, movement) {
     bot.movementStartY = startY;
     if (locked) {
         bot.dashRemaining = 0;
+        bot.moveAbilityId = null;
         bot.movementVelocityX = 0;
         bot.movementVelocityY = 0;
         bot.velocityX = 0;
         bot.velocityY = 0;
         return;
     }
-    if (channelActive(bot, DASH_CHANNEL) && Number(bot.dashRemaining ?? 0) > 0) {
+    if (movingAbilityActive(bot) && Number(bot.dashRemaining ?? 0) > 0) {
         const dashX = Number(bot.dashDirectionX ?? 0), dashY = Number(bot.dashDirectionY ?? 0);
         const step = Math.min(Number(bot.dashStepDistance ?? 75), Number(bot.dashRemaining ?? 0));
         const x = clamp(bot.x + dashX * step, bot.size / 2, ARENA_WIDTH_UNITS - bot.size / 2);
@@ -207,10 +204,20 @@ function applyMovement(bot, locked, movement) {
     bot.x = clamp(bot.x + velocity.dx, bot.size / 2, ARENA_WIDTH_UNITS - bot.size / 2);
     bot.y = clamp(bot.y + velocity.dy, bot.size / 2, ARENA_HEIGHT_UNITS - bot.size / 2);
     bot.dashRemaining = 0;
+    bot.moveAbilityId = null;
     bot.movementVelocityX = velocity.dx;
     bot.movementVelocityY = velocity.dy;
     bot.velocityX = velocity.dx / seconds;
     bot.velocityY = velocity.dy / seconds;
+}
+
+/**
+ * True while the ability that started the bot's move is still active. Any ability with a move verb keeps its move
+ * going (a dash is one), and an interrupted ability stops it: its record leaves the active stage.
+ */
+function movingAbilityActive(bot) {
+    const record = abilityRecord(bot, bot.moveAbilityId);
+    return record?.stage === ABILITY_STAGES.ACTIVE && Number(record.remainingMs) > 0;
 }
 
 const NOT_TRIGGERED = Object.freeze({ triggered: null, triggeredPayload: null });
@@ -219,14 +226,13 @@ const NOT_TRIGGERED = Object.freeze({ triggered: null, triggeredPayload: null })
  * Starts, continues or cancels one ability on the bot, in place. Returns { triggered, triggeredPayload };
  * `triggered` is the action id when the ability fired this step.
  */
-function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWasActive, staminaBefore }) {
+function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { blockedAtStart, staminaBefore }) {
     if (!payload || !hasAbility(bot, payload.abilityId)) return NOT_TRIGGERED;
 
-    // The ability's channel decides which statuses stop it: silence stops the ability channel, slow the dash.
-    // A slow that was active at the start of the tick still blocks it even if it expired during the tick.
+    // The ability's channel decides what stops it: a block on "ability" stops the ability channel, a block on
+    // "dash" the dash channel. A block that was active at the start of the tick still stops it.
     const channel = abilityChannel(payload.abilityId);
-    if (channelBlockingStatuses(channel).some((status) => statusIsActive(bot, status)
-        || (status === "slow" && slowedWasActive))) {
+    if (blockedAtStart.has(channel) || isBlocked(bot, channel)) {
         return cancelPreparation(bot, payload);
     }
     if (anotherAbilityActive(bot, payload.abilityId)) {
@@ -236,13 +242,13 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
     if (!continuingPreparation
         && (!abilityTimingReady(bot, payload.abilityId, 0)
             || !abilityResourceReady(bot, payload.abilityId, 0)
-            || staminaBefore < abilityStaminaCost(payload.abilityId))) {
+            || staminaBefore < staminaCostFor(bot, abilityStaminaCost(payload.abilityId)))) {
         return cancelPreparation(bot, payload);
     }
 
     // Only the ability records change before the charge is spent; if it cannot be, they are put back.
     const abilityStateBefore = bot.abilityState;
-    const windupMs = Number(payload.stats.windupMs ?? 0);
+    const windupMs = Number(payload.timing.windupMs ?? 0);
     let triggered = null;
     if (windupMs > 0) {
         const continuing = preparingAbilityId(bot) === payload.abilityId;
@@ -271,7 +277,7 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
     if (triggered == null) return NOT_TRIGGERED;
 
     const activeMs = activationActiveMs(payload);
-    const configuredCooldownMs = Math.round(Number(payload.stats.cooldownMs ?? payload.stats.reuseCooldownMs ?? 1000)
+    const configuredCooldownMs = Math.round(Number(payload.timing.cooldownMs ?? 1000)
         * cooldownMultiplier * cooldownStartMultiplier(bot));
     startAbilityActive(bot, payload.abilityId, activeMs);
     setAbilityCooldownState(bot, payload.abilityId, configuredCooldownMs);
@@ -286,7 +292,6 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
     // An ability that declares a stamina cost (the dash channel) pays it on activation.
     spendAbilityStamina(bot, payload.abilityId);
     applyActivationVerbs(bot, payload, elapsedMs);
-    startTimeline(bot, payload, activeMs);
     return { triggered, triggeredPayload: payload };
 }
 
@@ -295,16 +300,13 @@ function cancelPreparation(bot, payload) {
     return NOT_TRIGGERED;
 }
 
+/**
+ * The post-activation action lock. An ability with no active time (`timing.activeMs` is 0, such as the defensive
+ * statuses and Overclock) owns its duration as a status, not as a lock. The validator requires `timing.activeMs`
+ * on every ability, so there is no fallback.
+ */
 function activationActiveMs(payload) {
-    // Defensive effects and Overclock own their duration as statuses, not as
-    // post-activation action locks. Other short-lived combat visuals retain
-    // their explicit active fallback.
-    const effects = triggerEffects(payload.abilityId);
-    if (effects.some((effect) => [EFFECT_TYPES.DAMAGE_REDUCTION, EFFECT_TYPES.DAMAGE_IMMUNITY, EFFECT_TYPES.DAMAGE_REFLECTION].includes(effect.type)
-        || (effect.type === EFFECT_TYPES.BUFF && effect.buff === "overclock"))) return 0;
-    const explicitActiveMs = payload.activation?.activeMs ?? payload.stats.activeMs;
-    if (explicitActiveMs != null) return Math.max(0, Number(explicitActiveMs) || 0);
-    return Math.max(300, Number(payload.stats.durationMs ?? payload.stats.visualMs ?? 0));
+    return Math.max(0, Number(payload.activation?.activeMs ?? payload.timing.activeMs) || 0);
 }
 
 function movementVelocity(inputX, inputY, magnitude, maxSpeed) {

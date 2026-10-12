@@ -95,7 +95,7 @@ class MatchParticipationMutualExclusionTest {
         CustomLobbyDTO lobby = customLobbyService.create(ownerAuthentication);
         UUID leaderId = UUID.randomUUID();
         UUID partyId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 leaderId,
                 "leader",
                 "leader@example.test",
@@ -105,10 +105,10 @@ class MatchParticipationMutualExclusionTest {
                 null,
                 QueuePool.REGISTERED));
         List<MatchEntrant> party = List.of(
-                new MatchEntrant(leaderId, "leader", "leader@example.test", "leader-socket"),
-                new MatchEntrant(owner.getId(), owner.getUsername(), owner.getEmail(), "owner-socket"));
+                com.example.botfight.support.TestKits.entrant(leaderId, "leader", "leader@example.test", "leader-socket"),
+                com.example.botfight.support.TestKits.entrant(owner.getId(), owner.getUsername(), owner.getEmail(), "owner-socket"));
 
-        assertThatThrownBy(() -> matchmakingService.joinQueue(new QueueJoinRequest(
+        assertThatThrownBy(() -> matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 leaderId,
                 "leader",
                 "leader@example.test",
@@ -134,7 +134,7 @@ class MatchParticipationMutualExclusionTest {
 
     @Test
     void aQueuedUserCannotCreateALobbyUntilTheyExplicitlyLeaveTheQueue() {
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 target.getId(),
                 target.getUsername(),
                 target.getEmail(),
@@ -161,7 +161,7 @@ class MatchParticipationMutualExclusionTest {
         var lobby = customLobbyService.create(ownerAuthentication);
         var invite = customLobbyService.invite(ownerAuthentication, lobby.lobbyId(), target.getUsername());
 
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 target.getId(),
                 target.getUsername(),
                 target.getEmail(),
@@ -180,7 +180,7 @@ class MatchParticipationMutualExclusionTest {
         assertThat(customLobbyService.currentForPrincipal(target.getEmail())).isNull();
         matchmakingService.leaveQueue(target.getId());
 
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 target.getId(),
                 target.getUsername(),
                 target.getEmail(),
@@ -190,7 +190,7 @@ class MatchParticipationMutualExclusionTest {
                 null,
                 QueuePool.REGISTERED));
         List<OutboundMatchmakingEvent> found =
-                matchmakingService.joinQueue(new QueueJoinRequest(
+                matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                         opponent.getId(),
                         opponent.getUsername(),
                         opponent.getEmail(),
@@ -247,7 +247,7 @@ class MatchParticipationMutualExclusionTest {
                 ready.countDown();
                 start.await();
                 try {
-                    matchmakingService.joinQueue(new QueueJoinRequest(
+                    matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                             owner.getId(),
                             owner.getUsername(),
                             owner.getEmail(),

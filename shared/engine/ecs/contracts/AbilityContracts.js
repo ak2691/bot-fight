@@ -1,116 +1,48 @@
 import { abilityId as resolveAbilityId } from "../../gameconfig/AbilityRegistry.js";
 import { GAMEPLAY_DATA, deepFreeze, withoutNulls } from "../../gameconfig/gameplayData.js";
 import { validateGameplayData } from "../../gameconfig/gameplayValidation.js";
+import {
+    ENTITY_CATEGORIES,
+    EFFECT_TYPES,
+    PHASE_EVENT_TYPES,
+    VERBS,
+    MOVEMENT_MODES,
+    TARGET_KINDS,
+    OWNER_TARGET,
+} from "../../gameconfig/vocabulary.js";
+export {
+    ENTITY_CATEGORIES,
+    EFFECT_TYPES,
+    PHASE_TYPES,
+    PHASE_EVENT_TYPES,
+    EVENT_SCHEDULE_MODES,
+    VERBS,
+    MOVEMENT_MODES,
+    SPAWN_PATTERN_TYPES,
+    TARGET_POLICY_MODES,
+    TARGET_POLICY_SCOPES,
+    TARGET_KINDS,
+    OWNER_TARGET,
+    DISPLACE_WHO,
+    DISPLACE_FROM,
+    DISPLACE_DIRECTION,
+} from "../../gameconfig/vocabulary.js";
 
 /**
- * The allowlisted ability registry. An ability is data: `onTrigger` verbs that run when its wind-up ends, and
+ * The allowlisted ability registry. An ability is data: `onActivate` verbs that run when its wind-up ends, and
  * `entities` that its `spawn` verbs create. An entity is a list of phases whose events run the same verbs.
  * Nothing here executes user-provided code; verbs.js is the one executor.
  */
-export const ENTITY_CATEGORIES = Object.freeze({
-    PROJECTILE: "projectile",
-    ZONE: "zone",
-    TRAP: "trap",
-    SUMMON: "summon",
-});
-
-/** Effect vocabulary. Concrete effect payloads live on the verbs that apply them. */
-export const EFFECT_TYPES = Object.freeze({
-    DAMAGE: "damage",
-    HEALING: "healing",
-    KNOCKBACK: "knockback",
-    PULL: "pull",
-    STATUS: "status",
-    BUFF: "buff",
-    INTERRUPT: "interrupt",
-    TELEPORT: "teleport",
-    RESTORE_STATE: "restore_state",
-    DAMAGE_REDUCTION: "damage_reduction",
-    DAMAGE_IMMUNITY: "damage_immunity",
-    DAMAGE_REFLECTION: "damage_reflection",
-});
-
-/** Phase host vocabulary of entity phases. */
-export const PHASE_TYPES = Object.freeze({
-    PROJECTILE: "projectile",
-    ZONE: "zone",
-    SUMMON: "summon",
-});
-
-export const PHASE_EVENT_TYPES = Object.freeze({
-    COLLISION: "collision",
-    TRIGGER: "trigger",
-    HIT: "hit",
-    KILLED: "killed",
-    LIFETIME_END: "lifetimeEnd",
-    SCHEDULE: "schedule",
-});
-
-/** Determines when any phase event is evaluated. */
-export const EVENT_SCHEDULE_MODES = Object.freeze({
-    ONCE: "once",
-    REPEAT: "repeat",
-    CONTINUOUS: "continuous",
-});
-
-/** The verbs of `onTrigger` lists and entity event `do` lists. */
-export const VERBS = Object.freeze({
-    HIT: "hit",
-    SPAWN: "spawn",
-    MOVE: "move",
-    APPLY_EFFECTS: "applyEffects",
-    TRANSITION: "transition",
-    REMOVE: "remove",
-    EMIT_VISUAL: "emitVisual",
-});
-
-export const MOVEMENT_MODES = Object.freeze({
-    STRAIGHT: "straight",
-    STATIC: "static",
-    SEEK: "seek",
-    FOLLOW_OWNER: "followOwner",
-});
-
-export const SPAWN_PATTERN_TYPES = Object.freeze({
-    FAN: "fan",
-    RING: "ring",
-    LINE: "line",
-});
-
-export const TARGET_POLICY_MODES = Object.freeze({
-    ONCE: "once",
-    EVERY_TICK: "everyTick",
-    INTERVAL: "interval",
-});
-
-/** Semantic target categories used by verbs and entity collision events. */
-export const TARGET_KINDS = Object.freeze({
-    BOT: "BOT",
-    HP_ENTITY: "HP_ENTITY",
-    SUMMON: "SUMMON",
-    ENTITY: "ENTITY",
-});
-
-/** A verb's `targets` list names this to apply to the bot that owns the ability instead of to hit targets. */
-export const OWNER_TARGET = "OWNER";
-
 export const BOT_TARGET_KINDS = Object.freeze([TARGET_KINDS.BOT]);
 export const DAMAGE_TARGET_KINDS = Object.freeze([TARGET_KINDS.BOT, TARGET_KINDS.HP_ENTITY]);
-export const TELEPORT_DISTANCE_MODES = Object.freeze({
-    CENTER_DISTANCE: "center_distance",
-});
-
 const SUMMON_SUPPORTED_EFFECT_TYPES = new Set([
     EFFECT_TYPES.DAMAGE,
     EFFECT_TYPES.STATUS,
-    EFFECT_TYPES.INTERRUPT,
-    EFFECT_TYPES.KNOCKBACK,
-    EFFECT_TYPES.PULL,
+    EFFECT_TYPES.DISPLACE,
 ]);
 const HP_ENTITY_SUPPORTED_EFFECT_TYPES = new Set([
     EFFECT_TYPES.DAMAGE,
-    EFFECT_TYPES.KNOCKBACK,
-    EFFECT_TYPES.PULL,
+    EFFECT_TYPES.DISPLACE,
 ]);
 
 function defaultEffectTargetKinds(type) {
@@ -143,8 +75,22 @@ export function eventTargetsEntity(event, targetKinds) {
         && declared.some((kind) => targetKinds.includes(kind));
 }
 
-/** Returns the stable contract capabilities of a non-bot arena entity. */
+/** The category an entity was spawned with: from its payload, or from its ability contract. */
+export function entityCategoryOf(entity) {
+    return entity?.entityCategory ?? entityContract(entity)?.category ?? null;
+}
+
+/**
+ * An attached entity is part of its owner's attack (see docs/ABILITIES.md, "Attached entities"). Brains never see it,
+ * and nothing can target it.
+ */
+export function isAttachedEntity(entity) {
+    return entityCategoryOf(entity) === ENTITY_CATEGORIES.ATTACHED;
+}
+
+/** Returns the stable contract capabilities of a non-bot arena entity. An attached entity has none. */
 export function targetKindsForEntity(entity) {
+    if (isAttachedEntity(entity)) return [];
     const targetKinds = [TARGET_KINDS.ENTITY];
     if (entity?.hp != null) targetKinds.push(TARGET_KINDS.HP_ENTITY);
     if (entityContract(entity)?.category === ENTITY_CATEGORIES.SUMMON) {
@@ -210,12 +156,14 @@ function entityFromData(abilityId, entityType, entity) {
 function contractFromData(ability) {
     const entities = Object.fromEntries(Object.entries(ability.entities ?? {})
         .map(([entityType, entity]) => [entityType, entityFromData(ability.id, entityType, entity)]));
-    const onTrigger = (ability.onTrigger ?? []).map((verb) => withoutNulls(verb));
-    const spawned = findVerb(onTrigger, VERBS.SPAWN)?.entity;
+    const onActivate = (ability.onActivate ?? []).map((verb) => withoutNulls(verb));
+    const spawned = findVerb(onActivate, VERBS.SPAWN)?.entity;
     return {
         abilityId: ability.id,
+        timing: withoutNulls(ability.timing ?? {}),
+        weapon: ability.weapon === true,
         activation: withoutNulls(ability.activation ?? {}),
-        onTrigger,
+        onActivate,
         entities,
         primaryEntity: spawned && entities[spawned] ? spawned : Object.keys(entities)[0] ?? null,
     };
@@ -226,7 +174,7 @@ function buildRegistry(abilityList) {
     const entities = {};
     for (const ability of abilityList) {
         const contract = contractFromData(ability);
-        contract.hitVerbList = contract.onTrigger.filter((verb) => verb.do === VERBS.HIT);
+        contract.hitVerbList = contract.onActivate.filter((verb) => verb.do === VERBS.HIT);
         for (const entity of Object.values(contract.entities)) {
             entity.phasesById = Object.fromEntries(entity.phases.map((phase) => [phase.id, phase]));
         }
@@ -291,14 +239,14 @@ export function abilityContract(value) {
 
 const NO_VERBS = Object.freeze([]);
 
-/** The verbs that run when the ability triggers. */
-export function triggerVerbs(value) {
-    return abilityContract(value)?.onTrigger ?? [];
+/** The verbs that run when the ability activates. */
+export function activationVerbs(value) {
+    return abilityContract(value)?.onActivate ?? [];
 }
 
 /** True when the ability has a verb of `kind`. */
 export function abilityHasVerb(value, kind) {
-    return findVerb(triggerVerbs(value), kind) != null;
+    return findVerb(activationVerbs(value), kind) != null;
 }
 
 /** True when the ability spawns arena entities. */
@@ -306,28 +254,28 @@ export function isEntityAbility(value) {
     return abilityHasVerb(value, VERBS.SPAWN);
 }
 
-/** True when every effect of the ability's trigger lands on its owner (heal, buffs, rewind). */
+/** True when every effect of the ability's activation lands on its owner (heal, buffs, rewind). */
 export function abilityAppliesToOwner(value) {
-    return triggerVerbs(value).some((verb) => verb.do === VERBS.APPLY_EFFECTS
+    return activationVerbs(value).some((verb) => verb.do === VERBS.APPLY_EFFECTS
         && (verb.targets ?? []).includes(OWNER_TARGET));
 }
 
-/** The trigger `hit` verbs of an ability. */
+/** The activation `hit` verbs of an ability. */
 export function hitVerbs(value) {
     return abilityContract(value)?.hitVerbList ?? NO_VERBS;
 }
 
-/** The effects the ability applies when it triggers (excluding what its entities apply later). */
-export function triggerEffects(value) {
-    return verbEffects(triggerVerbs(value));
+/** The effects the ability applies when it activates (excluding what its entities apply later). */
+export function activationEffects(value) {
+    return verbEffects(activationVerbs(value));
 }
 
 /**
- * Read-only summary of an ability's trigger verbs for the UI, ranges and presentation: the first hitbox,
+ * Read-only summary of an ability's activation verbs for the UI, ranges and presentation: the first hitbox,
  * visual and move, plus its effects. Gameplay never reads this; verbs.js runs the verbs themselves.
  */
-export function triggerView(value) {
-    const verbs = triggerVerbs(value);
+export function activationView(value) {
+    const verbs = activationVerbs(value);
     if (verbs.length === 0) return null;
     const hit = findVerb(verbs, VERBS.HIT);
     const move = findVerb(verbs, VERBS.MOVE);

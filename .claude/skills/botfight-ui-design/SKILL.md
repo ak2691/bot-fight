@@ -213,6 +213,12 @@ Decide which one you're designing first.
 
 ## Workflow
 
+Fixed-kit picker (accepted 2026-10-10): use a four-slot kit strip, two rows on
+phones, with the selected category's cards below. Labels are Weapon, Tier 1,
+Tier 2, and Tier 3 / Ultimate. Omit the introductory "One weapon. One ability
+per tier." sentence and round numbers in this pre-match picker. In-match unlock
+labels remain separate.
+
 1. Diagnose what is wrong with the current screen in a few bullets.
 2. Mock up 2–3 directions (inline widget), recommend one, include a phone view.
 3. After approval, write a concise implementation prompt for Sonnet 5.5:

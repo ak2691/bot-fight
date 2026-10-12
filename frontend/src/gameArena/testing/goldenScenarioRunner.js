@@ -82,7 +82,8 @@ function runScenarioFight(scenario, { log = true } = {}) {
         states.push(lines);
         hashes.push(fnv1a(lines.join("\n")));
     }
-    return { log: combatLog ? combatLog.entries : [], hashes, states };
+    // The final bot shapes let a test read what the log does not carry (a strike's bonus, a status's charges).
+    return { log: combatLog ? combatLog.entries : [], hashes, states, bots: fight.bots };
 }
 
 /** Debug text for one scenario: a "tick N <hash>" header then the unhashed state lines, per tick. */

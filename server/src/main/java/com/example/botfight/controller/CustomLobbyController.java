@@ -103,6 +103,14 @@ public class CustomLobbyController {
         return change.lobby();
     }
 
+    @PostMapping("/{lobbyId}/ready")
+    public CustomLobbyDTO ready(Authentication authentication, @PathVariable UUID lobbyId,
+            @RequestBody com.example.botfight.DTO.match.MatchKitDTO kit) {
+        var change = customLobbyService.ready(authentication, lobbyId, kit);
+        publishLobbyChange(change);
+        return change.lobby();
+    }
+
     @PostMapping("/{lobbyId}/settings")
     public CustomLobbyDTO updateSettings(
             Authentication authentication,

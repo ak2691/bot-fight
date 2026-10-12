@@ -33,7 +33,6 @@ import java.util.UUID;
 public final class MatchLifecycleService {
     private final MatchLockService lockService;
     private final MatchScheduler matchScheduler;
-    private static final int SUBMISSION_GRACE_SECONDS = MatchTimingPolicy.SUBMISSION_GRACE_SECONDS;
     private static final String COMPLETION_REASON_RESIGNATION = "RESIGNATION";
 
     private final MatchRuntimeState state;
@@ -112,6 +111,7 @@ public final class MatchLifecycleService {
         }
         List<MatchEntrant> normalizedEntrants = normalizeEntrants(entrants);
         validateRoster(normalizedEntrants, resolvedMode);
+        normalizedEntrants.forEach(entrant -> com.example.botfight.service.match.MatchLoadoutService.validateEncodedKit(entrant.kit()));
         UUID reservationId = state.reserveMatchStart(
                 normalizedEntrants.stream().map(MatchEntrant::userId).toList());
         if (reservationId == null) {
@@ -133,8 +133,8 @@ public final class MatchLifecycleService {
                             false,
                             null,
                             0,
-                            "custom:",
-                            false,
+                            entrant.kit(),
+                            true,
                             baseClockSeconds * 1_000L,
                             MatchPlayer.TIMEOUT_FALLBACK_CURRENT,
                             null))
@@ -168,9 +168,9 @@ public final class MatchLifecycleService {
                     .map(matchPlayer -> eventFactory.forPlayer(sessionToStart,
                 matchPlayer,
                 MatchEventType.MATCH_STARTED,
-                "LOADOUT_SELECT",
+                "KIT_REVEAL",
                 null,
-                "Match accepted. Pick your weapon and first ability.",
+                "Match accepted. Both fixed kits are revealed.",
                 0,
                 null,
                 null,
@@ -381,7 +381,7 @@ public final class MatchLifecycleService {
 
     private Instant loadoutSelectionDeadlineAt(Instant phaseStartedAt) {
         return phaseStartedAt.plusSeconds(
-                MatchTimingPolicy.pickSeconds(1) + SUBMISSION_GRACE_SECONDS);
+                MatchTimingPolicy.KIT_REVEAL_SECONDS);
     }
 
     private MatchPlayer playerForUser(MatchSession session, UUID userId) {

@@ -105,11 +105,11 @@ public record MatchSession(
     }
 
     /**
-     * Starts the next round's pick phase. Clocks carry over untouched (they only move during a build);
+     * Starts the next round build. Clocks carry over untouched (they only move during a build);
      * the segment end state stays so a reconnecting client can see the frozen position.
      */
     public MatchSession nextRound() {
-        return transition(MatchPhase.LOADOUT_SELECT)
+        return transition(MatchPhase.BUILDING)
                 .players(players.stream()
                         .map(player -> new MatchPlayer(
                                 player.userId(),
@@ -121,7 +121,7 @@ public record MatchSession(
                                 null,
                                 player.roundWins(),
                                 player.selectedLoadout(),
-                                false,
+                                true,
                                 player.clockRemainingMs(),
                                 player.timeoutFallback(),
                                 null))
@@ -149,12 +149,12 @@ public record MatchSession(
                         player.botSubmissionId(),
                         player.roundWins(),
                         player.selectedLoadout(),
-                        false,
+                        true,
                         player.clockRemainingMs(),
                         player.timeoutFallback(),
                         player.buildEndsAt()))
                 .toList();
-        return transition(MatchPhase.LOADOUT_SELECT)
+        return transition(MatchPhase.KIT_REVEAL)
                 .players(unlockedPlayers)
                 .loadoutSelectionEndsAt(deadline)
                 .countdownEndsAt(null)
@@ -164,28 +164,6 @@ public record MatchSession(
                 .resultRevealsAt(null)
                 .roundReadyAt(null)
                 .ended(false).build();
-    }
-
-    public MatchSession withSelectedLoadout(UUID userId, String selectedLoadout, boolean selected) {
-        return toBuilder()
-                .players(players.stream()
-                        .map(player -> player.userId().equals(userId)
-                                ? new MatchPlayer(
-                                        player.userId(),
-                                        player.username(),
-                                        player.principalName(),
-                                        player.slot(),
-                                        player.teamNumber(),
-                                        player.finished(),
-                                        player.botSubmissionId(),
-                                        player.roundWins(),
-                                        selectedLoadout,
-                                        selected,
-                                        player.clockRemainingMs(),
-                                        player.timeoutFallback(),
-                                        player.buildEndsAt())
-                                : player)
-                        .toList()).build();
     }
 
     /** Toggles one authenticated player's match-wide surrender vote. */
@@ -201,26 +179,6 @@ public record MatchSession(
                 .surrenderVotes(nextVotes).build();
     }
 
-    public MatchSession withDefaultLoadoutSelections() {
-        return toBuilder()
-                .players(players.stream()
-                        .map(player -> new MatchPlayer(
-                                player.userId(),
-                                player.username(),
-                                player.principalName(),
-                                player.slot(),
-                                player.teamNumber(),
-                                player.finished(),
-                                player.botSubmissionId(),
-                                player.roundWins(),
-                                player.selectedLoadout() != null ? player.selectedLoadout() : "custom:",
-                                true,
-                                player.clockRemainingMs(),
-                                player.timeoutFallback(),
-                                player.buildEndsAt()))
-                        .toList()).build();
-    }
-
     /**
      * Starts the build. Every player's clock gains the increment, then runs from {@code
      * nextCountdownEndsAt}: a player's own deadline is that instant plus their clock, and the session's
@@ -228,7 +186,7 @@ public record MatchSession(
      * deadline plus the submission grace, unless they resubmit last round's brain at the deadline).
      */
     public MatchSession withCountdown(Instant nextCountdownEndsAt) {
-        long incrementMs = incrementSeconds() * 1_000L;
+        long incrementMs = MatchTimingPolicy.roundIncrementSeconds(incrementSeconds(), roundNumber()) * 1_000L;
         List<MatchPlayer> clockedPlayers = players.stream()
                 .map(player -> {
                     long clockMs = player.clockRemainingMs() + incrementMs;
@@ -255,6 +213,7 @@ public record MatchSession(
         Instant nextBuildingEndsAt = latestExpiry;
         return transition(MatchPhase.BUILDING)
                 .players(clockedPlayers)
+                .loadoutSelectionEndsAt(null)
                 .countdownEndsAt(nextCountdownEndsAt)
                 .buildingEndsAt(nextBuildingEndsAt)
                 .playbackStartsAt(null)

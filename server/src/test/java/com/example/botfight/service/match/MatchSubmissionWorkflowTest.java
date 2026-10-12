@@ -26,10 +26,10 @@ class MatchSubmissionWorkflowTest extends MatchWorkflowFixture {
     void matchSubmissionRetryUsesTheInMemoryRoundKeyWithoutSubmissionLookup() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        UUID matchId = service.startMatch(new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", null), new MatchEntrant(secondUserId, "pilot-two", "pilot-two@example.com", null), MatchMode.ONES, true)
+        UUID matchId = service.startMatch(com.example.botfight.support.TestKits.entrant(firstUserId, "pilot-one", "pilot-one@example.com", null), com.example.botfight.support.TestKits.entrant(secondUserId, "pilot-two", "pilot-two@example.com", null), MatchMode.ONES, true)
                 .getFirst().event().matchId();
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
 
         MatchSubmissionResult first = submissions.accept(
                 firstUserId,
@@ -55,7 +55,7 @@ class MatchSubmissionWorkflowTest extends MatchWorkflowFixture {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         UUID submissionId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -64,7 +64,7 @@ class MatchSubmissionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -73,8 +73,8 @@ class MatchSubmissionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         stubSubmission(firstUserId, submissionId);
 
         submitMatch(firstUserId, submissionId);

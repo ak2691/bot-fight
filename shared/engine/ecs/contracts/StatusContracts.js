@@ -1,23 +1,20 @@
-/** Generic, allowlisted status-effect component vocabulary. */
-export const STATUS_EFFECT_APPLICATIONS = Object.freeze({
-    DAMAGE: "damage",
-    MOVEMENT_MODIFIER: "movement_modifier",
-    INCOMING_DAMAGE_MODIFIER: "incoming_damage_modifier",
-    DAMAGE_REFLECTION: "damage_reflection",
-    DAMAGE_IMMUNITY: "damage_immunity",
-    STUN: "stun",
-    SILENCE: "silence",
-    MOVEMENT_LOCK: "movement_lock",
-    COOLDOWN_MODIFIER: "cooldown_modifier",
-});
+import {
+    MODIFIER_STACKING,
+    MODIFIER_STATS,
+    STATUS_EFFECT_APPLICATIONS,
+} from "../../gameconfig/vocabulary.js";
+export {
+    STATUS_EFFECT_APPLICATIONS,
+} from "../../gameconfig/vocabulary.js";
 
 const PRESENCE_MODE = "presence";
 const CONSTANT_MODE = "constant";
-const TICK_MODE = "tick";
 
 /**
  * Normalizes one internal or boundary status record into the one status shape (every field present, in
- * this order; `tickMs` and `tickElapsedMs` are 0 for a status that does not tick).
+ * this order; `tickMs` and `tickElapsedMs` are 0 for a status that does not tick). `on` holds the status's
+ * events with their resolved effects ({ schedule: { intervalMs, effects }, lifetimeEnd: { effects } }, or null)
+ * and `snapshot` the fields a captures preset kept when applied (or null).
  */
 export function normalizeStatusEffect(status) {
     if (!status || status.type == null) return null;
@@ -28,7 +25,7 @@ export function normalizeStatusEffect(status) {
             .map((effect) => ({
                 ...effect,
                 type: String(effect.type).toLowerCase(),
-                mode: effect.mode === TICK_MODE ? TICK_MODE : CONSTANT_MODE,
+                mode: CONSTANT_MODE,
             }))
         : [];
     return {
@@ -41,6 +38,9 @@ export function normalizeStatusEffect(status) {
         sourceSlot: status.sourceSlot ?? null,
         source: status.source ?? null,
         effects,
+        on: status.on ?? null,
+        snapshot: status.snapshot ?? null,
+        ...(status.charges == null ? {} : { charges: Number(status.charges) }),
     };
 }
 
@@ -63,47 +63,85 @@ export function statusIsActive(shape, type) {
     return Boolean(status && (status.mode === PRESENCE_MODE || status.remainingMs > 0));
 }
 
+/** Every status of the shape that is active now, whatever its type (the same test as statusIsActive). */
+function activeStatusEffects(shape) {
+    return statusEffectsFor(shape).filter((status) => status.mode === PRESENCE_MODE || status.remainingMs > 0);
+}
+
+/** True when an active status has an effect of `type` that applies while it is active (mode constant). */
+export function hasActiveEffect(shape, type) {
+    return activeStatusEffects(shape).some((status) => status.effects
+        .some((effect) => effect.type === type && effect.mode === CONSTANT_MODE));
+}
+
+/** The actions that the active `block` effects stop, as a Set (stun is not listed here; see isBlocked). */
+export function blockedActions(shape) {
+    const blocked = new Set();
+    for (const status of activeStatusEffects(shape)) {
+        for (const effect of status.effects) {
+            if (effect.type !== STATUS_EFFECT_APPLICATIONS.BLOCK || !Array.isArray(effect.actions)) continue;
+            for (const action of effect.actions) blocked.add(action);
+        }
+    }
+    return blocked;
+}
+
+/** True when a stun, or an active block effect, stops `action` (an ability channel or a movement action). */
+export function isBlocked(shape, action) {
+    return hasActiveEffect(shape, STATUS_EFFECT_APPLICATIONS.STUN) || blockedActions(shape).has(action);
+}
+
+/** The numbers of one effect field, across every active status that has that effect of `type`. */
+function activeEffectValues(shape, type, field) {
+    return activeStatusEffects(shape).flatMap((status) => status.effects
+        .filter((effect) => effect.type === type && effect.mode === CONSTANT_MODE)
+        .map((effect) => Number(effect[field]))
+        .filter((value) => Number.isFinite(value)));
+}
+
+/** The largest value of an effect field over the active statuses (`fallback` when none has the effect). */
+export function largestActiveEffectValue(shape, type, field, fallback) {
+    const values = activeEffectValues(shape, type, field);
+    return values.length > 0 ? Math.max(...values) : fallback;
+}
+
 export function statusRemainingMs(shape, type) {
     return statusEffectsFor(shape)
         .filter((status) => status.type === String(type ?? "").toLowerCase() && status.mode !== PRESENCE_MODE)
         .reduce((remaining, status) => Math.max(remaining, status.remainingMs), 0);
 }
 
-export function statusEffectValue(shape, statusType, application, field, fallback) {
-    const status = statusEffectFor(shape, statusType);
-    if (!status || !statusIsActive({ statusEffects: [status] }, status.type)) return fallback;
-    const value = status.effects.find((effect) => effect.type === application)?.[field];
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : fallback;
-}
-
 /**
- * Resolves all active incoming-damage modifiers at the point damage is
- * settled. Modifiers add together, and a modifier can exclude a structured
- * damage-source type without requiring a status-specific branch.
+ * The combined `stat` modifier of the active statuses, as { multiply, truncateToTenths }. Each modifier's
+ * `multiply` combines by MODIFIER_STACKING (the product, or the strongest = smallest). An incomingDamage modifier
+ * can exclude a structured damage-source type, and `truncateToTenths` is set when a counted modifier rounds.
+ * With no modifier the result is { multiply: 1, truncateToTenths: false }.
  */
-export function incomingDamageFor(shape, source = null) {
-    let damageModifier = 0;
+export function modifierFor(shape, stat, source = null) {
+    const multiplies = [];
     let truncateToTenths = false;
-    for (const status of statusEffectsFor(shape)) {
-        if (!statusIsActive({ statusEffects: [status] }, status.type)) continue;
+    for (const status of activeStatusEffects(shape)) {
         for (const effect of status.effects) {
-            if (effect.type !== STATUS_EFFECT_APPLICATIONS.INCOMING_DAMAGE_MODIFIER
+            if (effect.type !== STATUS_EFFECT_APPLICATIONS.MODIFIER
                 || effect.mode !== CONSTANT_MODE
-                || damageSourceIsExcluded(effect, source)) continue;
-            const explicitModifier = Number(effect.damageModifier);
-            if (Number.isFinite(explicitModifier)) {
-                damageModifier += explicitModifier;
-            } else {
-                // Read older replay/status payloads that represented the
-                // same value as a per-effect factor.
-                const legacyMultiplier = Number(effect.multiplier);
-                if (Number.isFinite(legacyMultiplier)) damageModifier += legacyMultiplier - 1;
-            }
+                || effect.stat !== stat) continue;
+            if (stat === MODIFIER_STATS.INCOMING_DAMAGE && damageSourceIsExcluded(effect, source)) continue;
+            const multiply = Number(effect.multiply);
+            if (!Number.isFinite(multiply)) continue;
+            multiplies.push(multiply);
             if (effect.rounding === "truncate_tenths") truncateToTenths = true;
         }
     }
-    return { damageModifier, truncateToTenths };
+    if (multiplies.length === 0) return { multiply: 1, truncateToTenths: false };
+    const multiply = MODIFIER_STACKING[stat] === "strongest"
+        ? Math.min(...multiplies)
+        : multiplies.reduce((product, value) => product * value, 1);
+    return { multiply, truncateToTenths };
+}
+
+/** A bot's (or entity's) outgoing damage factor: its attack damage multiplier times its outgoingDamage modifiers. */
+export function outgoingDamageMultiplier(shape) {
+    return Number(shape?.attackDamageMultiplier ?? 1) * modifierFor(shape, MODIFIER_STATS.OUTGOING_DAMAGE).multiply;
 }
 
 /**

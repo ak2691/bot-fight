@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
@@ -12,20 +13,25 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * What Spring needs from {@code shared/gameplay/abilities.json} (on the classpath as {@code gameplay/}): ability
- * IDs, the standard abilities every bot has, and the one-letter codes of compact loadout strings. Everything
- * else in the file is gameplay, which only the shared engine reads and checks.
+ * IDs, the standard abilities every bot has, the one-letter codes of compact loadout strings, and the tier or
+ * weapon slot each ability fills in a fixed kit. Everything else in the file is gameplay, which only the shared
+ * engine reads and checks.
  */
 public final class AbilityCatalog {
     private static final Set<Integer> IDS = new HashSet<>();
     private static final Set<Integer> STANDARD = new HashSet<>();
     private static final Map<Integer, String> CODE_BY_ID = new HashMap<>();
     private static final Map<String, Integer> ID_BY_CODE = new HashMap<>();
+    private static final Map<Integer, Integer> TIER_BY_ID = new HashMap<>();
+    private static final Set<Integer> WEAPONS = new HashSet<>();
 
     static {
         for (JsonNode ability : read("gameplay/abilities.json").path("abilities")) {
             int id = ability.path("id").asInt();
             IDS.add(id);
             if (ability.path("standard").asBoolean(false)) STANDARD.add(id);
+            if (ability.hasNonNull("tier")) TIER_BY_ID.put(id, ability.get("tier").asInt());
+            if (ability.path("weapon").asBoolean(false)) WEAPONS.add(id);
             if (ability.hasNonNull("code")) {
                 CODE_BY_ID.put(id, ability.get("code").asString());
                 ID_BY_CODE.put(ability.get("code").asString(), id);
@@ -40,6 +46,11 @@ public final class AbilityCatalog {
     public static boolean isStandard(int abilityId) { return STANDARD.contains(abilityId); }
     public static String codeForId(int abilityId) { return CODE_BY_ID.get(abilityId); }
     public static Integer idForCode(String code) { return code == null ? null : ID_BY_CODE.get(code); }
+    /** The tier (1..3) an ability belongs to, or null for a weapon, a standard ability and any other ability. */
+    public static Integer tierOf(int abilityId) { return TIER_BY_ID.get(abilityId); }
+    public static boolean isWeapon(int abilityId) { return WEAPONS.contains(abilityId); }
+    /** Every weapon ID, sorted. */
+    public static List<Integer> weaponIds() { return WEAPONS.stream().sorted().toList(); }
 
     private static JsonNode read(String resource) {
         try (InputStream stream = AbilityCatalog.class.getClassLoader().getResourceAsStream(resource)) {

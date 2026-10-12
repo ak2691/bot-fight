@@ -1,35 +1,15 @@
-import { GAMEPLAY_DATA } from "./gameplayData.js";
-import { statusEffectFor, statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../ecs/contracts/StatusContracts.js";
+import { modifierFor } from "../ecs/contracts/StatusContracts.js";
+import { MODIFIER_STATS } from "./vocabulary.js";
 
 export const HIT_STAGGER_DURATION_MS = 300;
-export const HIT_STAGGER_MOVEMENT_MULTIPLIER = 0.85;
-export const HIT_STAGGER_ROTATION_MULTIPLIER = 0.85;
 
-// The slow status (shared/gameplay/statuses.json) is x0.5 movement and rotation.
-const SLOW_MODIFIER = GAMEPLAY_DATA.statuses.statuses.slow.effects
-    .find((effect) => effect.type === "movement_modifier");
-export const CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER = SLOW_MODIFIER.movementMultiplier;
-export const CONCUSSIVE_ROTATION_MULTIPLIER = SLOW_MODIFIER.rotationMultiplier;
-
+/** The movement speed factor of the active modifiers (slow and hit-stagger numbers live in statuses.json). */
 export function effectiveMovementSpeedMultiplier(shape) {
-    if (statusIsActive(shape, "slow") && statusEffectFor(shape, "slow")?.effects
-        ?.some((effect) => effect.type === STATUS_EFFECT_APPLICATIONS.MOVEMENT_MODIFIER)) {
-        return statusEffectValue(shape, "slow", STATUS_EFFECT_APPLICATIONS.MOVEMENT_MODIFIER, "movementMultiplier", CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER);
-    }
-    return statusIsActive(shape, "hit-stagger")
-        ? statusEffectValue(shape, "hit-stagger", STATUS_EFFECT_APPLICATIONS.MOVEMENT_MODIFIER,
-            "movementMultiplier", HIT_STAGGER_MOVEMENT_MULTIPLIER)
-        : 1;
+    return modifierFor(shape, MODIFIER_STATS.MOVE_SPEED).multiply;
 }
 
+/** The turn speed factor of the active modifiers. */
 export function effectiveRotationSpeedMultiplier(shape) {
-    if (statusIsActive(shape, "slow") && statusEffectFor(shape, "slow")?.effects
-        ?.some((effect) => effect.type === STATUS_EFFECT_APPLICATIONS.MOVEMENT_MODIFIER)) {
-        return statusEffectValue(shape, "slow", STATUS_EFFECT_APPLICATIONS.MOVEMENT_MODIFIER, "rotationMultiplier", CONCUSSIVE_ROTATION_MULTIPLIER);
-    }
-    return statusIsActive(shape, "hit-stagger")
-        ? statusEffectValue(shape, "hit-stagger", STATUS_EFFECT_APPLICATIONS.MOVEMENT_MODIFIER,
-            "rotationMultiplier", HIT_STAGGER_ROTATION_MULTIPLIER)
-        : 1;
+    return modifierFor(shape, MODIFIER_STATS.TURN_SPEED).multiply;
 }
 

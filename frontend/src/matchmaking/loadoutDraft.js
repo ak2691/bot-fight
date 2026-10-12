@@ -1,10 +1,13 @@
 import {
     BOT_ABILITIES,
     MAX_EQUIPPED_ABILITIES,
-    ROUND_ABILITY_DRAFT,
     normalizedBotLoadout,
 } from "../../../shared/engine/loadout/BotLoadout.js";
 import { abilityIdFromBoundary } from "../../../shared/engine/gameconfig/AbilityCompatibility.js";
+
+// Legacy UI draft rules remain local until the fixed-kit UI migration.
+const ROUND_ABILITY_DRAFT = Object.freeze(Object.fromEntries([1, 2, 3, 4, 5, 6].map((round) =>
+    [round, { tier: Math.ceil(round / 2), offered: round >= 5 ? 2 : 3, picks: 1, weaponPick: round === 1 }])));
 
 const ABILITY_BY_ID = new Map(BOT_ABILITIES.map((ability) => [ability.id, ability]));
 const WEAPON_IDS = new Set(BOT_ABILITIES.filter((ability) => ability.category === "weapon").map((ability) => ability.id));

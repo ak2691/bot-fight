@@ -1,7 +1,7 @@
 // Tile art shared by the homepage explore tiles and the tutorial's "What's next" cards.
 const TILE_ABILITY_ICONS = [
     "/assets/ability-list/icons/temporal_rewind.webp",
-    "/assets/ability-list/icons/rail_shot.webp",
+    "/assets/ability-list/icons/fire_gun.webp",
     "/assets/ability-list/icons/shoot_fireball.webp",
 ];
 

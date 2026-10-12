@@ -4,59 +4,56 @@ import {
     movementAngle,
     relativeMovementVector,
 } from "../../botlogic/planner/arenaAngles.js";
-import { clamp, rayIntersectsCircle } from "../../gameconfig/geometry.js";
+import { clamp } from "../../gameconfig/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import {
     abilityContract,
-    EFFECT_TYPES,
-    effectTargetsTarget,
     entityContract,
+    eventTargetsEntity,
+    isAttachedEntity,
     findVerb,
     OWNER_TARGET,
     phaseById,
     phaseForEntity,
     TARGET_KINDS,
     TARGET_POLICY_MODES,
+    TARGET_POLICY_SCOPES,
+    targetKindsForEntity,
     VERBS,
 } from "../contracts/AbilityContracts.js";
-import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
-import { ABILITY_STAGES, abilityRecord, patchAbilityRecord } from "../../gameconfig/AbilityState.js";
+import { abilityRecord, patchAbilityRecord } from "../../gameconfig/AbilityState.js";
 import {
     abilityPose,
     entityAbilitySpawnTransform,
 } from "../../gameconfig/hitboxGeometry.js";
 import { combatVisualDurationMs } from "../../gameconfig/visualState.js";
-import { recordAbilityHit } from "../../gameconfig/AbilityHitRecord.js";
-import { withCombatAbility } from "../combatLog.js";
+import { outgoingDamageMultiplier } from "../contracts/StatusContracts.js";
 import {
-    applyEffect,
+    applyEffectList,
     applyEffectsFromEntity,
-    ENEMY_HIT_EFFECT_TYPES,
+    applyEffectsToBot,
     phaseStatsFor,
-    roundCombatValue,
 } from "./effects.js";
-import { findTargets, TARGET_KIND_BOT } from "./findTargets.js";
-import { triggerPose, verbHitbox, verbHitsTarget } from "./AbilityHitDetectionSystem.js";
+import { collectHitTargets, hitKey, activationPose, verbHitbox } from "./AbilityHitDetectionSystem.js";
+import { isEntityShape, ownerBot } from "../entities/EntityCombat.js";
 import { spawnVerbEntities } from "../entities/EntityFactory.js";
+import { areEnemies } from "../contracts/teams.js";
+import { resolveDataNumber } from "../../gameconfig/dataValues.js";
 import { BASE_BOT_HP } from "../../modelPayloads/arenaConstants.js";
 
 /**
- * The one verb executor. An ability's `onTrigger` list and every entity event's `do` list run through
+ * The one verb executor. An ability's `onActivate` list and every entity event's `do` list run through
  * `executeVerb`. A run context says where the verb runs:
  *
  *   act      the owner bot as the tick starts its ability (face, move)
  *   resolve  a roster of bots after every bot has acted (applyEffects on the owner, hit)
  *   entity   one arena entity handling an event (hit, spawn, applyEffects, transition, remove, emitVisual)
  *
- * A trigger verb runs in the tick stage that owns it (VERB_STAGE): move in act, applyEffects and hit
+ * A activation verb runs in the tick stage that owns it (VERB_STAGE): move in act, applyEffects and hit
  * in resolveHits, spawn at the end of act from the bot's final pose (the stage after adds the entities to the
- * world). The run contexts are mutable; each runner below builds a fresh one. The bots and the entity a verb
- * changes are changed in place.
- *
- * A trigger verb with `atMs` above 0 is a step of the ability's timeline: it runs on the tick the ability's
- * elapsed active time reaches `atMs`, in the stage that owns its verb, from the pose its `pose` names. The
- * activation record (`abilityState[id].steps`) holds the index of the next pending step; nothing is scheduled
- * ahead, `dueTimelineSteps` derives what is due from the active time left.
+ * world). Every activation verb runs on the activation tick; anything that lasts is an attached entity, whose
+ * phases keep time. The run contexts are mutable; each runner below builds a fresh one. The bots and the entity
+ * a verb changes are changed in place.
  */
 export const VERB_STAGE = Object.freeze({
     [VERBS.MOVE]: "act",
@@ -65,17 +62,14 @@ export const VERB_STAGE = Object.freeze({
     [VERBS.HIT]: "resolveHits",
 });
 
-/** True for a trigger verb that runs on the tick the ability triggers (no `atMs`, or 0). */
-const runsAtTrigger = (verb) => Number(verb.atMs ?? 0) <= 0;
-
-/** Index of the first delayed trigger verb (atMs above 0), or -1 when every verb runs at the trigger. */
-export function firstDelayedIndex(verbs) {
-    return (verbs ?? []).findIndex((verb) => !runsAtTrigger(verb));
-}
-
 export function executeVerb(verb, run) {
+    // A verb of an entity event that names `targets` runs only when the event touched one of those kinds. A hit is the
+    // exception: its `targets` name the kinds its own shape may touch, so it always runs.
+    if (run.kind === "entity" && verb.do !== VERBS.HIT && declaresTargets(verb) && !run.targets.some((id) => reaches(verb, id, run))) {
+        return run;
+    }
     switch (verb.do) {
-        case VERBS.MOVE: return moveVerb(verb, run);
+        case VERBS.MOVE: return run.kind === "entity" ? moveFromEntity(verb, run) : moveVerb(verb, run);
         case VERBS.SPAWN: return spawnVerb(verb, run);
         case VERBS.APPLY_EFFECTS: return applyEffectsVerb(verb, run);
         case VERBS.HIT: return hitVerb(verb, run);
@@ -89,10 +83,10 @@ export function executeVerb(verb, run) {
 // --- act stage ---------------------------------------------------------------------------------------------
 
 /**
- * Runs the act-stage trigger verbs on the owner: the pose capture, then move. Returns the bot.
+ * Runs the act-stage activation verbs on the owner: the pose capture, then move. Returns the bot.
  */
 export function applyActivationVerbs(bot, payload, elapsedMs) {
-    const verbs = payload.contract?.onTrigger ?? [];
+    const verbs = payload.contract?.onActivate ?? [];
     const run = { kind: "act", bot, payload, elapsedMs };
     const capture = payload.activation?.capture;
     if (capture) {
@@ -110,8 +104,21 @@ export function applyActivationVerbs(bot, payload, elapsedMs) {
     return bot;
 }
 
+/**
+ * An attached entity's `move` (a lunge) moves its owner, like an activation move: the heading is the one the cast
+ * captured when it spawned. The owner is the bot the entity follows.
+ */
+function moveFromEntity(verb, run) {
+    const { entity } = run;
+    const owner = run.bots.find((bot) => bot.id === entity.ownerId);
+    if (!owner) return run;
+    const payload = { abilityId: entity.abilityId, ...(entity.heading ?? {}), activation: abilityContract(entity.abilityId)?.activation };
+    moveVerb(verb, { kind: "act", bot: owner, payload, elapsedMs: 0 });
+    return run;
+}
+
 function moveVerb(verb, run) {
-    const { bot, payload, elapsedMs } = run;
+    const { bot, payload } = run;
     const hasTarget = Number.isFinite(Number(payload.targetX)) && Number.isFinite(Number(payload.targetY));
     const targetDx = hasTarget ? Number(payload.targetX) - bot.x : 0;
     const targetDy = hasTarget ? Number(payload.targetY) - bot.y : 0;
@@ -128,7 +135,6 @@ function moveVerb(verb, run) {
     const x = clamp(bot.x + ux * step, bot.size / 2, ARENA_WIDTH_UNITS - bot.size / 2);
     const y = clamp(bot.y + uy * step, bot.size / 2, ARENA_HEIGHT_UNITS - bot.size / 2);
     const traveled = Math.hypot(x - bot.x, y - bot.y);
-    const trailMs = Number(verb.trailMs);
     // A dash starts after ordinary movement for this tick. Its swept hit path must therefore begin at this
     // pose, not at the pre-tick pose.
     bot.movementStartX = bot.x;
@@ -138,87 +144,25 @@ function moveVerb(verb, run) {
     bot.x = x;
     bot.y = y;
     // activeMs is ability-level timing; movement distance/speed/trail live on the verb.
+    // One move runs per bot: a new one replaces any still travelling, and the ability that started it keeps it going.
+    bot.moveAbilityId = payload.abilityId ?? null;
     bot.dashRemaining = Math.max(0, distance - traveled);
     bot.dashInitialDistance = distance;
     bot.dashStepDistance = stepDistance;
     bot.dashDirectionX = ux;
     bot.dashDirectionY = uy;
-    bot.dashTrailMs = trailMs + elapsedMs;
-    bot.abilityVisual = { ability: payload.abilityId, ms: trailMs };
+    // The bot effect shows for the verb's own `visual.visibleMs`, from the pose after this step (as setAbilityVisual).
+    if (verb.visual) {
+        const pose = abilityPose(bot, null, payload.activation?.capture);
+        bot.abilityVisual = {
+            ability: payload.abilityId,
+            ms: combatVisualDurationMs(payload.abilityId, verb.visual),
+            x: pose.x,
+            y: pose.y,
+            rotation: pose.rotation,
+        };
+    }
     return run;
-}
-
-// --- timeline ----------------------------------------------------------------------------------------------
-
-/**
- * Called when an ability has just triggered (its active stage started and the act verbs ran): an ability with
- * delayed steps records the index of the first one, the active time it was given, the target and the captured
- * pose its steps may use, and the targets its `activation`-scoped hits already touched.
- */
-export function startTimeline(bot, payload, activeMs) {
-    const abilityId = payload?.abilityId;
-    const verbs = payload?.contract?.onTrigger ?? [];
-    const next = firstDelayedIndex(verbs);
-    const record = abilityRecord(bot, abilityId);
-    if (next < 0 || record?.stage !== ABILITY_STAGES.ACTIVE) {
-        if (record?.steps) patchAbilityRecord(bot, abilityId, { steps: undefined });
-        return bot;
-    }
-    const captures = verbs.some((verb) => verb.pose === "captured");
-    const pose = captures ? abilityPose(bot, null, payload.activation?.capture) : null;
-    patchAbilityRecord(bot, abilityId, {
-        steps: {
-            next,
-            activeMs,
-            serial: 0,
-            targetX: Number.isFinite(Number(payload.targetX)) ? Number(payload.targetX) : null,
-            targetY: Number.isFinite(Number(payload.targetY)) ? Number(payload.targetY) : null,
-            pose: pose ? { x: pose.x, y: pose.y, rotation: pose.rotation } : null,
-            hit: [],
-        },
-    });
-    return bot;
-}
-
-/** Stamps the activation serial the tick settled on onto the timeline of an ability that triggered this tick. */
-export function stampTimelineSerial(bot, abilityId, serial) {
-    const steps = abilityRecord(bot, abilityId)?.steps;
-    if (steps) patchAbilityRecord(bot, abilityId, { steps: { ...steps, serial } });
-    return bot;
-}
-
-/**
- * The timeline steps due on this tick, found from the active time the abilities have used up once the tick
- * ends: each active ability (other than one that triggered this tick) hands over every pending verb whose
- * `atMs` it has reached, and moves its next-step index past them. An ability that is not active any more (it
- * was interrupted, or its bot died) has no pending steps. Returns entries { abilityId, from, to, serial,
- * pose, targetX, targetY, hit } in ascending ability id order.
- */
-export function dueTimelineSteps(bot, elapsedMs, justActivatedIds = []) {
-    const due = [];
-    const skipped = new Set(justActivatedIds.filter((id) => id != null).map(Number));
-    for (const [rawId, record] of Object.entries(bot.abilityState ?? {})) {
-        const steps = record?.steps;
-        const abilityId = Number(rawId);
-        if (!steps || record.stage !== ABILITY_STAGES.ACTIVE || skipped.has(abilityId)) continue;
-        const verbs = abilityContract(abilityId)?.onTrigger ?? [];
-        const used = Number(steps.activeMs) - Math.max(0, (Number(record.remainingMs) || 0) - elapsedMs);
-        let next = steps.next;
-        while (next < verbs.length && Number(verbs[next].atMs ?? 0) <= used) next += 1;
-        if (next === steps.next) continue;
-        due.push({
-            abilityId,
-            from: steps.next,
-            to: next,
-            serial: steps.serial,
-            pose: steps.pose,
-            targetX: steps.targetX,
-            targetY: steps.targetY,
-            hit: [...steps.hit],
-        });
-        patchAbilityRecord(bot, abilityId, { steps: { ...steps, next } });
-    }
-    return due;
 }
 
 // --- spawn -------------------------------------------------------------------------------------------------
@@ -227,11 +171,13 @@ export function dueTimelineSteps(bot, elapsedMs, justActivatedIds = []) {
  * The entities the ability's spawn verbs create from the bot's final pose, in verb order and pattern index
  * order. Serial IDs run from `serial` in that order.
  */
-export function spawnTriggerEntities(bot, payload, { serial, targetX, targetY, activationSerial, clampFn }) {
+export function spawnActivationEntities(bot, payload, { serial, targetX, targetY, activationSerial, clampFn }) {
     const abilityId = payload?.abilityId;
     const created = [];
-    for (const verb of payload?.contract?.onTrigger ?? []) {
-        if (verb.do !== VERBS.SPAWN || !runsAtTrigger(verb)) continue;
+    // An attached entity keeps the heading its cast captured, so its `move` verbs head where the brain pointed.
+    const heading = { targetX: payload?.targetX, targetY: payload?.targetY, movementMode: payload?.movementMode, movementDirection: payload?.movementDirection };
+    for (const verb of payload?.contract?.onActivate ?? []) {
+        if (verb.do !== VERBS.SPAWN) continue;
         const entities = spawnVerbEntities(bot, abilityId, verb, {
             serial: serial + created.length,
             targetX,
@@ -241,34 +187,9 @@ export function spawnTriggerEntities(bot, payload, { serial, targetX, targetY, a
             width: ARENA_WIDTH_UNITS,
             height: ARENA_HEIGHT_UNITS,
         });
-        created.push(...entities.filter(Boolean));
-    }
-    return created;
-}
-
-/**
- * The entities the due timeline steps' spawn verbs create, in entry, verb and pattern index order, each with
- * the activation serial of the cast that made it. A step spawns from the bot's pose on this tick ("current")
- * or from the pose captured at the trigger ("captured").
- */
-export function spawnDueEntities(bot, dueSteps, { serial, clampFn }) {
-    const created = [];
-    for (const entry of dueSteps ?? []) {
-        const verbs = abilityContract(entry.abilityId)?.onTrigger ?? [];
-        for (let index = entry.from; index < entry.to; index += 1) {
-            const verb = verbs[index];
-            if (verb.do !== VERBS.SPAWN) continue;
-            const source = verb.pose === "captured" && entry.pose ? { ...bot, ...entry.pose } : bot;
-            const entities = spawnVerbEntities(source, entry.abilityId, verb, {
-                serial: serial + created.length,
-                targetX: entry.targetX ?? undefined,
-                targetY: entry.targetY ?? undefined,
-                activationSerial: entry.serial,
-                clamp: clampFn,
-                width: ARENA_WIDTH_UNITS,
-                height: ARENA_HEIGHT_UNITS,
-            });
-            created.push(...entities.filter(Boolean).map((entity) => ({ entity, serial: entry.serial })));
+        for (const entity of entities.filter(Boolean)) {
+            if (isAttachedEntity(entity)) entity.heading = heading;
+            created.push(entity);
         }
     }
     return created;
@@ -311,28 +232,15 @@ function spawnVerb(verb, run) {
 
 // --- resolveHits stage ----------------------------------------------------------------------------------------
 
-function areOpposingTeams(first, second) {
-    const firstTeam = Number(first?.teamNumber);
-    const secondTeam = Number(second?.teamNumber);
-    if (Number.isFinite(firstTeam) && Number.isFinite(secondTeam)
-        && firstTeam > 0 && secondTeam > 0) return firstTeam !== secondTeam;
-    return Number(first?.slot) !== Number(second?.slot);
-}
-
 function distanceFrom(first, second) {
     return Math.hypot(Number(second?.x ?? 0) - Number(first?.x ?? 0), Number(second?.y ?? 0) - Number(first?.y ?? 0));
 }
 
-/** The effects of a verb that land on a bot, in declaration order. */
-function botEffects(verb) {
-    return (verb.effects ?? []).filter((effect) => effectTargetsTarget(effect, [TARGET_KINDS.BOT]));
-}
-
 /** Sets the transient `abilityVisual` from the first verb of the ability that declares a visual. */
 function setAbilityVisual(attacker, abilityId, contract) {
-    const carrier = (contract.onTrigger ?? []).find((verb) => verb.visual);
+    const carrier = (contract.onActivate ?? []).find((verb) => verb.visual);
     if (!carrier) return;
-    const hit = findVerb(contract.onTrigger, VERBS.HIT);
+    const hit = findVerb(contract.onActivate, VERBS.HIT);
     const pose = abilityPose(attacker, hit?.origin ?? null, contract.activation?.capture);
     attacker.abilityVisual = {
         ability: abilityId,
@@ -344,224 +252,215 @@ function setAbilityVisual(attacker, abilityId, contract) {
 }
 
 /**
- * Resolves the trigger verbs of every bot's triggered ability against the roster, changing the bots in place:
- * owner effects first, then each `hit` against the opposing bots.
+ * Resolves the activation verbs of every bot's triggered ability against the roster, changing the bots and the
+ * entities in place: owner effects first, then each `hit` against the opposing bots and the entities it touches. The
+ * effects a hit has on an entity are queued in `impacts`, which the entities stage lands.
  */
-export function resolveTriggerVerbsForRoster(bots) {
+export function resolveActivationVerbsForRoster(bots, entities = [], impacts = new Map()) {
     if (!Array.isArray(bots)) return [];
-    const run = { kind: "resolve", bots };
+    const run = { kind: "resolve", bots, entities: Array.isArray(entities) ? entities : [], impacts };
     for (let attackerIndex = 0; attackerIndex < bots.length; attackerIndex += 1) {
         const attacker = bots[attackerIndex];
         if (!attacker) continue;
         run.attackerIndex = attackerIndex;
-        // The ability that triggered this tick runs the verbs that belong to its trigger tick.
+        // The ability that activated this tick runs its resolveHits verbs, in list order, on the activation tick.
         const abilityId = ACTION_TO_ABILITY[attacker.triggeredAbility];
         const contract = abilityContract(abilityId);
         if (abilityId && contract) {
-            const delayed = firstDelayedIndex(contract.onTrigger);
-            beginActivationRun(run, abilityId, contract, null, abilityRecord(attacker, abilityId)?.steps?.hit);
+            beginActivationRun(run, abilityId, contract, attacker);
             setAbilityVisual(attacker, abilityId, contract);
-            runTimeline(run, 0, delayed < 0 ? contract.onTrigger.length : delayed);
-            persistActivationHits(attacker, run);
-        }
-        // Then the timeline steps that came due on this tick, ability by ability.
-        for (const entry of attacker.dueSteps ?? []) {
-            const dueContract = abilityContract(entry.abilityId);
-            if (!dueContract) continue;
-            beginActivationRun(run, entry.abilityId, dueContract, entry, entry.hit);
-            runTimeline(run, entry.from, entry.to);
-            persistActivationHits(attacker, run);
+            for (const verb of contract.onActivate) {
+                if (VERB_STAGE[verb.do] === "resolveHits") executeVerb(verb, run);
+            }
+            persistActivationHits(run);
         }
     }
     return bots;
 }
 
-/** Points the run at one activation: its ability, the due step it resolves (null at the trigger) and the targets its `activation`-scoped hits already touched. */
-function beginActivationRun(run, abilityId, contract, entry, activationHit) {
+/**
+ * Points the run at one activation: its ability, and the "already hit" memory of that activation (stamped when the
+ * ability activated this tick), which the activation-scoped hits read and extend.
+ */
+function beginActivationRun(run, abilityId, contract, attacker) {
     run.abilityId = abilityId;
     run.contract = contract;
-    run.entry = entry;
-    run.activationSerial = entry?.serial;
-    run.activationHit = new Set(activationHit ?? []);
+    run.activationMemory = activationMemory(attacker, abilityId);
+    run.activationHit = new Set(Object.keys(run.activationMemory?.ledger ?? {}));
     run.activationHitCount = run.activationHit.size;
 }
 
-/** Writes the targets an activation has hit back to its record when they changed (while the record is still there). */
-function persistActivationHits(attacker, run) {
-    if (run.activationHit.size === run.activationHitCount) return;
-    const record = abilityRecord(attacker, run.abilityId);
-    if (!record?.steps) return;
-    patchAbilityRecord(attacker, run.abilityId, {
-        steps: { ...record.steps, hit: [...run.activationHit].sort((first, second) => first - second) },
-    });
+/** Writes the targets an activation has newly hit back to its memory, replacing the memory's hit map. */
+function persistActivationHits(run) {
+    if (!run.activationMemory || run.activationHit.size === run.activationHitCount) return;
+    const ledger = { ...run.activationMemory.ledger };
+    for (const key of run.activationHit) {
+        if (!Object.hasOwn(ledger, key)) ledger[key] = { timeMs: 0 };
+    }
+    run.activationMemory.write(ledger);
 }
 
 /**
- * Runs the resolveHits verbs of `onTrigger[from..to)`, one atMs group at a time. The targets a `"step"`-scoped
- * hit touched are remembered for the group only.
+ * The activation memory of `abilityId` on `owner`: the `activationLedger` of its record, when the record belongs to
+ * the activation `serial` (any activation when it is left out). `write(hit)` replaces the hit map in the record.
+ * Returns null when there is no such memory.
  */
-function runTimeline(run, from, to) {
-    const verbs = run.contract.onTrigger;
-    let index = from;
-    while (index < to) {
-        const atMs = Number(verbs[index].atMs ?? 0);
-        run.stepHit = new Set();
-        for (; index < to && Number(verbs[index].atMs ?? 0) === atMs; index += 1) {
-            const verb = verbs[index];
-            if (VERB_STAGE[verb.do] !== "resolveHits") continue;
-            if (atMs > 0 && verb.visual) setStepVisual(run, verb);
-            executeVerb(verb, run);
-        }
-    }
-}
-
-/** The visual of a delayed step is emitted from the pose the step fires from, when it fires. */
-function setStepVisual(run, verb) {
-    const attacker = run.bots[run.attackerIndex];
-    const pose = stepPose(run, verb, attacker);
-    attacker.abilityVisual = {
-        ability: run.abilityId,
-        ms: combatVisualDurationMs(run.abilityId, verb.visual),
-        x: pose.x,
-        y: pose.y,
-        rotation: pose.rotation,
+function activationMemory(owner, abilityId, serial = undefined) {
+    const memory = abilityRecord(owner, abilityId)?.activationLedger;
+    if (!memory || (serial !== undefined && memory.serial !== serial)) return null;
+    return {
+        ledger: memory.hit ?? {},
+        write: (hit) => patchAbilityRecord(owner, abilityId, { activationLedger: { serial: memory.serial, hit } }),
     };
 }
 
-/** The pose a verb fires from: the captured pose of its activation, or the bot where it stands now plus the verb's origin. */
-function stepPose(run, verb, attacker) {
-    if (verb.pose === "captured" && run.entry?.pose) return run.entry.pose;
-    return abilityPose(attacker, verb.origin ?? null, null);
+/**
+ * The "already hit" memory a targetPolicy reads and writes for one entity, as `{ ledger, write(hit) }`. The phase
+ * scope is the entity's `hitLedger` (cleared on a phase change); the entity scope is `entityHitLedger`, which never
+ * clears. The activation scope is the owner's activation memory for the entity's own activation serial. An entity
+ * whose cast was replaced by a newer activation has no such memory, so it falls back to its entity memory.
+ */
+function entityMemory(entity, world, scope) {
+    if (scope === TARGET_POLICY_SCOPES.ACTIVATION) {
+        const owner = ownerBot(world.bots ?? [], entity);
+        const memory = owner ? activationMemory(owner, entity.abilityId, entityActivationSerial(owner, entity)) : null;
+        return memory ?? entityOwnedMemory(entity);
+    }
+    if (scope === TARGET_POLICY_SCOPES.ENTITY) return entityOwnedMemory(entity);
+    return { ledger: entity.hitLedger ?? {}, write: (hit) => { entity.hitLedger = hit; } };
+}
+
+function entityOwnedMemory(entity) {
+    return { ledger: entity.entityHitLedger ?? {}, write: (hit) => { entity.entityHitLedger = hit; } };
+}
+
+/** The activation serial an entity was spawned under (the one the owner recorded at spawn), as a hit refund uses it. */
+function entityActivationSerial(owner, entity) {
+    return owner?.entityActivations?.[entity.id] ?? owner?.activationSerial ?? 0;
 }
 
 function applyEffectsVerb(verb, run) {
     if (run.kind === "entity") return applyEffectsFromEntityEvent(verb, run);
     if (!(verb.targets ?? []).includes(OWNER_TARGET)) return run;
-    // Self effects (heals, buffs, Rewind) land on the owner; nothing else is touched.
+    // Self effects (heals, statuses, Rewind) land on the owner, which is the target of an OWNER verb; nothing else is touched.
     const attacker = run.bots[run.attackerIndex];
-    const stats = phaseStatsFor(verb);
-    for (const effect of botEffects(verb)) {
-        withCombatAbility(run.abilityId, () => applyEffect(effect, {
-            abilityId: run.abilityId,
-            stats,
-            source: attacker,
-            owner: attacker,
-            target: null,
-            originalTarget: null,
-            damageMultiplier: Math.max(0, Number(attacker?.attackDamageMultiplier ?? 1)),
-            damageConfirmed: false,
-            damageConfirmedAmount: 0,
-        }));
-    }
+    applyEffectList(verb.effects, {
+        abilityId: run.abilityId,
+        stats: phaseStatsFor(verb),
+        source: attacker,
+        owner: attacker,
+        target: attacker,
+        damageMultiplier: Math.max(0, outgoingDamageMultiplier(attacker)),
+        damageConfirmed: false,
+        damageConfirmedAmount: 0,
+    }, { targetKinds: [TARGET_KINDS.BOT] });
     return run;
 }
 
+/**
+ * The one `hit` verb on a bot's activation: it fires from the activation pose (see hitFromEntity for an entity's own
+ * hit). The hit tests read a copy of the attacker taken now, so a displace in the effects (a blink) does not move the
+ * hitbox of the hits that run after it.
+ */
 function hitVerb(verb, run) {
     if (run.kind === "entity") return hitFromEntity(verb, run);
-    const attackerIndex = run.attackerIndex;
-    const teleports = Boolean(run.contract.activation?.teleportOncePerActivation);
-    // The hitbox is fired from the pose the ability triggered at; a teleport must not move it, so the hit tests
-    // read a copy taken now.
-    const activationAttacker = { ...run.bots[attackerIndex] };
-    // A delayed hit fires from the pose its verb names instead of the capture the trigger made.
-    const geometry = hitGeometry(run, verb, activationAttacker);
-    const once = oncePerTargetSet(run, verb);
-    const candidates = [];
-    for (let defenderIndex = 0; defenderIndex < run.bots.length; defenderIndex += 1) {
-        const defender = run.bots[defenderIndex];
-        if (defenderIndex === attackerIndex || !areOpposingTeams(activationAttacker, defender)) continue;
-        if (once?.has(defender?.slot)) continue;
-        candidates.push({ defenderIndex, defender });
+    const activationAttacker = { ...run.bots[run.attackerIndex] };
+    const hitbox = verbHitbox(verb.hitbox ?? {}, activationAttacker);
+    if (!hitbox) return run;
+    const attacker = run.bots[run.attackerIndex];
+    // A hit with a targetPolicy (validated as once, scope activation) shares the cast's memory with the cast's other hits.
+    const once = verb.targetPolicy ? run.activationHit : null;
+    run.conditionalHit = false;
+    const hits = fireHit(verb, run, {
+        source: attacker,
+        abilityId: run.abilityId,
+        pose: activationPose(activationAttacker, verb, run.contract.activation),
+        hitbox,
+        candidates: hitCandidates(verb, run, attacker),
+        once,
+    });
+    for (const { target, landed } of hits) {
+        if (landed) once?.add(hitKey(target));
     }
-    if (!(verb.targets ?? []).includes(TARGET_KINDS.BOT)) return run;
-
-    let ordered = candidates;
-    if (teleports || verb.nearestOnly) {
-        ordered = candidates
-            .filter(({ defender }) => Number(defender?.hp ?? 0) > 0
-                && verbHitsTarget(geometry.attacker, geometry.verb, defender, geometry.activation))
-            .sort((left, right) => distanceFrom(geometry.attacker, left.defender)
-                - distanceFrom(geometry.attacker, right.defender));
-        if (verb.nearestOnly) ordered = ordered.slice(0, 1);
-    }
-
-    // The displacement of a teleporting ability is consumed by the nearest valid target so roster order cannot
-    // overwrite the landing position.
-    let teleportApplied = false;
-    for (const { defender: original } of ordered) {
-        const skipEffectTypes = teleports && teleportApplied ? new Set([EFFECT_TYPES.TELEPORT]) : null;
-        const canApplyTeleport = Number(original?.hp ?? 0) > 0 && !ignoresHostileEffects(original);
-        const connected = hitOneDefender(verb, run, run.bots[attackerIndex], original, {
-            geometry,
-            effectSource: teleports ? activationAttacker : run.bots[attackerIndex],
-            skipEffectTypes,
-        });
-        if (connected && once && original?.slot != null) once.add(original.slot);
-        if (teleports && !teleportApplied && canApplyTeleport) teleportApplied = true;
-    }
+    // The activation's strike shows its bonus when a `when`-gated effect landed (Execute's finisher).
+    if (run.conditionalHit && attacker.abilityVisual) attacker.abilityVisual.bonus = true;
     return run;
 }
 
-/** The targets a hit verb's `oncePerTarget` scope has already used up: the atMs group's, the activation's, or none. */
-function oncePerTargetSet(run, verb) {
-    if (verb.oncePerTarget === "step") return run.stepHit;
-    if (verb.oncePerTarget === "activation") return run.activationHit;
-    return null;
-}
-
 /**
- * What the hit tests read for one hit verb: the attacker, verb and activation metadata that give the pose it
- * fires from. A verb with no `pose` fires from the trigger pose (the capture, when the ability has one).
+ * The one hit path, for a bot's activation and an entity's own `hit`. The hit shape fires from `pose` at `candidates`
+ * (bots and entities, nearest first; `nearestOnly` keeps the nearest; `once` leaves out what the policy has already hit),
+ * and each target it reaches takes the verb's effects. Returns [{ target, landed }] (see applyHitTo).
  */
-function hitGeometry(run, verb, activationAttacker) {
-    const activation = run.contract.activation;
-    if (!verb.pose) return { attacker: activationAttacker, verb, activation };
-    const withoutCapture = { ...activation, capture: undefined };
-    if (verb.pose === "captured" && run.entry?.pose) {
-        return { attacker: { ...activationAttacker, ...run.entry.pose }, verb: { ...verb, origin: undefined }, activation: withoutCapture };
-    }
-    return { attacker: activationAttacker, verb, activation: withoutCapture };
-}
-
-/**
- * One `hit` verb against one opposing bot: geometry test, then the effects in declaration order. Returns
- * whether the verb connected (the target was in the hitbox and could be affected).
- */
-function hitOneDefender(verb, run, attacker, defender, { geometry, effectSource, skipEffectTypes }) {
-    if (!verbHitsTarget(geometry.attacker, geometry.verb, defender, geometry.activation)) return false;
-    if (!defender || ignoresHostileEffects(defender)) return false;
-
+function fireHit(verb, run, { source, abilityId, pose, hitbox, candidates, once = null, stepMs = undefined }) {
     const stats = phaseStatsFor(verb);
-    // A teleport lands next to where the defender stood before this ability's other effects moved it.
-    const originalTarget = { x: defender.x, y: defender.y };
-    let damageConfirmed = false;
-    let damageConfirmedAmount = 0;
-    let landedOnEnemy = false;
-    for (const effect of botEffects(verb)) {
-        if (skipEffectTypes?.has(effect.type)) continue;
-        const defenderHpBefore = Number(defender.hp ?? 0);
-        if (ENEMY_HIT_EFFECT_TYPES.has(effect.type) && isAliveBot(defender)) landedOnEnemy = true;
-        withCombatAbility(run.abilityId, () => applyEffect(effect, {
-            abilityId: run.abilityId,
-            stats,
-            source: effectSource,
-            owner: attacker,
-            target: defender,
-            originalTarget,
-            damageMultiplier: Math.max(0, Number(effectSource?.attackDamageMultiplier ?? 1)),
-            damageConfirmed,
-            damageConfirmedAmount,
+    return collectHitTargets(pose, hitbox, candidates, { nearestOnly: Boolean(verb.nearestOnly), once, stepMs })
+        .map(({ target, distance }) => ({
+            target,
+            landed: applyHitTo(verb, run, source, target, { abilityId, stats, found: distance }),
         }));
-        if (effect.type === EFFECT_TYPES.DAMAGE) {
-            const appliedDamage = Math.max(0, defenderHpBefore - Number(defender.hp ?? 0));
-            if (appliedDamage > 0) {
-                damageConfirmed = true;
-                damageConfirmedAmount = roundCombatValue(damageConfirmedAmount + appliedDamage);
-            }
-        }
+}
+
+/**
+ * What a hit may touch: the living enemy bots when `targets` names BOT, and the entities it names that the source can
+ * hit. An aimed hit (a seeking entity's shot) reaches only the bot it is chasing, and no entity.
+ */
+function hitCandidates(verb, run, source) {
+    const enemies = (verb.targets ?? []).includes(TARGET_KINDS.BOT)
+        ? run.bots.filter((bot) => areEnemies(source, bot, run.bots) && Number(bot?.hp ?? 0) > 0)
+        : [];
+    if (verb.aim === "seekTarget") return enemies.filter((bot) => bot.id === run.seekTargetId);
+    const entities = (run.kind === "entity" ? run.world.entities : run.entities) ?? [];
+    const summons = entities.filter((entity) => entity.id !== source.id
+        && eventTargetsEntity(verb, targetKindsForEntity(entity))
+        && entityCanBeHitBy(source, entity, run.bots));
+    return [...enemies, ...summons];
+}
+
+/** An entity takes a hit when it has health left and is an enemy, or its phase allows friendly damage. */
+function entityCanBeHitBy(attacker, entity, bots) {
+    const health = phaseForEntity(entity)?.health;
+    if (!health || !(Number(entity.hp) > 0)) return false;
+    return Boolean(health.allowFriendlyDamage) || areEnemies(attacker, entity, bots);
+}
+
+/**
+ * The verb's effects on one target a hit reached. An HP entity queues them as an impact for the entities stage. A bot
+ * takes them now (see applyEffectsToBot), with the immunity rule. Returns whether the hit landed: an entity always does,
+ * and a bot does unless it is immune.
+ */
+function applyHitTo(verb, run, source, target, { abilityId, stats, found }) {
+    const damageMultiplier = damageMultiplierOf(source);
+    const distance = hitDistance(source, target, found);
+    if (isEntityShape(target)) {
+        queueImpact(run, target.id, { source, abilityId, effects: verb.effects, distance, stats, damageMultiplier });
+        return true;
     }
-    if (landedOnEnemy) recordAbilityHit(attacker, run.abilityId, run.activationSerial);
-    return true;
+    return applyEffectsToBot(target, {
+        source,
+        owner: isEntityShape(source) ? ownerBot(run.bots, source) : source,
+        abilityId,
+        effects: verb.effects,
+        stats,
+        distance,
+        world: run.world,
+        damageMultiplier,
+        onConditionalHit: () => { run.conditionalHit = true; },
+    });
+}
+
+/**
+ * The distance a hit's falloff reads. An entity's hit keeps the distance its shape found. A bot's hit on an entity
+ * measures centre to centre, from the attacker; a bot's hit on a bot leaves the distance to the effect, as it always did.
+ */
+function hitDistance(source, target, found) {
+    if (isEntityShape(source)) return found;
+    return isEntityShape(target) ? distanceFrom(source, target) : undefined;
+}
+
+/** The damage multiplier a hit's effects carry: an attacking bot's outgoing multiplier, or an entity's own. */
+function damageMultiplierOf(source) {
+    return isEntityShape(source) ? Number(source.damageMultiplier ?? 1) : Math.max(0, outgoingDamageMultiplier(source));
 }
 
 // --- entity events -----------------------------------------------------------------------------------------
@@ -574,47 +473,32 @@ function eventTimestampMs(entity, world) {
     return Math.max(0, Number(entity?.ageMs ?? 0) - Math.max(0, Number(world?.stepMs ?? 0)));
 }
 
-function resolveNumber(value, fallback) {
-    if (value == null) return fallback;
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-        const numericValue = Number(value);
-        return Number.isFinite(numericValue) ? numericValue : fallback;
-    }
-    if (typeof value === "object") {
-        if (value.stat != null) return resolveNumber(value.stat, value.fallback ?? fallback);
-        if (value.value != null) return resolveNumber(value.value, fallback);
-    }
-    return fallback;
-}
-
-/** Returns whether this entity may affect a target during the current phase. */
-export function canApplyToTarget(entity, targetId, targetPolicy = null, world = {}) {
+/**
+ * Returns whether an entity event may affect `target` now, under its targetPolicy. `world` supplies the bots (for
+ * the activation scope) and the step length (for an interval).
+ */
+export function canApplyToTarget(entity, target, targetPolicy = null, world = {}) {
     const mode = targetPolicy?.mode ?? TARGET_POLICY_MODES.EVERY_TICK;
     if (mode === TARGET_POLICY_MODES.EVERY_TICK) return true;
-    const key = String(typeof targetId === "object" ? targetId?.id ?? targetId?.slot : targetId);
-    const lastHit = entity?.hitLedger?.[key];
+    const lastHit = entityMemory(entity, world, targetPolicy?.scope).ledger[hitKey(target)];
     if (!lastHit) return true;
     if (mode === TARGET_POLICY_MODES.ONCE) return false;
-    const intervalMs = Math.max(0, resolveNumber(targetPolicy?.intervalMs ?? 0, Number(world.stepMs ?? 0)));
-    return eventTimestampMs(entity, world) - Number(lastHit.atMs ?? 0) >= intervalMs;
+    const intervalMs = Math.max(0, resolveDataNumber(targetPolicy?.intervalMs ?? 0, {}, Number(world.stepMs ?? 0)));
+    return eventTimestampMs(entity, world) - Number(lastHit.timeMs ?? 0) >= intervalMs;
 }
 
 function recordTargetApplication(entity, target, targetPolicy, world) {
     const mode = targetPolicy?.mode ?? TARGET_POLICY_MODES.EVERY_TICK;
     if (mode === TARGET_POLICY_MODES.EVERY_TICK) return entity;
-    const key = String(typeof target === "object" ? target?.id ?? target?.slot : target);
-    entity.hitLedger = {
-        ...(entity.hitLedger ?? {}),
-        // The entity clock is advanced at the start of a fixed tick. Store the time at which this event was
-        // evaluated, not the end-of-tick clock value, so an interval measured in ticks remains intuitive:
-        // a hit on tick 3 with a five-tick interval is eligible on tick 8.
-        [key]: { atMs: eventTimestampMs(entity, world) },
-    };
+    const memory = entityMemory(entity, world, targetPolicy?.scope);
+    // The entity clock is advanced at the start of a fixed tick. Store the time at which this event was
+    // evaluated, not the end-of-tick clock value, so an interval measured in ticks remains intuitive:
+    // a hit on tick 3 with a five-tick interval is eligible on tick 8.
+    memory.write({ ...memory.ledger, [hitKey(target)]: { timeMs: eventTimestampMs(entity, world) } });
     return entity;
 }
 
-/** Changes phase without replacing the entity identity, in place. */
+/** Changes phase without replacing the entity identity, in place. The entity-scope memory is kept. */
 export function transitionEntityPhase(entity, phaseId, contract = null) {
     if (!entity || phaseId == null) return entity;
     const definition = contract ?? entityContract(entity);
@@ -629,6 +513,11 @@ export function transitionEntityPhase(entity, phaseId, contract = null) {
         entity.velocityX = 0;
         entity.velocityY = 0;
     }
+    // An entity with no HP takes it from the first phase with `health` it enters (a mine's travel phase has none).
+    if (nextPhase.health && entity.hp == null) {
+        entity.hp = resolveDataNumber(nextPhase.health.hp ?? nextPhase.health.maxHp, {}, 0);
+        entity.maxHp = resolveDataNumber(nextPhase.health.maxHp ?? nextPhase.health.hp, {}, 0);
+    }
     // Persistence is phase-local. A target affected by a fuse phase can be affected again by the damage phase
     // of the same logical entity.
     entity.hitLedger = {};
@@ -636,45 +525,97 @@ export function transitionEntityPhase(entity, phaseId, contract = null) {
     return entity;
 }
 
+/** Whether a verb names `targets` of its own (an empty list names none). */
+function declaresTargets(verb) {
+    return Array.isArray(verb.targets) && verb.targets.length > 0;
+}
+
+/** Whether a verb reaches a touched id: it names no targets, or the id counts as one of the kinds it names. */
+function reaches(verb, id, run) {
+    return !declaresTargets(verb) || touchedKinds(id, run).some((kind) => verb.targets.includes(kind));
+}
+
+/**
+ * The kinds a touched id counts as in an entity event. The owner bot is OWNER alone (it is never BOT), another bot is
+ * BOT, and an entity has the kinds its phase gives it.
+ */
+function touchedKinds(id, run) {
+    const index = findTargetIndex(run.bots, id);
+    if (index >= 0) return run.bots[index] === ownerBot(run.bots, run.entity) ? [OWNER_TARGET] : [TARGET_KINDS.BOT];
+    const other = (run.world.entities ?? []).find((candidate) => candidate.id === id);
+    return other ? targetKindsForEntity(other) : [];
+}
+
+/**
+ * An entity event's `applyEffects` verb, against the touched ids its `targets` reach (all of them when it names none).
+ * A bot takes the effects now. An HP entity takes them as a queued impact (`run.impacts`) that lands in the entities
+ * stage's impact pass. The event's targetPolicy governs both.
+ */
 function applyEffectsFromEntityEvent(verb, run) {
-    const { entity, event, phase, world } = run;
-    if (!run.eventReachesBots) return run;
-    const abilityId = entity?.abilityId;
-    const ownerOnly = (verb.targets ?? []).includes(OWNER_TARGET);
-    const targets = ownerOnly
-        ? run.bots.filter((bot) => bot.id === entity.ownerId).map((bot) => bot.id)
-        : run.targets;
-    const phaseStats = run.entityStats;
-    for (const targetId of targets) {
+    const { world } = run;
+    const policyWorld = { ...world, bots: run.bots };
+    for (const targetId of run.targets) {
+        if (!reaches(verb, targetId, run)) continue;
         const targetIndex = findTargetIndex(run.bots, targetId);
-        if (targetIndex < 0 || !canApplyToTarget(run.entity, targetId, event.targetPolicy, world)) continue;
-        const target = run.bots[targetIndex];
-        const targetDistance = run.targetDistances instanceof Map
-            ? run.targetDistances.get(targetId)
-            : run.targetDistances?.[targetId];
-        const effectSource = run.effectSources instanceof Map
-            ? run.effectSources.get(targetId) ?? run.entity
-            : run.entity;
-        applyEffectsFromEntity(
-            run.bots,
-            targetIndex,
-            effectSource,
-            abilityId,
-            {
-                world,
-                knockbackDirection: verb.knockbackDirection ?? "source",
-                pullDirection: verb.pullDirection ?? "source",
-                collisionDistance: Number.isFinite(Number(targetDistance))
-                    ? Number(targetDistance)
-                    : run.collisionDistance,
-                statOverrides: phaseStats,
-                effects: verb.effects,
-            },
-        );
-        recordTargetApplication(run.entity, target, event.targetPolicy, world);
+        if (targetIndex >= 0) {
+            if (run.eventReachesBots) applyCollisionEffectsToBot(run, verb, targetIndex, policyWorld);
+            continue;
+        }
+        applyEffectsToEntityTarget(run, verb, targetId, policyWorld);
     }
-    void phase;
     return run;
+}
+
+/** The source the effects of a collision read for one target: the entity as it was at the start of its move. */
+function effectSourceFor(run, targetId) {
+    return run.effectSources instanceof Map
+        ? run.effectSources.get(targetId) ?? run.entity
+        : run.entity;
+}
+
+function collisionDistanceFor(run, targetId) {
+    const distance = run.targetDistances instanceof Map
+        ? run.targetDistances.get(targetId)
+        : run.targetDistances?.[targetId];
+    return Number.isFinite(Number(distance)) ? Number(distance) : run.collisionDistance;
+}
+
+function applyCollisionEffectsToBot(run, verb, targetIndex, policyWorld) {
+    const target = run.bots[targetIndex];
+    if (!canApplyToTarget(run.entity, target, run.event.targetPolicy, policyWorld)) return;
+    applyEffectsFromEntity(run.bots, targetIndex, effectSourceFor(run, target.id), run.entity.abilityId, {
+        world: run.world,
+        collisionDistance: collisionDistanceFor(run, target.id),
+        stats: run.entityStats,
+        effects: verb.effects,
+        // The entity's visual reads this: Backstab's bonus is the from-behind hit.
+        onConditionalHit: () => { run.entity.bonusLanded = true; },
+    });
+    recordTargetApplication(run.entity, target, run.event.targetPolicy, policyWorld);
+}
+
+function applyEffectsToEntityTarget(run, verb, targetId, policyWorld) {
+    const target = (run.world.entities ?? []).find((other) => other.id === targetId);
+    if (!target || target.hp == null) return;
+    if (!canApplyToTarget(run.entity, target, run.event.targetPolicy, policyWorld)) return;
+    const source = effectSourceFor(run, targetId);
+    queueImpact(run, targetId, {
+        source,
+        abilityId: run.entity.abilityId,
+        effects: verb.effects,
+        distance: collisionDistanceFor(run, targetId),
+        stats: run.entityStats,
+        damageMultiplier: Number(source.damageMultiplier ?? 1),
+    });
+    recordTargetApplication(run.entity, target, run.event.targetPolicy, policyWorld);
+}
+
+/**
+ * Queues the effects of one entity's hit or collision on an HP entity, for the entities stage's impact pass. The
+ * impacts for one target keep the order they were queued in.
+ */
+function queueImpact(run, targetId, impact) {
+    run.impacts.set(targetId, [...(run.impacts.get(targetId) ?? []), impact]);
 }
 
 function transitionVerb(verb, run) {
@@ -698,72 +639,48 @@ function emitVisualVerb(verb, run) {
         // The countdown is frontend-only presentation state. Pixi resolves the event's visual metadata from
         // the ability contract.
         visualEvent: Number(run.entity.visualEvent ?? 0) + 1,
-        visualEventMs: resolveNumber(verb.visibleMs, 0),
+        visualEventMs: resolveDataNumber(verb.visibleMs, {}, 0),
     });
     run.emittedVisuals.push({ eventType: semanticEventType });
     return run;
 }
 
-function isEnemyOf(entity, target, bots) {
-    if (!entity || !target) return false;
-    if (target.id === entity.ownerId) return false;
-    const owner = bots?.find((bot) => bot?.id === entity.ownerId
-        || (Number.isFinite(Number(entity.ownerSlot)) && Number(bot?.slot) === Number(entity.ownerSlot)));
-    const sourceTeam = Number(owner?.teamNumber ?? entity.ownerTeam);
-    const targetTeam = Number(target.teamNumber);
-    if (Number.isFinite(sourceTeam) && Number.isFinite(targetTeam)
-        && sourceTeam > 0 && targetTeam > 0) return sourceTeam !== targetTeam;
-    return Number(target.slot) !== Number(entity.ownerSlot);
-}
-
 /**
- * A `hit` verb inside an entity event (a summon's shot): the hitbox is fired from the entity's pose plus the
- * verb's origin, against living enemy bots. Records whether anything was hit for a `waitForHit` timer.
+ * An entity's own `hit` verb (a summon's shot, a boomerang's catch): the hit shape fires from the entity's pose plus
+ * the verb's origin, through the one hit path (see fireHit). Records whether anything was hit for a `waitForHit`
+ * timer, and a once hit remembers what it touched in the policy's memory.
  */
 function hitFromEntity(verb, run) {
     const { entity, world } = run;
-    if (!(verb.targets ?? []).includes(TARGET_KINDS.BOT)) return run;
     const hitbox = verbHitbox(verb.hitbox ?? {}, entity);
     if (!hitbox) return run;
-    const pose = entityAbilitySpawnTransform(entity, verb.origin, entity.rotation);
-    const enemies = run.bots.filter((bot) => isEnemyOf(entity, bot, run.bots) && bot.hp > 0);
-    // An aimed shot considers only the enemy the entity is chasing; otherwise every enemy the hitbox touches.
-    const candidates = verb.aim === "seekTarget"
-        ? enemies.filter((bot) => bot.id === run.seekTargetId)
-        : enemies;
-    // An entity's ray is a thin line tested against the target's circle (a bot's ray has its width).
-    const found = hitbox.shape === "ray"
-        ? candidates
-            .filter((bot) => rayIntersectsCircle(pose, pose.rotation, hitbox.range, bot))
-            .map((bot) => ({ target: bot, distance: Math.hypot(bot.x - pose.x, bot.y - pose.y) }))
-            .sort((first, second) => first.distance - second.distance)
-        : findTargets(pose, hitbox, {
-            world: { bots: candidates, stepMs: world.stepMs },
-            kinds: [TARGET_KIND_BOT],
-        });
-    const selected = verb.nearestOnly ? found.slice(0, 1) : found;
+    // A once hit remembers its targets in the policy's memory: a hit verb takes once or everyTick (see the validator).
+    const memory = verb.targetPolicy?.mode === TARGET_POLICY_MODES.ONCE
+        ? entityMemory(entity, { ...world, bots: run.bots }, verb.targetPolicy.scope)
+        : null;
+    const selected = fireHit(verb, run, {
+        source: entity,
+        abilityId: entity.abilityId,
+        pose: entityAbilitySpawnTransform(entity, verb.origin, entity.rotation),
+        hitbox,
+        candidates: hitCandidates(verb, run, entity),
+        once: memory ? new Set(Object.keys(memory.ledger)) : null,
+        stepMs: world.stepMs,
+    });
     if (selected.length === 0) return run;
     run.hitConnected = true;
-    const stats = phaseStatsFor(verb);
-    for (const { target, distance } of selected) {
-        const targetIndex = findTargetIndex(run.bots, target.id);
-        if (targetIndex < 0) continue;
-        applyEffectsFromEntity(run.bots, targetIndex, entity, entity.abilityId, {
-            world,
-            knockbackDirection: verb.knockbackDirection ?? "source",
-            pullDirection: verb.pullDirection ?? "source",
-            collisionDistance: distance,
-            statOverrides: stats,
-            effects: verb.effects,
-        });
+    const remembered = { ...memory?.ledger };
+    for (const { target } of selected) {
+        remembered[hitKey(target)] = { timeMs: eventTimestampMs(entity, world) };
     }
+    if (memory) memory.write(remembered);
     if (verb.visual?.visibleMs != null) {
         Object.assign(run.entity, {
             eventSequence: Number(run.entity.eventSequence ?? 0) + 1,
             eventType: String(run.eventType).toLowerCase(),
             eventPhaseId: run.phase?.id ?? run.entity.phaseId ?? null,
             visualEvent: Number(run.entity.visualEvent ?? 0) + 1,
-            visualEventMs: resolveNumber(verb.visual.visibleMs, 0),
+            visualEventMs: resolveDataNumber(verb.visual.visibleMs, {}, 0),
         });
         run.emittedVisuals.push({ eventType: String(run.eventType).toLowerCase() });
     }
@@ -771,4 +688,4 @@ function hitFromEntity(verb, run) {
 }
 
 /** The verb-level helpers other modules need to test or describe hits. */
-export { triggerPose, phaseForEntity };
+export { activationPose, phaseForEntity };

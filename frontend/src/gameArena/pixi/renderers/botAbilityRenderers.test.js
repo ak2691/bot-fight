@@ -271,24 +271,6 @@ test("Dash smoke is not started while presentation is suppressed (reset, replay 
     assert.deepEqual(view.kit.shown, []);
 });
 
-test("start effects ask the scene for particles only when their visual becomes active", () => {
-    const view = fakeView();
-    const bursts = [];
-    const heals = [];
-    const effects = { spawnBurst: (...args) => bursts.push(args), spawnRepairPulse: (...args) => heals.push(args) };
-    const shape = botShape({}, { 25: { stage: "active", remainingMs: 300 } });
-    const sync = (activeAbilityId, previousActiveAbilityId, abilityShape = shape) => syncBotAbilityRenderers(view, {
-        shape: abilityShape, phaseShape: abilityShape, previousShape: null, current: { x: 10, y: 20 }, now: 0, suppressTransient: false, activeAbilityId, previousActiveAbilityId, effects, kit: view.kit,
-    });
-    sync(25, null);
-    sync(25, 25);
-    assert.deepEqual(bursts, [[200, 300, 0xc4b5fd, 12]]);
-    sync(10, null);
-    assert.deepEqual(heals, [[10, 20, 12]]);
-    sync(10, 10);
-    assert.equal(heals.length, 1);
-});
-
 test("Repulsor advances its cosmetic clock from the activation, not from snapshot gaps", () => {
     const view = fakeView();
     const shape = botShape({}, { 8: { stage: "active", remainingMs: 400 } });

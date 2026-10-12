@@ -17,6 +17,7 @@ import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
+import com.example.botfight.service.match.MatchLoadoutService;
 import com.example.botfight.service.match.MatchTimingPolicy;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
@@ -409,6 +410,17 @@ public class CustomLobbyService {
         return removeMember(lobby, targetUserId);
     }
 
+    /** Readiness and kit belong only to the authenticated member. Kits stay blind until match start. */
+    public synchronized LobbyChange ready(Authentication authentication, UUID lobbyId, com.example.botfight.DTO.match.MatchKitDTO kit) {
+        AppUser user = currentUserService.requireCurrentUser(authentication);
+        ActiveLobby lobby = requireLobby(lobbyId);
+        requireLobbyAvailable(lobby);
+        LobbyMember member = lobby.members.get(user.getId());
+        if (member == null) throw new AuthException("player is not in this custom lobby");
+        member.kit = MatchLoadoutService.validateKit(kit);
+        return new LobbyChange(lobby.lobbyId, toDTO(lobby), recipientsFor(lobby), List.of());
+    }
+
     /** Starts the authoritative match once every member has joined a team. */
     public StartedMatch start(Authentication authentication, UUID lobbyId) {
         ActiveLobby lobby;
@@ -438,10 +450,12 @@ public class CustomLobbyService {
             if (lobby.members.values().stream().anyMatch(member -> !isMemberOnline(member))) {
                 throw new AuthException("every player must be online before the match can start");
             }
+            if (lobby.members.values().stream().anyMatch(member -> member.kit == null))
+                throw new AuthException("every player must ready with a valid kit before the match can start");
             lobby.members.values().forEach(member -> rejectActiveMatch(member.user.getId()));
 
             members = lobby.members.values().stream()
-                    .map(member -> new LobbyStartMember(member.user, member.teamNumber))
+                    .map(member -> new LobbyStartMember(member.user, member.teamNumber, member.kit))
                     .toList();
             baseClockSeconds = lobby.baseClockSeconds;
             incrementSeconds = lobby.incrementSeconds;
@@ -457,7 +471,7 @@ public class CustomLobbyService {
                             member.user().getUsername(),
                             member.user().getEmail(),
                             currentSocketForPrincipal(member.user().getEmail()),
-                            member.teamNumber()))
+                            member.teamNumber(), member.kit()))
                     .toList();
             List<OutboundMatchmakingEvent> events = matchService.startTeamMatch(entrants, MatchMode.CUSTOM, MatchMode.CUSTOM != MatchMode.CUSTOM, baseClockSeconds, incrementSeconds);
             UUID matchId = events.stream()
@@ -687,7 +701,7 @@ public class CustomLobbyService {
                                 member.user.getUsername(),
                                 member.teamNumber,
                                 ownerId != null && ownerId.equals(member.user.getId()),
-                                isMemberOnline(member)))
+                                isMemberOnline(member), member.kit != null))
                         .toList());
     }
 
@@ -835,6 +849,7 @@ public class CustomLobbyService {
         private final AppUser user;
         private final long memberOrder;
         private int teamNumber;
+        private String kit;
 
         private LobbyMember(AppUser user, int teamNumber, long memberOrder) {
             this.user = user;
@@ -843,7 +858,7 @@ public class CustomLobbyService {
         }
     }
 
-    private record LobbyStartMember(AppUser user, int teamNumber) {
+    private record LobbyStartMember(AppUser user, int teamNumber, String kit) {
     }
 
     private static final class LobbyInvite {

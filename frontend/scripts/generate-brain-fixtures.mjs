@@ -30,7 +30,7 @@ const invalid = {};
 // ---- valid
 valid["empty"] = ["A brain with no roots.", { version: V2, roots: [] }];
 valid["walk-and-loadout"] = ["A root with a walk action and a full loadout of non-standard abilities.",
-    { version: V2, loadout: { abilities: [1, 7, 3, 4, 5, 6, 8] }, roots: [root()] }];
+    { version: V2, loadout: { abilities: [1, 15, 3, 4, 5, 6, 8] }, roots: [root()] }];
 valid["every-state-variable"] = ["One condition per state variable, as the editor creates them.",
     normalized({ version: V2, roots: [root(STATE_VARIABLES.map((entry, index) => branch({
         id: `b${index}`, priority: index + 1, branchType: "if",
@@ -106,6 +106,7 @@ add("number-above-variable-range", "A literal compared to selectable.hp is at mo
 add("negative-hp-literal", "A literal compared to selectable.hp is at least 0.", "schema", withCondition(expression("selectable.hp", { type: "number", value: -1 }, { leftSelectable: "opponent_1" })));
 add("boolean-variable-with-less-than", "Boolean variables only compare with eq and neq.", "schema", withCondition({ type: "expression", left: "selectable.moving", comparator: "lt", right: { type: "boolean", value: true }, leftSelectable: "opponent_1" }));
 add("or-join-on-condition", "Conditions are AND-only; join is not a field.", "schema", withCondition({ ...expression("match.elapsedSeconds", { type: "number", value: 5 }), join: "or" }));
+add("in-view-arc-below-one", "An In View arc is 1 to 360 degrees.", "schema", withCondition({ type: "expression", left: "selectable.inView", comparator: "eq", right: { type: "boolean", value: true }, selectable1: "my_bot", selectable2: "opponent_1", viewArc: 0 }));
 add("selectable-not-allowed", "Selectors come from the closed selectable list.", "schema", withCondition(expression("selectable.hp", { type: "number", value: 5 }, { leftSelectable: "defender_core" })));
 add("bot-variable-with-entity-selectable", "bot.* variables need a bot selector, not an ability entity.", "schema", withCondition({ type: "expression", left: "bot.anyAbilityPreparing", comparator: "eq", right: { type: "boolean", value: true }, leftSelectable: "my_bot_grenade" }));
 add("ability-variable-without-ability", "Selected-ability variables must name an ability.", "schema", withCondition({ type: "expression", left: "bot.selectedAbilityReady", comparator: "eq", right: { type: "boolean", value: true }, leftSelectable: "my_bot" }));
@@ -116,7 +117,7 @@ add("coordinate-out-of-range", "Coordinates are at most 600.", "schema", { versi
 add("movement-direction-over-360", "Movement directions are -360 to 360 degrees.", "schema", mutated((b) => { b.roots[0].branches[0].actions[0].movementDirection = 361; }));
 add("loadout-standard-ability", "Standard abilities are granted by the server, not listed in a loadout.", "schema", mutated((b) => { b.loadout.abilities = [19]; }));
 add("loadout-duplicate-ability", "Loadout abilities are unique.", "schema", mutated((b) => { b.loadout.abilities = [1, 1]; }));
-add("loadout-over-seven", "A loadout holds at most seven abilities.", "schema", mutated((b) => { b.loadout.abilities = [1, 3, 4, 5, 6, 7, 8, 9]; }));
+add("loadout-over-seven", "A loadout holds at most seven abilities.", "schema", mutated((b) => { b.loadout.abilities = [1, 3, 4, 5, 6, 8, 15, 17]; }));
 add("custom-variable-bad-name", "Custom variable names start with a letter.", "schema", { version: V2, customVariables: [{ id: "custom.a", name: "1bad", valueType: "number", initialValue: 0 }], roots: [] });
 add("custom-variable-wrong-initial-type", "A number variable starts at a number.", "schema", { version: V2, customVariables: [{ id: "custom.a", name: "A", valueType: "number", initialValue: true }], roots: [] });
 add("custom-variable-retired-conditions", "Custom variables no longer carry conditions.", "schema", { version: V2, customVariables: [{ id: "custom.a", name: "A", valueType: "number", initialValue: 0, conditions: [] }], roots: [] });

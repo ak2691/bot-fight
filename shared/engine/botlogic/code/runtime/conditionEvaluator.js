@@ -9,7 +9,7 @@ export function evaluateConditionNode(condition, state, evaluateExpression) {
     return condition?.type === BOT_CODE_CONDITIONS.ALWAYS;
 }
 
-// A pair variable (distance, bearings) carries its own entity/target configuration.
+// A pair variable (distance, In View) carries its own entity/target configuration.
 // When it is the compared-to side of a condition that configuration lives in the
 // right* fields, so the two sides never share one target. Older brains without
 // right* fields fall back to the left configuration, which keeps their behavior.
@@ -19,7 +19,7 @@ const RIGHT_PAIR_FIELDS = Object.freeze({
     targetMode: "rightTargetMode",
     targetX: "rightTargetX",
     targetY: "rightTargetY",
-    targetAngle: "rightTargetAngle",
+    viewArc: "rightViewArc",
 });
 
 export function rightOperandView(condition) {
@@ -37,7 +37,7 @@ export function rightOperandView(condition) {
             targetMode: condition.rightTargetMode ?? condition.targetMode,
             targetX: condition.rightTargetX ?? condition.targetX,
             targetY: condition.rightTargetY ?? condition.targetY,
-            targetAngle: condition.rightTargetAngle ?? condition.targetAngle,
+            viewArc: condition.rightViewArc ?? condition.viewArc,
         };
     }
     const selectable2 = condition.rightSelectable2 ?? condition.selectable2 ?? condition.selectable;
@@ -49,7 +49,7 @@ export function rightOperandView(condition) {
         targetMode: condition.rightTargetMode ?? condition.targetMode,
         targetX: condition.rightTargetX ?? condition.targetX,
         targetY: condition.rightTargetY ?? condition.targetY,
-        targetAngle: condition.rightTargetAngle ?? condition.targetAngle,
+        viewArc: condition.rightViewArc ?? condition.viewArc,
     };
 }
 

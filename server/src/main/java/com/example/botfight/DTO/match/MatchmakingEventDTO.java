@@ -33,7 +33,6 @@ public record MatchmakingEventDTO(
         Integer roundNumber,
         String message,
         List<RoundBrainDTO> roundBrains,
-        List<Integer> abilityOffers,
         UUID disconnectedUserId,
         Instant disconnectEndsAt,
         Long simulationPreparingDurationMs,
@@ -81,7 +80,6 @@ public record MatchmakingEventDTO(
                 .roundNumber(roundNumber)
                 .message(message)
                 .roundBrains(roundBrains)
-                .abilityOffers(abilityOffers)
                 .disconnectedUserId(disconnectedUserId)
                 .disconnectEndsAt(disconnectEndsAt)
                 .simulationPreparingDurationMs(simulationPreparingDurationMs)
@@ -123,7 +121,6 @@ public record MatchmakingEventDTO(
         private Integer roundNumber;
         private String message;
         private List<RoundBrainDTO> roundBrains;
-        private List<Integer> abilityOffers;
         private UUID disconnectedUserId;
         private Instant disconnectEndsAt;
         private Long simulationPreparingDurationMs;
@@ -163,7 +160,6 @@ public record MatchmakingEventDTO(
         public Builder roundNumber(Integer value) { roundNumber = value; return this; }
         public Builder message(String value) { message = value; return this; }
         public Builder roundBrains(List<RoundBrainDTO> value) { roundBrains = value; return this; }
-        public Builder abilityOffers(List<Integer> value) { abilityOffers = value; return this; }
         public Builder disconnectedUserId(UUID value) { disconnectedUserId = value; return this; }
         public Builder disconnectEndsAt(Instant value) { disconnectEndsAt = value; return this; }
         public Builder simulationPreparingDurationMs(Long value) { simulationPreparingDurationMs = value; return this; }
@@ -205,7 +201,6 @@ public record MatchmakingEventDTO(
                     roundNumber,
                     message,
                     roundBrains,
-                    abilityOffers,
                     disconnectedUserId,
                     disconnectEndsAt,
                     simulationPreparingDurationMs,
@@ -244,9 +239,9 @@ public record MatchmakingEventDTO(
             Integer maxRounds,
             Integer baseClockSeconds,
             Integer incrementSeconds,
-            Integer pickSeconds,
+            Integer kitRevealSeconds,
             Integer segmentSeconds,
-            List<Integer> weaponOffers,
+            Integer unlockedTier,
             Integer zoneStartsInRound,
             Double zoneNextDiameterUnits,
             List<EndBotState> segmentEndState,

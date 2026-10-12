@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, BASE_BOT_STATS, STANDARD_ABILITY_IDS, abilityDefinition, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout, SELECTABLE_BOT_ABILITIES, statusEffectDefinitionsForAbilities } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, BASE_BOT_STATS, STANDARD_ABILITY_IDS, abilityDefinition, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout, SELECTABLE_BOT_ABILITIES } from "../../../../shared/engine/loadout/BotLoadout.js";
 
 test("Dash is the only standard ability and unknown ability IDs drop out of a loadout", () => {
     assert.deepEqual(STANDARD_ABILITY_IDS, [19]);
@@ -8,64 +8,40 @@ test("Dash is the only standard ability and unknown ability IDs drop out of a lo
     assert.deepEqual(normalizedBotLoadout({ abilities: [34, 1] }), { abilities: [1] });
 });
 
-test("Basic Heal catalogue copy matches its 25 HP self-heal", () => {
-    assert.equal(abilityDefinition(10).stats.healing, 25);
-    assert.equal(abilityDefinition(10).summary, "Channel briefly to restore 25 HP.");
-});
-
 test("loadout payloads contain abilities only and use the default combat stats", () => {
     assert.deepEqual(normalizedBotLoadout({ abilities: [1] }), { abilities: [1] });
     assert.equal(encodeBotLoadout({ abilities: [1] }), "custom:s");
     assert.deepEqual(decodeBotLoadout("custom:s"), { abilities: [1] });
-    assert.equal(BASE_BOT_STATS.maxHp, 300);
+    assert.equal(BASE_BOT_STATS.maxHp, 225);
     assert.equal(BASE_BOT_STATS.moveSpeed, 15);
 });
 
 test("compact loadouts preserve acquisition order for status-panel positions", () => {
-    const loadout = { abilities: [12, 1, 3, 13] };
+    const loadout = { abilities: [3, 1, 6, 21] };
 
-    assert.equal(encodeBotLoadout(loadout), "custom:psgR");
-    assert.deepEqual(decodeBotLoadout("custom:psgR"), loadout);
+    assert.equal(encodeBotLoadout(loadout), "custom:gstw");
+    assert.deepEqual(decodeBotLoadout("custom:gstw"), loadout);
 });
 
 test("catalogue tags describe self, status effects, summon, zone, trap, and radial semantics", () => {
-    assert.ok(abilityDefinition(10).tags.includes("self"));
-    assert.ok(abilityDefinition(16).tags.includes("self"));
+    assert.ok(abilityDefinition(21).tags.includes("zone"));
     assert.ok(abilityDefinition(17).tags.includes("summon"));
-    assert.ok(abilityDefinition(11).tags.includes("trap"));
+    assert.ok(abilityDefinition(29).tags.includes("trap"));
     assert.ok(abilityDefinition(8).tags.includes("radial"));
-    assert.ok(abilityDefinition(14).tags.includes("projectile"));
-    assert.ok(abilityDefinition(14).tags.includes("zone"));
+    assert.ok(abilityDefinition(4).tags.includes("projectile"));
     assert.ok(abilityDefinition(5).tags.includes(ABILITY_TAGS.STATUS_EFFECT));
-    assert.ok(abilityDefinition(33).tags.includes(ABILITY_TAGS.STATUS_EFFECT));
+    assert.ok(abilityDefinition(15).tags.includes(ABILITY_TAGS.STATUS_EFFECT));
     assert.ok(ALL_ABILITY_DEFINITIONS.every((ability) => !ability.tags.includes("buff")));
     assert.ok(ALL_ABILITY_DEFINITIONS.every((ability) => !ability.tags.includes("entity")));
 });
 
-test("positive catalogue effects expose their numeric strength", () => {
-    assert.deepEqual(abilityDefinition(16).buffDetails, [
-        { label: "Damage reduction", value: "50%" },
-        { label: "Damage reflection", value: "50%" },
-    ]);
-    assert.deepEqual(abilityDefinition(23).buffDetails, [
-        { label: "Damage immunity", value: "100%" },
-    ]);
-    assert.deepEqual(abilityDefinition(33).buffDetails, [
-        { label: "Cooldown recovery", value: "50%" },
-    ]);
-    assert.deepEqual(statusEffectDefinitionsForAbilities([33]), [
-        { id: "overclock", label: "Overclock" },
-    ]);
-});
 
-test("charges keep the generic tag while HP charges retain their subtype", () => {
-    assert.equal(abilityDefinition(12).tags.includes(ABILITY_TAGS.CHARGES), true);
-    assert.equal(abilityDefinition(12).tags.some((tag) => tag.endsWith("charges") && tag !== ABILITY_TAGS.CHARGES), false);
-    assert.equal(abilityDefinition(3).tags.includes(ABILITY_TAGS.CHARGES), false);
-    assert.equal(abilityDefinition(5).tags.includes(ABILITY_TAGS.CHARGES), false);
-    assert.deepEqual(
-        ALL_ABILITY_DEFINITIONS.filter((ability) => ability.tags.includes(ABILITY_TAGS.CHARGES)).map((ability) => ability.id),
-        [12],
-    );
-    assert.equal(abilityDefinition(2), null);
+test("fixed kit unlock table grants tiers only in rounds 1, 3 and 5", async () => {
+    const { ROUND_ABILITY_UNLOCK, unlockedKitLoadout } = await import("../../../../shared/engine/loadout/BotLoadout.js");
+    assert.deepEqual(Object.values(ROUND_ABILITY_UNLOCK).map(({ tier }) => tier), [1, null, 2, null, 3, null]);
+    assert.deepEqual(Object.values(ROUND_ABILITY_UNLOCK).map(({ weapon }) => weapon), [true, false, false, false, false, false]);
+    for (let round = 1; round <= 6; round++) {
+        assert.deepEqual(unlockedKitLoadout({ abilities: [1, 3, 6, 21] }, round).abilities,
+            round < 3 ? [1, 3] : [1, 3, 6, 21]);
+    }
 });

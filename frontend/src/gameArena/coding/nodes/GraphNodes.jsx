@@ -1040,9 +1040,8 @@ function GraphActionNode({ onInput = null, onInputPress = null, validInput = fal
 
 function selectablePairConfigurationNote(definition) {
     if (definition.id === "selectable.distance") return "Distance compares From to either a selected entity or a point in the arena.";
-    if (definition.id === "selectable.absoluteBearing") return "Direction To is the arena heading, as a signed angle, from From toward To.";
     if (definition.id === "selectable.approachAngle") return MOVE_DIRECTION_TOWARD_INFO;
-    return "Angle To is how far off From's facing is from To, from 0 to 180 degrees. Near 0 means it is facing it.";
+    return "In View is true when To lies within the arc centred on From's facing. The arc is the full width: 90 means 45 degrees either side, and 360 covers every direction.";
 }
 
 const COMPARATOR_SYMBOLS = Object.freeze({ lt: "<", lte: "≤", eq: "=", neq: "≠", gte: "≥", gt: ">" });
@@ -1448,6 +1447,7 @@ function ConditionTargetControls({ condition, definition, selectableTypes, defau
     // "To: Entity | Point" (plus Angle only for variables that measure against an absolute angle).
     const modeControl = <TargetModeToggle modes={modes} mode={mode} disabled={disabled} info={info} onSelect={(candidate) => onChange({ targetMode: candidate })} />;
     const numberRow = (label, props, unit = null) => <label className="code-inspector-field"><span>{label}</span><span className="ci-number"><DeferredNumberInput disabled={disabled} {...props} />{unit && <span className="code-inspector-field-unit">{unit}</span>}</span></label>;
+    const arcRow = definition?.viewArc ? numberRow("Arc", { min: 1, max: 360, value: condition.viewArc ?? 360, fallback: 360, "aria-label": "View arc in degrees", onCommit: (viewArc) => onChange({ viewArc }) }, "deg") : null;
     if (mode === TARGET_MODES.ANGLE) {
         return <>
             {modeControl}
@@ -1459,11 +1459,13 @@ function ConditionTargetControls({ condition, definition, selectableTypes, defau
             {modeControl}
             {numberRow("X", { min: limits.minimum, max: limits.maximum, value: condition.targetX ?? center, fallback: center, "aria-label": "Target X coordinate", onCommit: (targetX) => onChange({ targetX }) })}
             {numberRow("Y", { min: limits.minimum, max: limits.maximum, value: condition.targetY ?? center, fallback: center, "aria-label": "Target Y coordinate", onCommit: (targetY) => onChange({ targetY }) })}
+            {arcRow}
         </>;
     }
     return <>
         {modeControl}
         <OrderedSelectablePicker label="Entity" disabled={disabled} value={condition.selectable2 ?? condition.selectable ?? defaultSelectable} selectableTypes={selectableTypes} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => onChange({ selectable2: selectable, targetMode: TARGET_MODES.TARGET })} />
+        {arcRow}
     </>;
 }
 

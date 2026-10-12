@@ -20,11 +20,19 @@ public final class TestMatches {
                 "runtimeState")).activeSessionForUser(userId);
     }
 
-    public static List<OutboundMatchmakingEvent> selectLoadout(
-            MatchService service, UUID userId, String loadout) {
+    public static List<OutboundMatchmakingEvent> beginBuild(
+            MatchService service, UUID userId) {
         MatchSession session = session(service, userId);
-        return service.selectLoadout(userId, session == null ? null : session.matchId(),
-                session == null ? null : session.roundNumber(), loadout);
+        if (session == null) return List.of();
+        if (session.phase() == com.example.botfight.service.match.state.MatchPhase.KIT_REVEAL) {
+            var timing = (com.example.botfight.service.match.MatchTimingService) ReflectionTestUtils.getField(service, "matchTimingService");
+            var clock = ReflectionTestUtils.getField(timing, "clock");
+            ReflectionTestUtils.invokeMethod(clock, "advance", java.time.Duration.between(((java.time.Clock)clock).instant(), session.loadoutSelectionEndsAt()));
+            return timing.resolveLoadoutSelectionTimeout(session.matchId());
+        }
+        if (session.phase() != com.example.botfight.service.match.state.MatchPhase.BUILDING) return List.of();
+        return session.players().stream().flatMap(player -> service.resumeMatch(player.userId(), player.username(), player.principalName(), null).stream()).toList();
+
     }
 
     public static MatchSubmissionResult acceptMatchSubmission(

@@ -11,7 +11,7 @@ import {
     botAbilityPresentationForType,
 } from "./botAbilityPresentationDefinitions.js";
 import { BOT_ABILITY_RENDERERS } from "./renderers/index.js";
-import { triggerView } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { activationView } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 
 const sourceOf = (relativePath) => readFile(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
 
@@ -43,18 +43,19 @@ test("presentation settings are keyed by the visual type, immutable, and present
 test("each presentation type resolves to the ability whose trigger declares that visual type", () => {
     for (const presentation of BOT_ABILITY_PRESENTATIONS) {
         if (presentation.abilityId == null) continue;
-        assert.equal(triggerView(presentation.abilityId).visual.type, presentation.type);
+        assert.equal(activationView(presentation.abilityId).visual.type, presentation.type);
         assert.equal(botAbilityPresentationForId(presentation.abilityId), presentation);
     }
-    // Rewind's visual lives on its entity phase, so it is driven by bot timer fields instead.
+    // Rewind's visual lives on its entity phase, so it is driven by bot timer fields instead. Overdrive, Parry, Overcharge
+    // and Tether Link's chain are status auras, and Disruptive Beam's counter-hit is a stun's flash: none has an ability trigger.
     assert.deepEqual(BOT_ABILITY_PRESENTATIONS.filter((presentation) => presentation.abilityId == null).map(({ type }) => type),
-        ["sprintTrail", "temporalRewindZone"]);
+        ["sprintTrail", "temporalRewindZone", "overdrive", "parry", "overcharge", "counterHit", "tetherChain"]);
 });
 
 test("every presentation type has exactly one renderer module and vice versa", async () => {
     assert.deepEqual(Object.keys(BOT_ABILITY_RENDERERS).sort(), Object.keys(BOT_ABILITY_VISUAL_SETTINGS).sort());
     const files = (await readdir(fileURLToPath(new URL("./renderers/", import.meta.url))))
-        .filter((file) => !["index.js", "rendererHelpers.js", "pixiToolkit.js"].includes(file) && file.endsWith(".js") && !file.endsWith(".test.js"))
+        .filter((file) => !["index.js", "rendererHelpers.js", "pixiToolkit.js", "entityRenderers.js"].includes(file) && file.endsWith(".js") && !file.endsWith(".test.js"))
         .map((file) => file.replace(/\.js$/, ""));
     assert.deepEqual(files.sort(), Object.keys(BOT_ABILITY_RENDERERS).sort());
     for (const [type, renderer] of Object.entries(BOT_ABILITY_RENDERERS)) {
@@ -66,24 +67,7 @@ test("every presentation type has exactly one renderer module and vice versa", a
 
 test("active presentation precedence matches the established ability priority", () => {
     assert.deepEqual(BOT_ABILITY_VISUAL_PRIORITY,
-        [1, 3, 6, 7, 12, 9, 13, 8, 10, 16, 23, 25, 26, 30, 32, 33, 35, 36, 37]);
-});
-
-test("the weapons have their own visual types instead of sharing meleeSlash", () => {
-    assert.equal(botAbilityPresentationForId(1).type, "meleeSlash");
-    assert.equal(botAbilityPresentationForId(35).type, "thrust");
-    assert.equal(botAbilityPresentationForId(36).type, "cleave");
-    assert.equal(botAbilityPresentationForId(37).type, "smash");
-    assert.equal(botAbilityPresentationForType("thrust").active.color, 0xcbd5e1);
-    assert.equal(botAbilityPresentationForType("cleave").windup.color, 0xf59e0b);
-    assert.equal(botAbilityPresentationForType("cleave").sizingHitboxAbilityId, 36);
-    assert.equal(botAbilityPresentationForType("cleave").tint, 0xfde68a);
-    const smash = botAbilityPresentationForType("smash");
-    assert.equal(smash.windup.outline.alphaEnd, 0.6);
-    assert.equal(smash.active.cracks.count, 7);
-    assert.equal(smash.active.debris.count, 9);
-    assert.equal(smash.linger.ms, 700);
-    assert.equal(botAbilityPresentationForType("heavySlash").sizingHitboxAbilityId, 1);
+        [1, 3, 6, 8, 25, 26, 30, 32, 35, 36, 37, 38, 39, 45]);
 });
 
 test("the sprint trail is approved option C: a 50 ms line spawn with dust about one time in three", () => {

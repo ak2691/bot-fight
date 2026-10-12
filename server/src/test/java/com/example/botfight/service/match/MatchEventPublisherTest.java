@@ -70,7 +70,7 @@ class MatchEventPublisherTest {
 
     @Test void staleImmediateEventsNeverReachTheSocket() {
         when(matches.isCurrentEvent(any())).thenReturn(false);
-        publisher.publish(event(MatchEventType.MATCH_LOADOUT_SELECTED, 0, null));
+        publisher.publish(event(MatchEventType.BOT_BUILDING_SESSION_READY, 0, null));
         verifyNoInteractions(messaging, scheduler);
     }
 
@@ -82,7 +82,7 @@ class MatchEventPublisherTest {
 
     @Test void preparationRetainsItsAuthoredServerTimeWhileOtherEventsStampDeliveryTime() {
         publisher.publish(List.of(event(MatchEventType.SIMULATION_PREPARING, 0, null),
-                event(MatchEventType.MATCH_LOADOUT_SELECTED, 0, null)));
+                event(MatchEventType.BOT_BUILDING_SESSION_READY, 0, null)));
         ArgumentCaptor<MatchmakingEventDTO> events = ArgumentCaptor.forClass(MatchmakingEventDTO.class);
         verify(messaging, times(2)).convertAndSendToUser(eq("one"), any(), events.capture());
         assertThat(events.getAllValues()).extracting(MatchmakingEventDTO::serverNow)

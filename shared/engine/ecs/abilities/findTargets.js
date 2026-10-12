@@ -94,7 +94,7 @@ function sweepDistance(source, hitbox, start, end, target, kind, path) {
         : null;
 }
 
-/** A bot's trigger hitbox against a target; the distance is centre to centre. */
+/** A bot's activation hitbox against a target; the distance is centre to centre. */
 function shapeDistance(pose, hitbox, target, path) {
     return shapeHits(pose, hitbox, target, path)
         ? Math.hypot(Number(target.x) - Number(pose.x), Number(target.y) - Number(pose.y))

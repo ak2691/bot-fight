@@ -86,9 +86,7 @@ function botStateDefaults() {
         activationSerial: 0,
         refundedActivations: [],
         entityActivations: {},
-        entityHitIds: [],
         abilitySpawn: [],
-        dueSteps: [],
         abilityEntitySerial: 1,
         triggeredAbility: null,
         triggeredPhaseFacingMode: null,
@@ -103,21 +101,16 @@ function botStateDefaults() {
         gunRayRotation: null,
         // Dash
         dashRemaining: 0,
-        dashTrailMs: 0,
         dashInitialDistance: 0,
         dashStepDistance: 0,
         dashDirectionX: 0,
         dashDirectionY: 0,
         dashOriginX: null,
         dashOriginY: null,
-        // Temporal rewind
-        temporalRewindMs: 0,
-        temporalRewindPulseMs: 0,
-        temporalRewindX: null,
-        temporalRewindY: null,
-        temporalRewindHp: null,
-        temporalRewindVisualX: null,
-        temporalRewindVisualY: null,
+        // The ability whose move (a dash, or a delayed move) is travelling; null when none is
+        moveAbilityId: null,
+        // Rewind's presentation pulse after the snap-back (the rewind status itself is in statusEffects)
+        rewindPulseMs: 0,
     };
 }
 

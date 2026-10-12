@@ -9,7 +9,7 @@ import {
 import { BOT_ABILITIES } from "../../../shared/engine/loadout/BotLoadout.js";
 
 const roundOneOffers = [3, 6, 10];
-const roundTwoOffers = [13, 14, 15];
+const roundTwoOffers = [26, 27, 15];
 const roundFiveOffers = [21, 22];
 
 test("round 1 picks a weapon and an ability, every later round one ability from two or three offers", () => {
@@ -20,16 +20,16 @@ test("round 1 picks a weapon and an ability, every later round one ability from 
     assert.deepEqual(rules.map((rule) => rule.tier), [1, 1, 2, 2, 3, 3]);
 });
 
-test("round two abilities, including Rail Shot, can be selected one at a time", () => {
-    const first = toggleDraftAbility({ abilities: [1, 3] }, 2, roundTwoOffers, 13);
-    const second = toggleDraftAbility(first, 2, roundTwoOffers, 14);
+test("round two abilities, including Frost Ring, can be selected one at a time", () => {
+    const first = toggleDraftAbility({ abilities: [1, 3] }, 2, roundTwoOffers, 26);
+    const second = toggleDraftAbility(first, 2, roundTwoOffers, 27);
     const draft = loadoutDraftState(second, 2, roundTwoOffers);
 
-    assert.deepEqual(second.abilities, [1, 3, 13], "the second pick is ignored once the round's one pick is made");
+    assert.deepEqual(second.abilities, [1, 3, 26], "the second pick is ignored once the round's one pick is made");
     assert.deepEqual(draft.inheritedAbilities, [1, 3]);
-    assert.deepEqual(draft.draftedAbilities, [13]);
+    assert.deepEqual(draft.draftedAbilities, [26]);
     assert.equal(draft.hasAllDraftPicks, true);
-    assert.deepEqual(toggleDraftAbility(first, 2, roundTwoOffers, 13).abilities, [1, 3]);
+    assert.deepEqual(toggleDraftAbility(first, 2, roundTwoOffers, 26).abilities, [1, 3]);
 });
 
 test("round 1 needs a weapon as well as an ability, and choosing another weapon replaces the first", () => {
@@ -72,25 +72,25 @@ test("every selectable non-weapon ability can be drafted when the server offers 
 });
 
 test("legacy matchmaking offers normalize once at the draft boundary", () => {
-    const draft = loadoutDraftState({}, 2, ["rail_shot", "unknown_ability"]);
-    assert.deepEqual([...draft.offeredAbilityIds], [13]);
-    assert.deepEqual(toggleDraftAbility({}, 2, ["rail_shot"], "rail_shot").abilities, [13]);
+    const draft = loadoutDraftState({}, 2, ["frost_ring", "unknown_ability"]);
+    assert.deepEqual([...draft.offeredAbilityIds], [26]);
+    assert.deepEqual(toggleDraftAbility({}, 2, ["frost_ring"], "frost_ring").abilities, [26]);
 });
 
 test("completed loadouts still mark the auto-picked current-round ability as selected", () => {
-    const draft = loadoutDraftState({ abilities: [1, 3, 13] }, 2, [13, 14, 15]);
+    const draft = loadoutDraftState({ abilities: [1, 3, 26] }, 2, [26, 27, 15]);
 
     assert.deepEqual(draft.inheritedAbilities, [1, 3]);
-    assert.deepEqual(draft.draftedAbilities, [13]);
+    assert.deepEqual(draft.draftedAbilities, [26]);
 
-    const lateRound = loadoutDraftState({ abilities: [1, 3, 13, 14, 15, 21] }, 5, roundFiveOffers);
+    const lateRound = loadoutDraftState({ abilities: [1, 3, 26, 27, 15, 21] }, 5, roundFiveOffers);
     assert.deepEqual(lateRound.draftedAbilities, [21]);
-    assert.deepEqual(lateRound.inheritedAbilities, [1, 3, 13, 14, 15]);
+    assert.deepEqual(lateRound.inheritedAbilities, [1, 3, 26, 27, 15]);
 });
 
 test("a fresh round keeps only the picks of the rounds before it", () => {
-    assert.deepEqual(loadoutForFreshRound({ abilities: [1, 3, 13] }, 1).abilities, []);
-    assert.deepEqual(loadoutForFreshRound({ abilities: [1, 3, 13, 14] }, 2).abilities, [1, 3]);
-    assert.deepEqual(loadoutForFreshRound({ abilities: [1, 3, 13, 14, 22] }, 3).abilities, [1, 3, 13]);
-    assert.deepEqual(loadoutForFreshRound({ abilities: [1, 3, 13, 14, 15, 21, 22] }, 6).abilities, [1, 3, 13, 14, 15, 21]);
+    assert.deepEqual(loadoutForFreshRound({ abilities: [1, 3, 26] }, 1).abilities, []);
+    assert.deepEqual(loadoutForFreshRound({ abilities: [1, 3, 26, 27] }, 2).abilities, [1, 3]);
+    assert.deepEqual(loadoutForFreshRound({ abilities: [1, 3, 26, 27, 22] }, 3).abilities, [1, 3, 26]);
+    assert.deepEqual(loadoutForFreshRound({ abilities: [1, 3, 26, 27, 15, 21, 22] }, 6).abilities, [1, 3, 26, 27, 15, 21]);
 });

@@ -7,7 +7,7 @@ import tools.jackson.databind.JsonNode;
 /** Spring-to-worker transport types; gameplay execution belongs to shared/engine. */
 public final class SimulationRequest {
     private SimulationRequest() {}
-    public static final String DUEL_RULESET_VERSION = "duel-v2";
+    public static final String DUEL_RULESET_VERSION = "duel-v3";
     public static final int MAX_SEGMENTS = 6;
     public static final int MAX_SIMULATION_BOTS = 8;
     public record DuelSimulationRequest(

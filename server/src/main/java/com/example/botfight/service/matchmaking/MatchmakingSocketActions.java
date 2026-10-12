@@ -33,6 +33,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class MatchmakingSocketActions {
+    private final java.util.Map<UUID, PreparedKit> preparedKits = new java.util.concurrent.ConcurrentHashMap<>();
+    private record PreparedKit(String socket, String kit) {}
     private final MatchmakingService matchmakingService;
     private final MatchService matchService;
     private final CurrentUserService currentUserService;
@@ -62,6 +64,8 @@ public class MatchmakingSocketActions {
         } catch (IllegalArgumentException exception) {
             throw new AuthException("The selected match mode is not available.");
         }
+        String kit = com.example.botfight.service.match.MatchLoadoutService.validateKit(payload == null ? null : payload.kit());
+        preparedKits.put(user.getId(), new PreparedKit(headers.getSessionId(), kit));
         PartyService.QueueContext queueContext = partyService.queueContext(
                         user.getId(),
                         user.getUsername(),
@@ -82,6 +86,12 @@ public class MatchmakingSocketActions {
                         user.getUsername(),
                         principal.getName(),
                         headers.getSessionId()));
+        queueGroup = queueGroup.stream().map(entrant -> {
+            PreparedKit prepared = preparedKits.get(entrant.userId());
+            if (prepared == null || !java.util.Objects.equals(prepared.socket(), entrant.socketSessionId()))
+                throw new AuthException("every party member must prepare their own kit on their current connection");
+            return entrant.withKit(prepared.kit());
+        }).toList();
         List<OutboundMatchmakingEvent> events = matchmakingService.joinQueue(new QueueJoinRequest(
                 user.getId(),
                 user.getUsername(),
@@ -93,6 +103,16 @@ public class MatchmakingSocketActions {
                 user.isGuest() ? QueuePool.GUEST : QueuePool.REGISTERED));
         publisher.publish(events);
         publishPartyQueueState(queueContext, mode, events, "WAITING");
+    }
+
+    public void prepareKit(com.example.botfight.DTO.match.MatchKitDTO kit, Principal principal, SimpMessageHeaderAccessor headers) {
+        AppUser user = requireUser(principal);
+        preparedKits.put(user.getId(), new PreparedKit(headers.getSessionId(), com.example.botfight.service.match.MatchLoadoutService.validateKit(kit)));
+    }
+
+    @org.springframework.context.event.EventListener
+    public void disconnected(com.example.botfight.service.websocket.WebSocketSessionDisconnectedEvent event) {
+        preparedKits.entrySet().removeIf(entry -> java.util.Objects.equals(entry.getValue().socket(), event.sessionId()));
     }
 
     public void leaveQueue(Principal principal) {
@@ -186,8 +206,7 @@ public class MatchmakingSocketActions {
                         .status("IDLE")
                         .players(List.of())
                         .serverNow(Instant.now())
-                        .roundBrains(List.of())
-                        .abilityOffers(List.of()).build());
+                        .roundBrains(List.of()).build());
     }
 
     private void publishPartyQueueState(

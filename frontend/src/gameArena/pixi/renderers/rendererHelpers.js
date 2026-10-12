@@ -2,9 +2,8 @@ import { ABILITY_STATS } from "../../../../../shared/engine/gameconfig/Abilities
 import { ABILITIES } from "../../../../../shared/engine/gameconfig/AbilityRegistry.js";
 import { preparingAbilityId } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 import { abilityVisualOpacity, combatVisualRemainingMs, sweepAngle, visualProgress } from "../../../../../shared/engine/gameconfig/visualState.js";
-import { triggerView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { activationView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { compassDegreesToRadians } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
-import { botAbilityActiveMs } from "../botAbilityPresentationDefinitions.js";
 import { heavySlashRotation, weaponWindupProgress } from "../pixiVisualState.js";
 import { visualRayLength } from "../rayPresentationGeometry.js";
 
@@ -18,11 +17,11 @@ export const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 export const radians = (degrees) => degrees * Math.PI / 180;
 
 export function abilityHitbox(abilityId) {
-    return triggerView(abilityId)?.hitbox ?? {};
+    return activationView(abilityId)?.hitbox ?? {};
 }
 
 export function abilityVisual(abilityId) {
-    return triggerView(abilityId)?.visual ?? {};
+    return activationView(abilityId)?.visual ?? {};
 }
 
 export function abilityStats(abilityId) {
@@ -49,17 +48,12 @@ export function windupProgress(ctx) {
 
 /** Remaining/total time, opacity and origin of the activation visual the bot is showing. */
 export function activeVisualFrame(ctx) {
-    const { shape, position, abilityId, presentation } = ctx;
-    const phase = triggerView(abilityId);
+    const { shape, position, abilityId } = ctx;
+    const phase = activationView(abilityId);
     const phaseHitbox = phase?.hitbox ?? {};
     const phaseVisual = phase?.visual ?? {};
     const duration = Number(phaseVisual.visibleMs ?? 300);
-    const activeMs = botAbilityActiveMs(shape, presentation);
-    const configuredActiveMs = Number(phaseVisual.visibleMs ?? abilityStats(abilityId).activeMs ?? duration);
-    const replayActivationRemainingMs = Math.max(0, duration - Math.max(0, configuredActiveMs - activeMs));
-    const remaining = presentation.selfGuardFlash === true
-        ? Math.max(Number(shape.abilityVisual?.ms ?? 0), replayActivationRemainingMs)
-        : combatVisualRemainingMs(shape, abilityId);
+    const remaining = combatVisualRemainingMs(shape, abilityId);
     const originX = Number(shape.abilityVisual?.x ?? shape.visualOriginX ?? position.x);
     const originY = Number(shape.abilityVisual?.y ?? shape.visualOriginY ?? position.y);
     const originRotation = Number(shape.abilityVisual?.rotation ?? shape.visualOriginRotation ?? shape.rotation);
@@ -188,17 +182,6 @@ export function drawSlashSweep(ctx) {
         presentation.tint ?? 0xffffff, opacity);
 }
 
-/** Fading shield sprite used by the guard abilities; `selfGuardFlash` keeps it visible through replay activation. */
-export function drawGuardFlash(ctx) {
-    const { kit, view, arenaSprites, presentation } = ctx;
-    const { phaseVisual, remaining, duration, angle } = activeVisualFrame(ctx);
-    const progress = visualProgress(remaining, duration);
-    const radius = Number(phaseVisual.visualSize ?? 80) / 2 + progress * 16;
-    kit.showEffect(view, "ability", kit.frameAtProgress(arenaSprites.abilities.shield, progress), {
-        rotation: angle + Math.PI, alpha: 1 - progress, tint: presentation.tint, width: radius * 2, height: radius * 2,
-    });
-}
-
 /** Small seeded generator (Lehmer) so effect shapes are identical every run (renderers take no unseeded randomness). */
 export function seededRandom(seed) {
     let state = Math.max(1, Math.floor(Number(seed) || 1)) % 2147483647 || 1;
@@ -290,4 +273,12 @@ export function dashedRectSegments(length, width, dashUnits, gapUnits) {
         }
     }
     return segments;
+}
+
+/** A stroked arc that starts on the arc itself: Pixi v8 joins an arc to the previous point otherwise. */
+export function arcPath(graphics, cx, cy, radius, startAngle, endAngle) {
+    const [x, y] = rotatePoint(startAngle, radius, 0);
+    graphics.moveTo(cx + x, cy + y);
+    graphics.arc(cx, cy, radius, startAngle, endAngle);
+    return graphics;
 }

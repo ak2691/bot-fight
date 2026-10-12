@@ -25,12 +25,12 @@ test("bots are one flat state with every field present and an explicit kind", ()
 
     assert.equal(player.kind, "bot");
     assert.equal(opponent.kind, "bot");
-    assert.equal(player.hp, 300);
-    assert.equal(player.maxHp, 300);
+    assert.equal(player.hp, 225);
+    assert.equal(player.maxHp, 225);
     assert.deepEqual([player.x, player.y], [600, 600]);
     assert.deepEqual([player.velocityX, player.velocityY], [0, 0]);
     assert.deepEqual(player.statusEffects, []);
-    assert.equal(opponent.hp, 300);
+    assert.equal(opponent.hp, 225);
     assert.deepEqual([opponent.x, opponent.y], [600, 1050]);
     for (const nested of ["health", "stats", "transform"]) {
         assert.equal(nested in player, false, `${nested} is not a bot field`);
@@ -104,5 +104,5 @@ test("match spawn shapes start from the frozen end of the last segment when the 
     assert.equal(shapes[1].locked, true, "the opponent is a stationary dummy");
 
     const fresh = buildMatchSpawnShapes({ matchId: "m", player: players[0], loadout: "melee", players });
-    assert.equal(fresh[0].hp, 300);
+    assert.equal(fresh[0].hp, 225);
 });

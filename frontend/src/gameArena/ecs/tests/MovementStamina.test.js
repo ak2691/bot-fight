@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { presetEffects } from "../../../../../shared/engine/gameconfig/StatusPresets.js";
 import test from "node:test";
 import { MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../../../../shared/engine/gameconfig/MovementConfig.js";
 import { initialMovementState } from "../../../../../shared/engine/gameconfig/StaminaSystem.js";
@@ -143,17 +144,18 @@ test("sprint is x1.5 in every direction and drains 3 stamina per tick", () => {
         const moved = step(bot({ x: 600, y: 600 }), { dx, dy, dRot: 0, sprint: true });
         assert.ok(Math.abs(Math.hypot(moved.x - 600, moved.y - 600) - WALK_SPEED * 1.5) < 1e-9, `${dx},${dy}`);
     }
-    // Sprint multiplies the speed after status multipliers.
-    const slowEffect = {
-        statusEffects: [{
-            type: "slow", remainingMs: 1000, mode: "duration",
-            effects: [{ type: STATUS_EFFECT_APPLICATIONS.MOVEMENT_MODIFIER, movementMultiplier: 0.5, rotationMultiplier: 0.5 }],
-        }],
-    };
+    // Slow still slows the walk, and it blocks sprint rather than multiplying it.
+    const slowEffect = { statusEffects: [{ type: "slow", remainingMs: 1000, mode: "duration", effects: presetEffects("slow") }] };
     const slowed = step(bot(slowEffect), walk({ sprint: true }));
     const slowedWalk = step(bot(slowEffect), walk());
     assert.ok(slowedWalk.x - 200 < WALK_SPEED, "the slow applies");
-    assert.ok(Math.abs((slowed.x - 200) - (slowedWalk.x - 200) * 1.5) < 1e-9);
+    assert.equal(slowed.sprinting, false, "slow blocks sprint");
+    assert.equal(slowed.x, slowedWalk.x);
+    // Sprint multiplies the speed after status multipliers (hit stagger slows the walk and sprint still applies).
+    const staggerEffect = { statusEffects: [{ type: "hit-stagger", remainingMs: 1000, mode: "duration", effects: presetEffects("hit-stagger") }] };
+    const staggered = step(bot(staggerEffect), walk({ sprint: true }));
+    const staggeredWalk = step(bot(staggerEffect), walk());
+    assert.ok(Math.abs((staggered.x - 200) - (staggeredWalk.x - 200) * 1.5) < 1e-9);
 
     // Without the setting, or when standing still, nothing sprints or drains.
     const plain = step(bot(), walk());
@@ -198,7 +200,7 @@ test("attacking no longer slows sprint: it holds while an ability starts, winds 
     assert.equal(stillWinding.stamina, 94);
 
     // Movement-lock and 0 stamina still stop it.
-    const locked = step(bot({ statusEffects: [{ type: "movement-lock", remainingMs: 1000, mode: "duration" }] }), walk({ sprint: true }));
+    const locked = step(bot({ statusEffects: [{ type: "movement-lock", remainingMs: 1000, mode: "duration", effects: presetEffects("movement-lock") }] }), walk({ sprint: true }));
     assert.equal(locked.sprinting, false);
     assert.equal(step(bot({ stamina: 0, staminaRegenDelayMs: 500 }), walk({ sprint: true })).sprinting, false);
 });
@@ -411,7 +413,7 @@ test("Cancel and an ability can share one node: Cancel does not use the ability 
 // ---- Fast turn (a Rotate setting; mirrored by MovementStaminaParityTest.java) ----
 
 const turn = (dRot, extra = {}) => ({ dx: 0, dy: 0, dRot, fastTurn: true, ...extra });
-const staggered = { statusEffects: [{ type: "hit-stagger", remainingMs: 1000, mode: "duration" }] };
+const staggered = { statusEffects: [{ type: "hit-stagger", remainingMs: 1000, mode: "duration", effects: presetEffects("hit-stagger") }] };
 
 test("fast turn rotates 24 degrees per tick and drains 2 stamina", () => {
     const fast = step(bot(), turn(1));
@@ -468,7 +470,7 @@ test("the stagger rotation multiplier applies to the fast step", () => {
 });
 
 test("a stunned bot turns at the normal speed and pays nothing", () => {
-    const stunned = step(bot({ statusEffects: [{ type: "stun", remainingMs: 1000, mode: "duration" }] }), turn(1));
+    const stunned = step(bot({ statusEffects: [{ type: "stun", remainingMs: 1000, mode: "duration", effects: presetEffects("stun") }] }), turn(1));
     assert.equal(stunned.rotation, 102);
     assert.equal(stunned.stamina ?? 100, 100);
     assert.equal(stunned.fastTurning ?? false, false);

@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lingerFade, smashCrackGrowth, sprintSpawnPlan, sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
+import { lingerFade, smashCrackGrowth, sprintSpawnPlan, sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
 import { ABILITY_CONTRACTS, eventVerbs } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
-import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../../../../shared/engine/gameconfig/hitboxGeometry.js";
+import { hitboxGeometriesForEntity, hitboxGeometryForEntity } from "../../../../shared/engine/gameconfig/hitboxGeometry.js";
 import { createBotState, isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
 
 test("Pixi renderer classifies every combat snapshot family without changing game state", () => {
@@ -11,7 +11,6 @@ test("Pixi renderer classifies every combat snapshot family without changing gam
     assert.equal(isBotState({ id: "main", type: "circle", slot: 1, userId: "u" }), false, "only the factory kind marks a bot");
     assert.equal(isBotState({ id: "fireball-1", type: "fireball", abilityId: 5, ownerSlot: 1 }), false);
     assert.equal(pixiLayerForShape({ type: "fireball" }), "projectiles");
-    assert.equal(pixiLayerForShape({ type: "nullZone" }), "zones");
     assert.equal(pixiLayerForShape({ type: "closingZone" }), "zones");
     assert.equal(pixiLayerForShape({ type: "hunterDrone" }), "entities");
 });
@@ -42,14 +41,6 @@ test("phase entities resolve phase visuals separately from event visuals", () =>
     assert.equal(visualForShape({ type: "grenade", abilityId: 4, phaseId: "active" }), null);
     assert.equal(presentationDefinitionForShape({ type: "grenade", abilityId: 4, phaseId: "active" }).fallback, "hidden");
     assert.equal(pixiLayerForShape({ type: "grenade", abilityId: 4, phaseId: "active" }), "projectiles");
-    assert.deepEqual(visualForShape({
-        type: "proximityMine", abilityId: 11, phaseId: "active", phaseLocked: true,
-        eventType: "collision", eventSequence: 1,
-    }), {
-        type: "mineExplosion",
-        visualSize: 175,
-        visibleMs: 300,
-    });
 });
 
 test("drone shot visuals resolve from the embedded collision event contract", () => {
@@ -220,11 +211,9 @@ test("practice hitbox geometry mirrors projectile, explosion, and persistent abi
     });
     [
         { type: "grenade", abilityId: 4, phaseId: "active", phaseLocked: true, size: 140, radius: 70 },
-        { type: "proximityMine", abilityId: 11, phaseId: "active", phaseLocked: true, size: 175, radius: 87.5 },
-        { type: "gravityZone", abilityId: 14, phaseId: "active", phaseLocked: true, size: 240, radius: 120 },
         { type: "singularityZone", abilityId: 27, phaseId: "active", phaseLocked: true, size: 280, radius: 140 },
         { type: "snareBomb", abilityId: 29, phaseId: "destroyed", phaseLocked: true, size: 240, radius: 120, armed: true },
-        { type: "orbitalMarker", abilityId: 22, phaseId: "active", phaseLocked: true, size: 260, radius: 130 },
+        { type: "orbitalMarker", abilityId: 22, phaseId: "marker", phaseLocked: true, size: 280, radius: 140 },
     ].forEach(({ type, abilityId, size, radius, phaseId, armed }) => {
         assert.deepEqual(hitboxGeometryForEntity({ type, abilityId, size, phaseId, armed, remainingMs: 100 }), {
             shape: "circle",
@@ -243,83 +232,10 @@ test("practice hitbox geometry mirrors projectile, explosion, and persistent abi
         height: 80,
         rotation: 0,
     });
-    assert.deepEqual(hitboxGeometryForEntity({ type: "nullZone", abilityId: 24, size: 300 }), {
+    assert.deepEqual(hitboxGeometryForEntity({ type: "orbitalMarker", abilityId: 22, size: 280 }), {
         shape: "circle",
-        radius: 150,
+        radius: 140,
     });
-    assert.deepEqual(hitboxGeometryForEntity({ type: "orbitalMarker", abilityId: 22, size: 260 }), {
-        shape: "circle",
-        radius: 130,
-    });
-});
-
-test("practice hitbox geometry mirrors direct melee, radial, and hitscan deliveries", () => {
-    const slash = hitboxGeometryForBot({
-        hp: 100,
-        size: 60,
-        abilityVisual: { ability: 7, ms: 200, x: 100, y: 200, rotation: 90 },
-    });
-    assert.equal(slash.shape, "sector");
-    assert.equal(slash.abilityId, 7);
-    assert.equal(slash.x, 100);
-    assert.equal(slash.y, 200);
-    assert.equal(slash.radius, 115);
-    assert.equal(slash.halfAngle, 75 * Math.PI / 180);
-    assert.equal(slash.rotation, 0);
-    assert.equal(slash.remainingMs, 200);
-
-    const phaseStrike = hitboxGeometryForBot({
-        hp: 100,
-        size: 60,
-        abilityVisual: { ability: 25, ms: 300, x: 100, y: 200, rotation: 90 },
-    });
-    assert.equal(phaseStrike.shape, "rectangle");
-    assert.equal(phaseStrike.abilityId, 25);
-    assert.equal(phaseStrike.x, 150);
-    assert.equal(phaseStrike.y, 200);
-    assert.equal(phaseStrike.width, 100);
-    assert.equal(phaseStrike.height, 60);
-    assert.equal(phaseStrike.rotation, 0);
-
-    const ray = hitboxGeometryForBot({
-        hp: 100,
-        size: 60,
-        abilityVisual: { ability: 3, ms: 500, x: 300, y: 400, rotation: 180 },
-    });
-    assert.equal(ray.shape, "ray");
-    assert.equal(ray.abilityId, 3);
-    assert.equal(ray.length, 1200);
-    assert.equal(ray.width, 6);
-    assert.equal(ray.x, 300);
-    assert.equal(ray.y, 400);
-    assert.equal(ray.rotation, Math.PI / 2);
-    assert.equal(ray.remainingMs, 500);
-
-    for (const [ability, expectedWidth] of [[9, 5], [12, 5], [13, 5], [30, 8], [32, 10]]) {
-        const geometry = hitboxGeometryForBot({
-            hp: 100,
-            size: 60,
-            abilityVisual: { ability, ms: 300, x: 300, y: 400, rotation: 180 },
-        });
-        assert.equal(geometry.shape, "ray", ability);
-        assert.equal(geometry.width, expectedWidth, ability);
-    }
-
-    const radial = hitboxGeometryForBot({
-        hp: 100,
-        size: 60,
-        x: 500,
-        y: 500,
-        rotation: 0,
-        abilityState: { 26: { stage: "active", remainingMs: 300 } },
-    });
-    assert.equal(radial.shape, "circle");
-    assert.equal(radial.abilityId, 26);
-    assert.equal(radial.radius, 120);
-    assert.equal(radial.x, 500);
-    assert.equal(radial.y, 500);
-
-    assert.equal(hitboxGeometryForBot({ abilityVisual: { ability: 10, ms: 300 } }), null);
 });
 
 test("practice hitbox geometry includes summon hitscan attacks during their shot window", () => {
@@ -375,17 +291,15 @@ test("every supported bot and entity presentation points at a required asset or 
     [...botPaths, ...entityPaths].forEach((path) => assert.equal(requiredPaths.has(path), true, path));
 
     const entityTypes = [
-        "hunterDrone", "windburstProjectile", "fireball", "grenadeExplosion", "mineExplosion", "gravityExplosion",
-        "gravityZone", "silenceWave", "nullZone", "temporalRewindZone", "orbitalMarker", "orbitalExplosion",
+        "hunterDrone", "windburstProjectile", "fireball", "grenadeExplosion", "silenceWave", "temporalRewindZone", "orbitalExplosion",
         "singularityZone", "singularityExplosion",
-        "tetherBolt", "staticSnare", "staticSnareBurst", "repellerDrone",
+        "tetherBolt", "staticSnare", "staticSnareBurst",
     ];
     entityTypes.forEach((type) => {
         const definition = presentationDefinitionForShape({ type, visibleMs: 100, remainingMs: 100, velocityX: 0, velocityY: 0 });
         assert.notEqual(definition.fallback, "hidden", type);
     });
     assert.notEqual(presentationDefinitionForShape({ type: "grenade", velocityX: 0, velocityY: 0, stoppedMs: 0 }).fallback, "hidden");
-    assert.notEqual(presentationDefinitionForShape({ type: "proximityMine", armed: false }).fallback, "hidden");
     assert.equal(presentationDefinitionForShape({ type: "unknownEntity" }).fallback, "hidden");
 });
 
@@ -400,7 +314,6 @@ test("bot colors follow the match-assigned team instead of viewer identity or sl
 });
 
 test("Pixi movement interpolation follows canonical ability metadata", () => {
-    assert.equal(shapeInterpolationMs({ abilityId: 13, interpolationMs: 100 }), 0);
     assert.equal(shapeInterpolationMs({ abilityId: 5, interpolationMs: 125 }), 125);
 });
 
@@ -414,7 +327,6 @@ test("moving projectile snapshots opt into animated trail presentation", () => {
     assert.deepEqual(projectileTrailStyle({ type: "fireball", velocityX: 10, velocityY: 0 }), { color: 0xfb923c, length: 48, width: 10 });
     assert.equal(projectileTrailStyle({ type: "grenade", velocityX: 10, velocityY: 0 }), null);
     assert.equal(projectileTrailStyle({ type: "grenade", velocityX: 0, velocityY: 0 }), null);
-    assert.equal(projectileTrailStyle({ type: "proximityMine", velocityX: 10, velocityY: 0 }), null);
 });
 
 test("grenade presentation changes from moving to static to two-tick detonation", () => {
@@ -440,7 +352,6 @@ test("directional summon visuals follow their authoritative facing", () => {
     assert.equal(ENTITY_PRESENTATION_DEFINITIONS.hunterDrone.rotationOffset, -Math.PI / 2);
     assert.equal(entityVisualRotation({ type: "hunterDrone", rotation: 0 }), -Math.PI);
     assert.equal(entityVisualRotation({ type: "hunterDrone", rotation: 90 }), -Math.PI / 2);
-    assert.equal(entityVisualRotation({ type: "repellerDrone", rotation: 180 }), 0);
     assert.equal(entityVisualRotation({
         type: "fireball", rotation: 90, velocityX: 0, velocityY: 100,
     }), 0);
@@ -451,24 +362,6 @@ test("replay projectiles recover motion from adjacent frames when velocity is ab
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 0, velocityY: 0 }, { x: 120, y: 100 }), { velocityX: 10, velocityY: -5 });
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 7, velocityY: 2 }, { x: 120, y: 100 }), { velocityX: 7, velocityY: 2 });
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 0, velocityY: 0 }, { x: 130, y: 95 }, { x: 140, y: 85 }), { velocityX: 10, velocityY: -10 });
-});
-
-test("replay does not infer a projectile trail for a stationary contract phase", () => {
-    const replayShape = normalizeReplayObstacleShape({
-        type: "gravityZone",
-        abilityId: 14,
-        phaseId: "fuse",
-        x: 120,
-        y: 100,
-        velocityX: null,
-        velocityY: null,
-    }, { x: 100, y: 100 }, { x: 140, y: 100 });
-
-    assert.deepEqual(
-        { velocityX: replayShape.velocityX, velocityY: replayShape.velocityY },
-        { velocityX: 0, velocityY: 0 },
-    );
-    assert.equal(projectileTrailStyle(replayShape), null);
 });
 
 test("replay obstacle normalization preserves the canonical building shape contract", () => {
@@ -510,22 +403,6 @@ test("replay obstacle normalization preserves the canonical building shape contr
     assert.equal(replayShape.hitParticleEvent, "100:id:grenade-1");
     assert.equal(replayShape.replayFrameIndex, 1);
     assert.equal(replayShape.replayPhase, "playback");
-});
-
-test("replay phase visuals restore the training visible timer", () => {
-    ["mineExplosion", "gravityExplosion", "singularityExplosion", "staticSnareBurst"].forEach((type) => {
-        const replayShape = normalizeReplayObstacleShape({
-            id: `${type}-1`,
-            type,
-            x: 300,
-            y: 240,
-            size: 150,
-            timerMs: 175,
-        });
-
-        assert.equal(replayShape.visibleMs, 175, type);
-        assert.equal(replayShape.remainingMs, 175, type);
-    });
 });
 
 test("replay phase visuals use the same renderer contract as live entities", () => {
@@ -578,119 +455,15 @@ test("visual animation descriptors keep event timers separate from phase clocks"
     assert.equal(orbitalPulse.remainingMs, null);
 });
 
-test("semantic replay events resolve repeating visuals from the frontend contract", () => {
-    const shape = {
-        type: "orbitalMarker",
-        abilityId: 22,
-        phaseId: "active",
-        phaseTimerMs: 600,
-        eventType: "collision",
-        eventSequence: 2,
-    };
-
-    assert.deepEqual(visualForShape(shape), {
-        type: "orbitalExplosion",
-        visualSize: 260,
-        visibleMs: 400,
-    });
-    const descriptor = visualAnimationDescriptorForShape(shape);
-    assert.equal(descriptor.eventActive, true);
-    assert.equal(descriptor.durationMs, 400);
-    assert.equal(descriptor.remainingMs, 400);
-});
-
-test("live repeating event visuals stop when their presentation timer reaches zero", () => {
-    const activePulse = {
-        type: "orbitalMarker",
-        abilityId: 22,
-        phaseId: "active",
-        eventType: "collision",
-        eventSequence: 3,
-        visualEventType: "untrustedPayloadVisual",
-        visualEventMs: 100,
-        visualEventSize: 260,
-    };
-    assert.equal(visualForShape(activePulse).type, "orbitalExplosion");
-    assert.equal(visualAnimationDescriptorForShape(activePulse).eventActive, true);
-
-    const completedPulse = { ...activePulse, visualEventMs: 0 };
-    assert.equal(visualForShape(completedPulse).type, "orbitalMarker");
-    assert.equal(visualAnimationDescriptorForShape(completedPulse).eventActive, false);
-});
-
-test("event visuals become independent fixed-position instances", () => {
-    const spawned = {
-        id: "orbital-1",
-        type: "orbitalMarker",
-        x: 500,
-        y: 300,
-        remainingMs: 900,
-        eventType: "collision",
-        eventSequence: 3,
-        visualEvent: 3,
-        visualEventType: "untrustedPayloadVisual",
-        visualEventMs: 100,
-        visualEventSize: 12,
-    };
-    const instance = visualInstanceForShape(spawned, 1000);
-
-    assert.equal(instance.id, "event:orbital-1:3:orbitalExplosion");
-    assert.equal(instance.lifecycle, VISUAL_LIFECYCLES.EVENT);
-    assert.equal(instance.spawnMode, VISUAL_SPAWN_MODES.EVENT);
-    assert.equal(instance.followEntity, false);
-    assert.equal(instance.spawnedAt, 700);
-    assert.equal(instance.expiresAt, 1100);
-    assert.equal(instance.x, 500);
-    assert.equal(instance.y, 300);
-    assert.equal(instance.shape.type, "orbitalExplosion");
-    assert.equal(visualInstanceIsActive(instance, 1099), true);
-    assert.equal(visualInstanceIsActive(instance, 1100), false);
-});
-
-test("repeated event occurrences get separate visual instances while phase visuals follow entities", () => {
-    const first = visualInstanceForShape({
-        id: "orbital-1", type: "orbitalMarker", abilityId: 22, phaseId: "active",
-        x: 500, y: 300, eventType: "collision", eventSequence: 3,
-        visualEventType: "untrustedPayloadVisual", visualEventMs: 400, visualEventSize: 12,
-    }, 1000);
-    const second = visualInstanceForShape({
-        id: "orbital-1", type: "orbitalMarker", abilityId: 22, phaseId: "active",
-        x: 540, y: 320, eventType: "collision", eventSequence: 4,
-        visualEventType: "untrustedPayloadVisual", visualEventMs: 400, visualEventSize: 12,
-    }, 1100);
-    const phase = visualInstanceForShape({
-        id: "grenade-1", type: "grenade", abilityId: 4, phaseId: "travel",
-        phaseTimerMs: 100, x: 200, y: 150,
-    }, 1000, VISUAL_LIFECYCLES.PHASE);
-
-    assert.notEqual(first.id, second.id);
-    assert.equal(first.x, 500);
-    assert.equal(second.x, 540);
-    assert.equal(phase.lifecycle, VISUAL_LIFECYCLES.PHASE);
-    assert.equal(phase.spawnMode, VISUAL_SPAWN_MODES.ENTITY);
-    assert.equal(phase.followEntity, true);
-    assert.equal(phase.expiresAt, null);
-    assert.deepEqual(shapeWithoutVisualEvent({
-        eventType: "collision", eventSequence: 1, visualEventType: "impact", visualEventMs: 100,
-        visualEventSize: 20, visualEvent: 1, type: "staticSnare", x: 1,
-    }), { type: "staticSnare", x: 1 });
-});
-
 test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.deepEqual(botStatusLabels({ statusEffects: [
         { type: "burn", remainingMs: 100 },
         { type: "slow", remainingMs: 100 },
         { type: "silence", mode: "presence" },
     ] }), ["BURN", "SLOW", "SIL"]);
-    assert.deepEqual(botStatusLabels({ statusEffects: [{ type: "overclock", remainingMs: 100 }] }), ["OVERCLOCK"]);
-    assert.equal(activeBotVisual({ abilityVisual: { ability: 7, ms: 200 } }), 7);
+    assert.equal(activeBotVisual({ abilityVisual: { ability: 3, ms: 200 } }), 3);
     assert.equal(activeBotVisual({ abilityVisual: { ability: 19, ms: 200 } }), null);
     assert.equal(activeBotVisual({ abilityState: { 19: { stage: "active", remainingMs: 200 } } }), null);
-    assert.equal(activeBotVisual({ abilityState: { 16: { stage: "active", remainingMs: 3000 } } }), 16);
-    assert.equal(activeBotVisual({ abilityState: { 23: { stage: "active", remainingMs: 1500 } } }), 23);
-    assert.equal(activeBotVisual({ abilityState: { 33: { stage: "active", remainingMs: 3000 } } }), 33);
-    assert.equal(entityCaption({ type: "proximityMine", armed: true }), "");
-    assert.equal(entityCaption({ type: "repellerDrone", hp: 31 }), "31.0 HP");
     assert.equal(entityCaption({ type: "snareBomb", hp: 20 }), "20.0 HP");
     assert.equal(entityCaption({ type: "orbitalMarker", fuseMs: 900 }), "");
 });

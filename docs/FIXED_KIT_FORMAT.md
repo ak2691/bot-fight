@@ -1,6 +1,6 @@
 # Fixed Kit Format
 
-Status: proposal, written 2026-10-10. Nothing here is built. It amends
+Status: server and shared engine sections 3, 4 and 6 built 2026-10-10. Client UI, saved brains/snippets and sparring remain unbuilt. It amends
 [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) (the "timed-rounds doc"): where they disagree,
 this document describes the intended change, and the timed-rounds doc describes what exists today. Sections of
 the timed-rounds doc that this one doesn't mention (movement and stamina, chains, carry-over, the zone, the HP
@@ -32,7 +32,7 @@ can do something useful in their first match.
 | Edits per round | Open question | **Unlimited** within the brain budget. The clock is the only limit |
 | Clock increment | +30 s every round | **+45 s on unlock rounds, +30 s on gap rounds** |
 
-## 3. The kit
+## 3. The kit (server and shared engine built)
 
 | Slot | Choice | Pool today | Character |
 |---|---|---|---|
@@ -50,6 +50,20 @@ can do something useful in their first match.
 - A kit is at most a weapon + 3 abilities per bot (8 tools on the board), and all of them are visible from the
   start. Nothing arrives that couldn't be seen coming.
 
+### Implemented server protocol
+
+- `/app/matchmaking.join` includes `kit: { weapon: 1, abilities: [3, 6, 21] }` (numeric IDs ordered by tier).
+  Wrong tiers, duplicates, unknown IDs, missing weapon, coercible strings/floats and extra fields are rejected.
+- For parties, each member prepares their own kit via `/app/matchmaking.kit` on their live socket; the leader's
+  queue request includes their own kit. The server requires a prepared kit for every teammate's current socket.
+- `POST /api/custom-lobbies/{lobbyId}/ready` takes the same kit and updates only the authenticated member.
+  Every member must be ready before the owner starts. Pre-match snapshots expose readiness, not kits.
+- Match participant `selectedLoadout` stores the full locked kit, persisted at creation and revealed in
+  `players[]` to all authorized players and spectators. `timedRounds.unlockedTier` announces each round's unlock
+  (null on gap rounds); `incrementSeconds` is that round's actual increment. `KIT_REVEAL` is the initial hold;
+  the existing `loadoutSelectionEndsAt` field now carries only its 10-second deadline. No pick endpoint remains.
+- Submission rules use the authoritative full kit. Segment requests carry only the unlocked combat subset.
+
 ### Not adopted
 
 - **Larger pools (choosing a subset during the match):** with more options than slots, a player always adapts and
@@ -58,9 +72,9 @@ can do something useful in their first match.
 - **Choosing the unlock order:** with one ability per tier, the order is fixed by tier. That makes every unlock
   predictable, which is the point: the question is how the opponent's brain uses it, not whether it arrives.
 
-## 4. Rounds
+## 4. Rounds (server and shared engine built)
 
-Six 20-second segments of one continuous fight, as today. Odd rounds unlock the next slot of the kit; even rounds
+Six 15-second segments (90 seconds total) of one continuous fight, as today. Odd rounds unlock the next slot of the kit; even rounds
 add nothing.
 
 | Round | Unlock | Clock increment | Purpose |
@@ -93,6 +107,7 @@ real decision with a real cost, and the replay shows it.
 
 - Abilities unlock automatically at the start of the build for their round. There is no pick phase, so each
   round's fixed overhead shrinks by the pick time (30 s in round 1, 20 s after, today).
+- Round 1 holds both revealed kits for exactly 10 seconds, outside the clock. Later rounds enter build immediately.
 - A short reveal banner ("Round 3: Red unlocks Silence Pulse, Blue unlocks Reflect") replaces the pick.
 - The newly unlocked ability starts ready, as a newly picked one does today.
 
@@ -144,14 +159,15 @@ With about 4 × 11 × 10 × 5 ≈ 2,200 possible kits, there can't be a starter 
 - The match still stores the actual brain submitted each round, so re-simulation and audits never depend on the
   library.
 
-## 6. Clock
+## 6. Clock (built)
 
 | | Value |
 |---|---|
-| Base | Open. Today 5:00; **proposed 3:00**, since round 1 starts from a saved brain instead of a blank page |
+| Base | **3:00 in 1v1, 4:00 in 2v2**; custom base remains 30 seconds to 10 minutes (default 5:00) |
 | Increment | +45 s on unlock rounds (1, 3, 5), +30 s on gap rounds (2, 4, 6), at the start of each build |
-| Maximum build time | Base + 3:45 (6:45 with a 3:00 base) |
+| Maximum build time | Base + 3:45 (6:45 in 1v1, 7:45 in 2v2) |
 
+- Custom increment is the gap-round value (0�60 s); unlock rounds add another 15 s.
 - **Why 30 s on gap rounds, not less:** a player who has used up their base clock must still be able to make one
   real change in every round. 20 s is barely enough to open the editor. 30 s is a penalty for spending too long
   earlier, but never leaves a player unable to act.
@@ -173,10 +189,10 @@ and watch the result. Ship the format without it; add it only if players say the
   the full segment or until a KO. Custom situations belong in the practice arena.
 - **The server runs it and returns an ordinary replay.** The opponent's brain never reaches the client. Spar
   replays must never include a logic trace or decision callouts for the opponent's bot.
-- **Cost:** the same brain-schedule re-run as a real segment, with the draft as the last brain (at most 1,200
+- **Cost:** the same brain-schedule re-run as a real segment, with the draft as the last brain (at most 900
   ticks, roughly 300–400 ms on the Node worker). It runs on the player's own clock.
 - **Limits:** a per-round counter on the server (e.g. 5), one spar in flight per player, build phase only. The
-  clock is the real limit: watching a spar costs 10–20 s, a real choice on a +30 s gap round.
+  clock is the real limit: watching a spar costs 10–15 s, a real choice on a +30 s gap round.
 - **Server checks:** validate the draft like a submission, match membership, phase, counter. Nothing is stored but
   the counter, and spars never affect the match.
 - Until then, today's build-phase preview (the opponent as a stationary dummy) stays.
@@ -204,7 +220,7 @@ and watch the result. Ship the format without it; add it only if players say the
 
 Verify current code before acting on any of this.
 
-- **Round draft table:** `ROUND_ABILITY_DRAFT` in `frontend/src/gameArena/loadout/BotLoadout.js` and
+- **Round draft table:** `ROUND_ABILITY_UNLOCK` in `shared/engine/loadout/BotLoadout.js` and
   `MatchLoadoutService` on the server: offers and picks are replaced by "unlock your kit's slot for this tier" on
   odd rounds, and nothing on even rounds. Keep both runtimes in parity.
 - **Validation:** the offered-ability allowlist becomes a kit allowlist (weapon + one ability per tier, each from
@@ -218,11 +234,11 @@ Verify current code before acting on any of this.
 
 ## 11. Open decisions
 
-- Base clock (proposed 3:00) and whether the increments are final.
+- Base clocks and increments are implemented as specified in section 6.
 - Sparring (section 7): whether playtests show it's needed, and the run cap.
-- Whether brains may reference not-yet-unlocked kit abilities (section 10).
-- When the kit is locked: before queueing (simplest) or in a short pre-match lobby.
+- Brains may reference any kit ability; locked actions remain unavailable until unlocked.
+- Kits lock with the queue request or custom-lobby readiness.
 - Whether brains are revealed after the match (helps learning, costs some prep advantage).
 - Flex slot later, if matchups feel repetitive.
 - A casual mode with today's random offers (like League's ARAM): variety, no prep advantage.
-- 2v2: each player has their own kit; the 2v2 clock needs the same rethink.
+- 2v2 uses an independent kit per player and a 4:00 base clock.

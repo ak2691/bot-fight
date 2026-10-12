@@ -1,4 +1,5 @@
 import { GAMEPLAY_DATA } from "./gameplayData.js";
+import { blockedActions } from "../ecs/contracts/StatusContracts.js";
 
 export const DASH_CHANNEL = "dash";
 
@@ -16,12 +17,11 @@ export function abilityStaminaCost(abilityId) {
     return ABILITY_DATA_BY_ID[Number(abilityId)]?.staminaCost ?? 0;
 }
 
-/** The status ids that stop a channel's abilities from starting (and cancel their wind-up). */
-export function channelBlockingStatuses(channelId) {
-    return GAMEPLAY_DATA.channels.channels[channelId]?.blockedByStatuses ?? [];
-}
-
-/** The blocking statuses that also report the channel's abilities as not ready (so a brain falls through). */
-export function channelNotReadyStatuses(channelId) {
-    return GAMEPLAY_DATA.channels.channels[channelId]?.notReadyWhileStatuses ?? [];
+/**
+ * True when a block on the ability's channel makes the ability read as not ready, so a brain falls through (the
+ * dash shows not ready while slowed). Only `block` effects count here: a stun is not a block on a channel.
+ */
+export function notReadyWhileBlocked(shape, abilityId) {
+    const channel = abilityChannel(abilityId);
+    return GAMEPLAY_DATA.channels.channels[channel]?.notReadyWhileBlocked === true && blockedActions(shape).has(channel);
 }

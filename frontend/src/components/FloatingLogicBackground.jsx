@@ -10,7 +10,7 @@ const TREES = [
         name: "Attack",
         condition: { subject: "Distance", chip: "Me→Opp 1", comparator: "<", value: "120" },
         actions: [
-            { channel: "ability", label: "Heavy Slash", abilityId: 7 },
+            { channel: "ability", label: "Stun", abilityId: 6 },
             { channel: "ability", label: "Dash in", abilityId: 19 },
         ],
     },

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnPlacements } from "../../../../../shared/engine/ecs/entities/EntityFactory.js";
-import { ABILITY_STAGES } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 import { interruptCurrentAbility } from "../../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
 import { GAMEPLAY_DATA } from "../../../../../shared/engine/gameconfig/gameplayData.js";
 import { withTestAbilities } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
@@ -44,7 +43,7 @@ const entity = (runtimeType, phases, extra = {}) => ({
     ...extra,
 });
 
-const spawn = (name, pattern = null) => ({ do: "spawn", atMs: null, pose: null, entity: name, pattern });
+const spawn = (name, pattern = null) => ({ do: "spawn", entity: name, pattern });
 const event = (verbs) => ({
     targets: ["BOT"],
     schedule: { mode: "once", intervalMs: null, count: null, startImmediately: true },
@@ -55,8 +54,8 @@ const event = (verbs) => ({
     do: verbs,
 });
 
-/** Ability `id` keeps its shipped timing and gets these trigger verbs and entities. */
-const testAbility = (id, onTrigger, entities) => ({ ...baseAbility(id), onTrigger, entities });
+/** Ability `id` keeps its shipped timing and gets these activation verbs and entities. */
+const testAbility = (id, onActivate, entities) => ({ ...baseAbility(id), onActivate, entities });
 
 const caster = (abilityId, extra = {}) => ({
     id: "owner", slot: 1, teamNumber: 1, x: 300, y: 300, size: 60, rotation: 90, hp: 150, maxHp: 150,
@@ -155,3 +154,4 @@ test("a spawn verb inside an entity event creates its entity from the parent's p
         assert.ok(result.entities.every((shape) => result.bots[0].entityActivations[shape.id] != null));
     });
 });
+

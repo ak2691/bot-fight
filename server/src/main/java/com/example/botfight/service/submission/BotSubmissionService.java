@@ -74,8 +74,20 @@ public class BotSubmissionService {
 
         rateLimiter.requireAllowed(user.getId());
         String requestFingerprint = requestFingerprint(payload);
+        var structureErrors = validationService.brainStructureErrors(payload.getBrain());
+        if (!structureErrors.isEmpty()) return rejectedSubmission(String.join("; ", structureErrors));
+        String kit = matchService.kitForSubmission(user.getId(), payload.getMatchId());
+        if (kit == null) return rejectedSubmission("the authoritative kit is unavailable");
+        if (payload.getBrain() != null && payload.getBrain().isObject()) {
+            // Check hostile structure first; then worker rules always see the server-owned kit.
+            var brain = (ObjectNode) payload.getBrain().deepCopy();
+            var kitNode = new com.example.botfight.service.match.MatchLoadoutService(jsonMapper).encodedLoadoutNode(kit);
+            brain.set("loadout", kitNode);
+            payload.setBrain(brain);
+        }
         BotSubmissionValidationResponseDTO validation = validateSafely(payload);
         validation.setBuildingDurationTrusted(validation.isAccepted());
+        if (validation.isAccepted()) payload.setSelectedLoadout(kit);
 
         BotSubmission submission = toSubmission(
                 payload,

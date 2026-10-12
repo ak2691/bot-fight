@@ -8,7 +8,7 @@
   "scenarios": [
     {
       "id": "melee-slash-heavy",
-      "description": "Slash and Heavy Slash at close range: melee arcs, hit stamina refund, hit stagger.",
+      "description": "Slash and Stun at close range: melee arcs, hit stamina refund, hit stagger.",
       "ticks": 40,
       "bots": [
         {
@@ -16,10 +16,53 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [1,7],
+          "abilities": [
+            1,
+            6
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":7,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 6,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -42,11 +85,75 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [35,36,37],
+          "abilities": [
+            35,
+            36,
+            37
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":37,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":36,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":35,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 37,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 36,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 35,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -61,7 +168,7 @@
     },
     {
       "id": "ranged-sniper-pistol-rail",
-      "description": "Sniper, Pistol and Rail Shot at 500 units: wind-up rays and falloff damage.",
+      "description": "Sniper, Vampiric Beam and Disruptive Beam at 500 units: wind-up rays and falloff damage.",
       "ticks": 60,
       "bots": [
         {
@@ -69,11 +176,75 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [3,12,13],
+          "abilities": [
+            3,
+            32,
+            30
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":13,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":3,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":12,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 30,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 3,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 32,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -96,9 +267,31 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [5],
+          "abilities": [
+            5
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 5,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -121,10 +314,53 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [6,8],
+          "abilities": [
+            6,
+            8
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":6,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":8,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 6,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 8,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -139,7 +375,7 @@
     },
     {
       "id": "concussive-silence-beam",
-      "description": "Concussive Shot slow, Silence Pulse silence and Disruptive Beam.",
+      "description": "Frost Ring slow, Silence Pulse silence and Disruptive Beam.",
       "ticks": 60,
       "bots": [
         {
@@ -147,11 +383,75 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [9,15,30],
+          "abilities": [
+            26,
+            15,
+            30
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":9,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":15,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":30,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 26,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 15,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 30,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -166,7 +466,7 @@
     },
     {
       "id": "grenades-singularity",
-      "description": "Grenade, Gravity Grenade and Singularity: fuse zones, pull and damage ticks.",
+      "description": "Grenade, Tether Bolt and Singularity: fuse zones, pull and damage ticks.",
       "ticks": 70,
       "bots": [
         {
@@ -174,11 +474,75 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [4,14,27],
+          "abilities": [
+            4,
+            28,
+            27
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":4,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":14,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":27,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 4,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 28,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 27,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -193,7 +557,7 @@
     },
     {
       "id": "self-heal-overclock-guard",
-      "description": "Basic Heal, Overclock and Absolute Guard on a wounded bot under melee attack.",
+      "description": "Vampiric Beam, Rewind and Repelling Blast on a wounded bot under melee attack.",
       "ticks": 50,
       "bots": [
         {
@@ -201,11 +565,75 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [10,33,23],
+          "abilities": [
+            32,
+            21,
+            8
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":23,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":33,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":10,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 8,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 21,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 32,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ],
           "hp": 200
         },
@@ -214,62 +642,32 @@
           "x": 390,
           "y": 600,
           "rotation": 270,
-          "abilities": [1],
+          "abilities": [
+            1
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
-        }
-      ]
-    },
-    {
-      "id": "reflection-armor",
-      "description": "Reactive Armor reduces and reflects Slash damage back at its attacker.",
-      "ticks": 50,
-      "bots": [
-        {
-          "slot": 1,
-          "x": 300,
-          "y": 600,
-          "rotation": 90,
-          "abilities": [16],
-          "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":16,"selectable":"opponent_1"}],"children":[]}]}
-          ]
-        },
-        {
-          "slot": 2,
-          "x": 390,
-          "y": 600,
-          "rotation": 270,
-          "abilities": [1],
-          "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]}
-          ]
-        }
-      ]
-    },
-    {
-      "id": "trap-proximity-mine",
-      "description": "Proximity Mine thrown at an idle bot: travel, armed zone, trigger and removal.",
-      "ticks": 60,
-      "bots": [
-        {
-          "slot": 1,
-          "x": 300,
-          "y": 600,
-          "rotation": 90,
-          "abilities": [11],
-          "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":11,"selectable":"opponent_1"}],"children":[]}]}
-          ]
-        },
-        {
-          "slot": 2,
-          "x": 450,
-          "y": 600,
-          "rotation": 270,
-          "abilities": [],
-          "roots": []
         }
       ]
     },
@@ -283,9 +681,31 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [29],
+          "abilities": [
+            29
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":29,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 29,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -300,7 +720,7 @@
     },
     {
       "id": "summon-drones",
-      "description": "Hunter Drone and Repeller Drone summons: spawn, summon execution, hit points.",
+      "description": "Hunter Drone summons: spawn, summon execution, hit points.",
       "ticks": 80,
       "bots": [
         {
@@ -308,10 +728,52 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [17,31],
+          "abilities": [
+            17
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":17,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":31,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 17,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 17,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -334,9 +796,32 @@
           "x": 100,
           "y": 600,
           "rotation": 90,
-          "abilities": [19],
+          "abilities": [
+            19
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":19,"movementMode":"absolute","movementDirection":90}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 19,
+                      "movementMode": "absolute",
+                      "movementDirection": 90
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -361,7 +846,29 @@
           "rotation": 90,
           "abilities": [],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90,"sprint":true}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": "move_walk",
+                      "movementMode": "absolute",
+                      "movementDirection": 90,
+                      "sprint": true
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -371,7 +878,29 @@
           "rotation": 270,
           "abilities": [],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":270,"sprint":true}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": "move_walk",
+                      "movementMode": "absolute",
+                      "movementDirection": 270,
+                      "sprint": true
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         }
       ]
@@ -386,10 +915,72 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [3],
+          "abilities": [
+            3
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":3,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"expression","left":"bot.selectedAbilityPreparing","ability":3,"selectable":"my_bot","leftSelectable":"my_bot","comparator":"eq","right":{"type":"boolean","value":true}},{"type":"expression","left":"bot.selectedAbilityPreparationMs","ability":3,"selectable":"my_bot","leftSelectable":"my_bot","comparator":"lt","right":{"type":"number","value":0.4}}],"actions":[{"action":"cancel_windup"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 3,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "expression",
+                      "left": "bot.selectedAbilityPreparing",
+                      "ability": 3,
+                      "selectable": "my_bot",
+                      "leftSelectable": "my_bot",
+                      "comparator": "eq",
+                      "right": {
+                        "type": "boolean",
+                        "value": true
+                      }
+                    },
+                    {
+                      "type": "expression",
+                      "left": "bot.selectedAbilityPreparationMs",
+                      "ability": 3,
+                      "selectable": "my_bot",
+                      "leftSelectable": "my_bot",
+                      "comparator": "lt",
+                      "right": {
+                        "type": "number",
+                        "value": 0.4
+                      }
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": "cancel_windup"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -412,10 +1003,53 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [21,25],
+          "abilities": [
+            21,
+            25
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":25,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":21,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 25,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 21,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -430,7 +1064,7 @@
     },
     {
       "id": "zones-orbital-null-frost",
-      "description": "Orbital Strike, Null Zone and Frost Ring: zone phases and presence statuses.",
+      "description": "Orbital Strike, Silence Pulse and Frost Ring: zone phases and presence statuses.",
       "ticks": 60,
       "bots": [
         {
@@ -438,11 +1072,75 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [22,24,26],
+          "abilities": [
+            22,
+            15,
+            26
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":22,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":24,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":26,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 22,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 15,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 26,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -465,11 +1163,75 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [18,28,32],
+          "abilities": [
+            18,
+            28,
+            32
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":18,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":28,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":32,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 18,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 28,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 32,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ],
           "hp": 220
         },
@@ -493,11 +1255,76 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [1,5,19],
+          "abilities": [
+            1,
+            5,
+            19
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":19,"movementMode":"absolute","movementDirection":90}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 5,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 19,
+                      "movementMode": "absolute",
+                      "movementDirection": 90
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
@@ -505,18 +1332,417 @@
           "x": 900,
           "y": 600,
           "rotation": 270,
-          "abilities": [1,5,19],
+          "abilities": [
+            1,
+            5,
+            19
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]},
-            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":19,"movementMode":"absolute","movementDirection":90}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 5,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 3,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 19,
+                      "movementMode": "absolute",
+                      "movementDirection": 90
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         }
       ]
     },
     {
-      "id": "fireball-into-armor",
-      "description": "Fireball burn and impact against Reactive Armor reflection.",
+      "id": "lunge-leap-stab",
+      "description": "Lunge: a crouch, a leap of 150 units in one tick, then a stab that hits and bleeds the bot it lands on.",
+      "ticks": 40,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            38
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 38,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 470,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "shotgun-blast-fan",
+      "description": "Shotgun Blast at an idle bot in close range: a seven-pellet fan, each pellet dealing 5 damage.",
+      "ticks": 40,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            39
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 39,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 400,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "tar-pit-pool",
+      "description": "Tar Pit thrown onto an idle bot: a landing glob, then a pool that slows and wears down whoever stands in it.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            43
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 43,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 380,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "overdrive-free-dash",
+      "description": "Overdrive makes every stamina cost free for its duration, so a continuous dash costs nothing until it runs out.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            42,
+            19
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 42,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 2,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 19,
+                      "movementMode": "absolute",
+                      "movementDirection": 90
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 900,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "lunge-repelling-counter",
+      "description": "Lunge into a bot that answers with Repelling Blast as the Lunge lands: the push moves the lunger off its stab.",
+      "ticks": 40,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            38
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 38,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 470,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [
+            8
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "expression",
+                      "left": "match.elapsedSeconds",
+                      "comparator": "gte",
+                      "right": {
+                        "type": "number",
+                        "value": 0.2
+                      }
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 8
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "boomerang-out-and-back",
+      "description": "Boomerang thrown at an idle bot in its line: the bot is hit on the way out and again on the way back.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            40
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 40,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 420,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "fan-of-blades-ring",
+      "description": "Fan of Blades cast with an idle bot in front of the ring: blades fly out, curve back, and each can hit once per leg.",
       "ticks": 80,
       "bots": [
         {
@@ -524,79 +1750,722 @@
           "x": 300,
           "y": 600,
           "rotation": 90,
-          "abilities": [5],
+          "abilities": [
+            46
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 46,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         },
         {
           "slot": 2,
-          "x": 800,
+          "x": 440,
           "y": 600,
           "rotation": 270,
-          "abilities": [16],
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "boomerang-step-out",
+      "description": "Boomerang counter: the bot takes the outbound hit, then dashes out of the line before the boomerang turns back, so only that hit lands.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            40
+          ],
           "roots": [
-            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":16,"selectable":"opponent_1"}],"children":[]}]}
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 40,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 420,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [
+            19
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "expression",
+                      "left": "match.elapsedSeconds",
+                      "comparator": "gte",
+                      "right": {
+                        "type": "number",
+                        "value": 0.5
+                      }
+                    },
+                    {
+                      "type": "expression",
+                      "left": "match.elapsedSeconds",
+                      "comparator": "lt",
+                      "right": {
+                        "type": "number",
+                        "value": 0.6
+                      }
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 19,
+                      "movementMode": "absolute",
+                      "movementDirection": 0
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
           ]
         }
       ]
     },
-    {"id":"timeline-hits-step","description":"Three hits at 0, 200 and 400 ms of one cast with oncePerTarget step: each step lands on the stationary target.","ticks":14,
-      "testAbilities": [
-        {"id":14,"name":"gravity_grenade","label":"Gravity Grenade","type":"ability","channel":"ability","cost":null,"timing":{"cooldownMs":11000,"windupMs":null,"activeMs":1000,"durationMs":7000,"maxCharges":null,"resourceModel":null,"chargeType":null,"reloadMs":null},"activation":{"targetMode":null,"capture":null,"phaseFacingDefault":null,"teleportOncePerActivation":null},"onTrigger":[{"do":"hit","atMs":null,"pose":null,"hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":"step","aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"hit","atMs":200,"pose":"current","hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":"step","aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"hit","atMs":400,"pose":"current","hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":"step","aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null}],"entities":{}}
-      ],
+    {
+      "id": "execute-finisher",
+      "description": "Execute on a bot below 30% health: the 60 bonus lands first, then the 25 base hit takes the 6 health that is left.",
+      "ticks": 40,
       "bots": [
-        {"slot":1,"x":500,"y":600,"rotation":90,"abilities":[14],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":14,"selectable":"opponent_1"}],"children":[]}]}]},
-        {"slot":2,"x":590,"y":600,"rotation":270,"abilities":[],"roots":[]}
-      ]},
-    {"id":"timeline-lingering-activation","description":"A two-step lingering swing (0 and 100 ms) with oncePerTarget activation: the target hit on step 1 is not hit again.","ticks":8,
-      "testAbilities": [
-        {"id":14,"name":"gravity_grenade","label":"Gravity Grenade","type":"ability","channel":"ability","cost":null,"timing":{"cooldownMs":11000,"windupMs":null,"activeMs":1000,"durationMs":7000,"maxCharges":null,"resourceModel":null,"chargeType":null,"reloadMs":null},"activation":{"targetMode":null,"capture":null,"phaseFacingDefault":null,"teleportOncePerActivation":null},"onTrigger":[{"do":"hit","atMs":null,"pose":null,"hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":"activation","aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"hit","atMs":100,"pose":"current","hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":"activation","aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null}],"entities":{}}
-      ],
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            45
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 45,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 380,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": [],
+          "hp": 66
+        }
+      ]
+    },
+    {
+      "id": "execute-healthy-counter",
+      "description": "Execute on a healthy bot: only the 25 base hit lands. Staying above 30% health is the counter.",
+      "ticks": 40,
       "bots": [
-        {"slot":1,"x":500,"y":600,"rotation":90,"abilities":[14],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":14,"selectable":"opponent_1"}],"children":[]}]}]},
-        {"slot":2,"x":590,"y":600,"rotation":270,"abilities":[],"roots":[]}
-      ]},
-    {"id":"timeline-lingering-walk-in","description":"The same swing against a target that walks into the hitbox between the steps: it is hit exactly once, on step 2.","ticks":8,
-      "testAbilities": [
-        {"id":14,"name":"gravity_grenade","label":"Gravity Grenade","type":"ability","channel":"ability","cost":null,"timing":{"cooldownMs":11000,"windupMs":null,"activeMs":1000,"durationMs":7000,"maxCharges":null,"resourceModel":null,"chargeType":null,"reloadMs":null},"activation":{"targetMode":null,"capture":null,"phaseFacingDefault":null,"teleportOncePerActivation":null},"onTrigger":[{"do":"hit","atMs":null,"pose":null,"hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":"activation","aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"hit","atMs":100,"pose":"current","hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":"activation","aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null}],"entities":{}}
-      ],
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            45
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 45,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 380,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "phase-strike-backstab",
+      "description": "Phase Strike blinks through an idle bot, then the 200 ms follow-up hits it from behind for 25.",
+      "ticks": 40,
       "bots": [
-        {"slot":1,"x":500,"y":600,"rotation":90,"abilities":[14],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":14,"selectable":"opponent_1"}],"children":[]}]}]},
-        {"slot":2,"x":650,"y":600,"rotation":270,"abilities":[],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":270}],"children":[]}]}]}
-      ]},
-    {"id":"timeline-spawn-stream-current","description":"A spawn stream at 0, 200 and 400 ms while the bot turns, each step spawning from the pose the bot has when it fires.","ticks":14,
-      "testAbilities": [
-        {"id":5,"name":"fireball","label":"Fireball","type":"ability","channel":"ability","cost":null,"timing":{"cooldownMs":5500,"windupMs":null,"activeMs":500,"durationMs":1400,"maxCharges":null,"resourceModel":null,"chargeType":null,"reloadMs":null},"activation":{"targetMode":null,"capture":null,"phaseFacingDefault":null,"teleportOncePerActivation":null},"onTrigger":[{"do":"spawn","atMs":null,"pose":null,"entity":"fireball","pattern":null},{"do":"spawn","atMs":200,"pose":"current","entity":"fireball","pattern":null},{"do":"spawn","atMs":400,"pose":"current","entity":"fireball","pattern":null}],"entities":{"fireball":{"runtimeType":"fireball","category":"projectile","spawn":{"offset":{"x":0,"y":47},"rotation":0,"rotationSpace":"owner"},"targeting":{"owner":"owner","position":null,"defaultX":null,"defaultY":null,"clampToRadius":null},"lifetime":{"timerMode":"age","duration":1400,"add":null},"initialState":{"armed":false,"damageMultiplierFromOwner":true},"state":{"damageMultiplier":{"context":"damageMultiplier","fallback":{"ownerStat":"attackDamageMultiplier","fallback":1}}},"phases":[{"id":"active","type":"projectile","durationMs":null,"startMs":null,"transitionOnly":null,"skipOwner":null,"movement":{"mode":"straight","unitsPerTick":50,"direction":null,"turnDegrees":null,"size":null},"hitbox":{"shape":"rectangle","radius":null,"range":null,"arc":null,"width":64,"length":64,"radiusMultiplier":1,"includeTargetRadius":null},"health":null,"trigger":null,"visual":{"type":"fireball","state":null,"visualSize":60,"visibleMs":null},"on":{"collision":{"targets":["BOT","HP_ENTITY"],"schedule":{"mode":"continuous","intervalMs":null,"count":null,"startImmediately":true},"targetPolicy":null,"recheckCollisionOnTransition":true,"nearestOnly":false,"waitForHit":false,"do":[{"do":"applyEffects","targets":null,"effects":[{"type":"damage","subtype":null,"amount":20,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]},{"type":"status","subtype":"burn","amount":2,"durationMs":5000,"delayMs":null,"intervalMs":1000,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","SUMMON"]}],"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"remove"}]}}}]}}}
-      ],
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            25
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 25,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 380,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "phase-strike-facing-counter",
+      "description": "Phase Strike into a bot facing the blink: the follow-up is only the 10 base hit, no backstab bonus.",
+      "ticks": 40,
       "bots": [
-        {"slot":1,"x":500,"y":900,"rotation":90,"abilities":[5],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]},{"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":"rotate_toward_enemy","selectable":"opponent_1"}],"children":[]}]}]},
-        {"slot":2,"x":500,"y":100,"rotation":180,"abilities":[],"roots":[]}
-      ]},
-    {"id":"timeline-spawn-stream-captured","description":"The same spawn stream with pose captured: every step spawns from the pose captured at the trigger.","ticks":14,
-      "testAbilities": [
-        {"id":5,"name":"fireball","label":"Fireball","type":"ability","channel":"ability","cost":null,"timing":{"cooldownMs":5500,"windupMs":null,"activeMs":500,"durationMs":1400,"maxCharges":null,"resourceModel":null,"chargeType":null,"reloadMs":null},"activation":{"targetMode":null,"capture":{"stepX":"x","stepY":"y","stepRotation":"rotation"},"phaseFacingDefault":null,"teleportOncePerActivation":null},"onTrigger":[{"do":"spawn","atMs":null,"pose":null,"entity":"fireball","pattern":null},{"do":"spawn","atMs":200,"pose":"captured","entity":"fireball","pattern":null},{"do":"spawn","atMs":400,"pose":"captured","entity":"fireball","pattern":null}],"entities":{"fireball":{"runtimeType":"fireball","category":"projectile","spawn":{"offset":{"x":0,"y":47},"rotation":0,"rotationSpace":"owner"},"targeting":{"owner":"owner","position":null,"defaultX":null,"defaultY":null,"clampToRadius":null},"lifetime":{"timerMode":"age","duration":1400,"add":null},"initialState":{"armed":false,"damageMultiplierFromOwner":true},"state":{"damageMultiplier":{"context":"damageMultiplier","fallback":{"ownerStat":"attackDamageMultiplier","fallback":1}}},"phases":[{"id":"active","type":"projectile","durationMs":null,"startMs":null,"transitionOnly":null,"skipOwner":null,"movement":{"mode":"straight","unitsPerTick":50,"direction":null,"turnDegrees":null,"size":null},"hitbox":{"shape":"rectangle","radius":null,"range":null,"arc":null,"width":64,"length":64,"radiusMultiplier":1,"includeTargetRadius":null},"health":null,"trigger":null,"visual":{"type":"fireball","state":null,"visualSize":60,"visibleMs":null},"on":{"collision":{"targets":["BOT","HP_ENTITY"],"schedule":{"mode":"continuous","intervalMs":null,"count":null,"startImmediately":true},"targetPolicy":null,"recheckCollisionOnTransition":true,"nearestOnly":false,"waitForHit":false,"do":[{"do":"applyEffects","targets":null,"effects":[{"type":"damage","subtype":null,"amount":20,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]},{"type":"status","subtype":"burn","amount":2,"durationMs":5000,"delayMs":null,"intervalMs":1000,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","SUMMON"]}],"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"remove"}]}}}]}}}
-      ],
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            25
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 25,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 380,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "disruptive-beam-counter-hit",
+      "description": "Disruptive Beam into a bot winding up its own Sniper: it is stunned for 1 s, not the plain stun.",
+      "ticks": 60,
       "bots": [
-        {"slot":1,"x":500,"y":900,"rotation":90,"abilities":[5],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]},{"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":"rotate_toward_enemy","selectable":"opponent_1"}],"children":[]}]}]},
-        {"slot":2,"x":500,"y":100,"rotation":180,"abilities":[],"roots":[]}
-      ]},
-    {"id":"timeline-stun-cancels","description":"A stun lands on the caster between 200 and 300 ms of its three-step cast: the 400 ms step never fires.","ticks":12,
-      "testAbilities": [
-        {"id":14,"name":"gravity_grenade","label":"Gravity Grenade","type":"ability","channel":"ability","cost":null,"timing":{"cooldownMs":11000,"windupMs":null,"activeMs":1000,"durationMs":7000,"maxCharges":null,"resourceModel":null,"chargeType":null,"reloadMs":null},"activation":{"targetMode":null,"capture":null,"phaseFacingDefault":null,"teleportOncePerActivation":null},"onTrigger":[{"do":"hit","atMs":null,"pose":null,"hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":null,"aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"hit","atMs":200,"pose":"current","hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":null,"aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"hit","atMs":400,"pose":"current","hitbox":{"shape":"circle","radius":100,"range":null,"arc":null,"width":null,"length":null,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT"],"effects":[{"type":"damage","subtype":null,"amount":5,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]}],"nearestOnly":false,"oncePerTarget":null,"aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":null}],"entities":{}},
-        {"id":7,"name":"heavy_slash","label":"Heavy Slash","type":"ability","channel":"ability","cost":null,"timing":{"cooldownMs":4600,"windupMs":300,"activeMs":400,"durationMs":null,"maxCharges":null,"resourceModel":null,"chargeType":null,"reloadMs":null},"activation":{"targetMode":null,"capture":null,"phaseFacingDefault":null,"teleportOncePerActivation":null},"onTrigger":[{"do":"hit","atMs":null,"pose":null,"hitbox":{"shape":"rectangle","radius":null,"range":null,"arc":null,"width":80,"length":184,"radiusMultiplier":1,"includeTargetRadius":true},"targets":["BOT","HP_ENTITY"],"effects":[{"type":"damage","subtype":null,"amount":10,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]},{"type":"status","subtype":"stun","amount":null,"durationMs":1200,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","SUMMON"]}],"nearestOnly":false,"oncePerTarget":null,"aim":null,"origin":{"offset":{"x":0,"y":0},"rotation":0,"rotationSpace":"owner"},"knockbackDirection":null,"pullDirection":null,"visual":{"type":"stun","state":null,"visualSize":60,"visibleMs":100}}],"entities":{}}
-      ],
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            30
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 30,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 500,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [
+            3
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 3,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parry-blocks-slash",
+      "description": "Parry on an idle-looking bot: the Slash that lands in its stance does no damage, and the attacker is stunned for 800 ms.",
+      "ticks": 40,
       "bots": [
-        {"slot":1,"x":500,"y":600,"rotation":90,"abilities":[14],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":14,"selectable":"opponent_1"}],"children":[]}]}]},
-        {"slot":2,"x":590,"y":600,"rotation":270,"abilities":[7],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":7,"selectable":"opponent_1"}],"children":[]}]}]}
-      ]},
-    {"id":"timeline-delayed-fan","description":"A fan pattern on a delayed spawn step (200 ms): five entities spread over 60 degrees, serials in index order.","ticks":10,
-      "testAbilities": [
-        {"id":5,"name":"fireball","label":"Fireball","type":"ability","channel":"ability","cost":null,"timing":{"cooldownMs":5500,"windupMs":null,"activeMs":500,"durationMs":1400,"maxCharges":null,"resourceModel":null,"chargeType":null,"reloadMs":null},"activation":{"targetMode":null,"capture":null,"phaseFacingDefault":null,"teleportOncePerActivation":null},"onTrigger":[{"do":"spawn","atMs":200,"pose":"current","entity":"fireball","pattern":{"type":"fan","count":5,"spreadDeg":60,"spacing":null}}],"entities":{"fireball":{"runtimeType":"fireball","category":"projectile","spawn":{"offset":{"x":0,"y":47},"rotation":0,"rotationSpace":"owner"},"targeting":{"owner":"owner","position":null,"defaultX":null,"defaultY":null,"clampToRadius":null},"lifetime":{"timerMode":"age","duration":1400,"add":null},"initialState":{"armed":false,"damageMultiplierFromOwner":true},"state":{"damageMultiplier":{"context":"damageMultiplier","fallback":{"ownerStat":"attackDamageMultiplier","fallback":1}}},"phases":[{"id":"active","type":"projectile","durationMs":null,"startMs":null,"transitionOnly":null,"skipOwner":null,"movement":{"mode":"straight","unitsPerTick":50,"direction":null,"turnDegrees":null,"size":null},"hitbox":{"shape":"rectangle","radius":null,"range":null,"arc":null,"width":64,"length":64,"radiusMultiplier":1,"includeTargetRadius":null},"health":null,"trigger":null,"visual":{"type":"fireball","state":null,"visualSize":60,"visibleMs":null},"on":{"collision":{"targets":["BOT","HP_ENTITY"],"schedule":{"mode":"continuous","intervalMs":null,"count":null,"startImmediately":true},"targetPolicy":null,"recheckCollisionOnTransition":true,"nearestOnly":false,"waitForHit":false,"do":[{"do":"applyEffects","targets":null,"effects":[{"type":"damage","subtype":null,"amount":20,"durationMs":null,"delayMs":null,"intervalMs":null,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","HP_ENTITY"]},{"type":"status","subtype":"burn","amount":2,"durationMs":5000,"delayMs":null,"intervalMs":1000,"movementLockMs":null,"multiplier":null,"buff":null,"whileInside":null,"runtimeComputed":null,"recipient":null,"requiresConfirmedDamage":null,"mirrorsDamage":null,"distanceMode":null,"falloff":null,"targetKinds":["BOT","SUMMON"]}],"knockbackDirection":null,"pullDirection":null,"visual":null},{"do":"remove"}]}}}]}}}
-      ],
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            41
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 41,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 360,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [
+            1
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "expression",
+                      "left": "match.elapsedSeconds",
+                      "comparator": "gte",
+                      "right": {
+                        "type": "number",
+                        "value": 0.2
+                      }
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parry-stun-counter",
+      "description": "Parry against Stun: the Stun lands inside the stance, so immunity blocks it and its owner is stunned for 800 ms instead.",
+      "ticks": 40,
       "bots": [
-        {"slot":1,"x":500,"y":900,"rotation":90,"abilities":[5],"roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]}]},
-        {"slot":2,"x":500,"y":100,"rotation":180,"abilities":[],"roots":[]}
-      ]}
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            41
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 41,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 390,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [
+            6
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 6,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overcharge-weapon-hits",
+      "description": "Overcharge doubles every hit for its four weapon hits: Slash lands 16 four times, then 8 again.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            44,
+            1
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 44,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 360,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "overcharge-out-of-range",
+      "description": "Overcharge whose owner stays out of weapon range: its Slash never connects, so no charge is spent.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            44,
+            1
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 44,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 900,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "tether-link-pull",
+      "description": "Tether Link on an idle bot 300 units away: the bolt tethers it, and the tether pulls it back to within 200 units.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            47
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 47,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 600,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    }
   ]
 }

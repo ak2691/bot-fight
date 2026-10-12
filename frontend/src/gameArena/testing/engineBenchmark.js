@@ -1,7 +1,7 @@
 import { loadScenarios, runScenario } from "./goldenScenarioRunner.js";
 
-/** Full match length: six 20-second segments at 100 ms per tick. */
-export const BENCHMARK_TICKS = 1200;
+/** Full match length: six 15-second segments at 100 ms per tick. */
+export const BENCHMARK_TICKS = 900;
 
 /**
  * Fixed scenario orders per pass. Different scenarios sharing one process is what exposes the

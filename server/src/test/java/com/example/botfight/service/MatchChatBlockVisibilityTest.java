@@ -49,7 +49,7 @@ class MatchChatBlockVisibilityTest {
                 MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS,
                 MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS,
                 Set.of(),
-                List.of(), com.example.botfight.service.match.state.MatchPhase.LOADOUT_SELECT);
+                List.of(), com.example.botfight.service.match.state.MatchPhase.KIT_REVEAL);
         var state = new com.example.botfight.service.match.state.MatchRuntimeState(new com.example.botfight.service.match.MatchPhaseService());
         state.putSession(session);
         MatchChatService chat = new MatchChatService(clock,

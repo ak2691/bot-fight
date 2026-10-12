@@ -3,6 +3,8 @@ import { MOVEMENT_CONFIG } from "./MovementConfig.js";
 import { abilityStaminaCost } from "./AbilityChannels.js";
 import { clearWindup, isWindingUp, preparingRemainingMs } from "./AbilityState.js";
 import { botRef, logCombat } from "../ecs/combatLog.js";
+import { modifierFor } from "../ecs/contracts/StatusContracts.js";
+import { MODIFIER_STATS } from "./vocabulary.js";
 
 /**
  * Pure stamina helpers shared by action execution, ability readiness and the
@@ -42,7 +44,12 @@ export function botFastTurning(shape) {
  * judged on the state the previous tick left (what the planner saw), exactly like sprint.
  */
 export function canFastTurn(shape) {
-    return botStamina(shape) >= MOVEMENT_CONFIG.fastTurnDrainPerTick;
+    return botStamina(shape) >= staminaCostFor(shape, MOVEMENT_CONFIG.fastTurnDrainPerTick);
+}
+
+/** A stamina cost after the bot's staminaCost modifiers (rounded up). Every cost goes through here. */
+export function staminaCostFor(shape, baseCost) {
+    return Math.ceil(Number(baseCost) * modifierFor(shape, MODIFIER_STATS.STAMINA_COST).multiply);
 }
 
 /** Largest turn per tick (before status multipliers) the bot may make: doubled only when a fast turn will really apply. */
@@ -66,10 +73,11 @@ export function advanceStaminaTimers(shape, elapsedMs) {
     return shape;
 }
 
-/** Spends stamina (never below 0) and restarts the regeneration pause. Only a spend does that. */
+/** Spends stamina (never below 0) and restarts the regeneration pause. Only a spend does that; a zero cost is no spend. */
 export function spendStamina(shape, amount) {
     const before = botStamina(shape);
     const cost = Math.max(0, Math.trunc(Number(amount) || 0));
+    if (cost === 0) return shape;
     const stamina = Math.max(0, before - cost);
     if (cost > 0) logCombat("stamina", { target: botRef(shape), effect: "spend", amount: cost });
     shape.stamina = stamina;
@@ -91,7 +99,7 @@ export function refundStamina(shape, amount) {
  * of the regeneration pause, then the ticks of regeneration. 0 when the ability costs nothing or is affordable.
  */
 export function staminaWaitMs(shape, abilityId) {
-    const missing = abilityStaminaCost(abilityId) - botStamina(shape);
+    const missing = staminaCostFor(shape, abilityStaminaCost(abilityId)) - botStamina(shape);
     if (missing <= 0) return 0;
     const lockout = wholeMs(shape?.staminaRegenDelayMs);
     return lockout + Math.ceil(missing / MOVEMENT_CONFIG.regenPerTick) * 100;
@@ -99,24 +107,23 @@ export function staminaWaitMs(shape, abilityId) {
 
 /** Stamina-side readiness: the bot must have enough stamina to pay the ability's cost (0 for most). */
 export function abilityStaminaReady(shape, abilityId) {
-    return botStamina(shape) >= abilityStaminaCost(abilityId);
+    return botStamina(shape) >= staminaCostFor(shape, abilityStaminaCost(abilityId));
 }
 
 /** Pays the stamina an activation of the ability costs; an ability with no cost leaves stamina and the pause alone. */
 export function spendAbilityStamina(shape, abilityId) {
-    const cost = abilityStaminaCost(abilityId);
-    return cost > 0 ? spendStamina(shape, cost) : shape;
+    return spendStamina(shape, staminaCostFor(shape, abilityStaminaCost(abilityId)));
 }
 
 export function canCancelWindup(shape) {
     return isWindingUp(shape)
         && preparingRemainingMs(shape) > 0
-        && botStamina(shape) >= MOVEMENT_CONFIG.windupCancelCost;
+        && botStamina(shape) >= staminaCostFor(shape, MOVEMENT_CONFIG.windupCancelCost);
 }
 
 /** Clears the wind-up without a cooldown or used charge and pays stamina. */
 export function cancelWindup(shape) {
-    return clearWindup(spendStamina(shape, MOVEMENT_CONFIG.windupCancelCost));
+    return clearWindup(spendStamina(shape, staminaCostFor(shape, MOVEMENT_CONFIG.windupCancelCost)));
 }
 
 export function withFastTurning(shape, fastTurning) {

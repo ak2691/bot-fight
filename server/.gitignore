@@ -1,5 +1,7 @@
 HELP.md
 target/
+# Alternate Maven build folders (for example target-fixed-kit-verify/)
+/target*/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

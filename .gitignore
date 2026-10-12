@@ -13,3 +13,6 @@ artifacts/
 !**/.env.*.example
 context.md
 /shared/build-version.txt
+
+# Build and test logs
+*.log

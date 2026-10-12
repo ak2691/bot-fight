@@ -92,7 +92,7 @@ class MatchmakingServiceTest {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
 
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
@@ -101,7 +101,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "bravo-secret",
                 "second@example.com",
@@ -226,7 +226,7 @@ class MatchmakingServiceTest {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         UUID unrelatedUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "first",
                 "first@example.com",
@@ -235,7 +235,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "second",
                 "second@example.com",
@@ -245,7 +245,7 @@ class MatchmakingServiceTest {
                 null,
                 QueuePool.REGISTERED));
         service.acceptMatch(found.getFirst().event().matchId(), firstUserId, "socket-first");
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 unrelatedUserId,
                 "waiting",
                 "waiting@example.com",
@@ -314,7 +314,7 @@ class MatchmakingServiceTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Future<List<OutboundMatchmakingEvent>> firstJoin = executor.submit(() ->
-                    service.joinQueue(new QueueJoinRequest(
+                    service.joinQueue(com.example.botfight.support.TestKits.queue(
                             firstUserId,
                             "first",
                             "first@example.com",
@@ -325,7 +325,7 @@ class MatchmakingServiceTest {
                             QueuePool.REGISTERED)));
             assertThat(firstRatingReadEntered.await(2, TimeUnit.SECONDS)).isTrue();
 
-            var secondJoin = service.joinQueue(new QueueJoinRequest(
+            var secondJoin = service.joinQueue(com.example.botfight.support.TestKits.queue(
                     secondUserId,
                     "second",
                     "second@example.com",
@@ -389,7 +389,7 @@ class MatchmakingServiceTest {
                 new EloRatingService(Mockito.mock(PlayerRatingRepository.class), Mockito.mock(MatchParticipantRepository.class)),
                 new MatchParticipationCoordinator(),
                 org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
-        queue.joinQueue(new QueueJoinRequest(
+        queue.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "first",
                 "first@example.com",
@@ -398,7 +398,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = queue.joinQueue(new QueueJoinRequest(
+        var found = queue.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "second",
                 "second@example.com",
@@ -417,8 +417,8 @@ class MatchmakingServiceTest {
             assertThat(persistenceEntered.await(2, TimeUnit.SECONDS)).isTrue();
 
             List<MatchEntrant> customRoster = List.of(
-                    new MatchEntrant(firstUserId, "first", "first@example.com", null, 1),
-                    new MatchEntrant(secondUserId, "second", "second@example.com", null, 2));
+                    com.example.botfight.support.TestKits.entrant(firstUserId, "first", "first@example.com", null, 1),
+                    com.example.botfight.support.TestKits.entrant(secondUserId, "second", "second@example.com", null, 2));
             assertThatThrownBy(() -> lifecycle.startTeamMatch(customRoster, MatchMode.CUSTOM, false, null, null))
                     .isInstanceOf(AuthException.class)
                     .hasMessageContaining("already in a match or starting a match");
@@ -445,7 +445,7 @@ class MatchmakingServiceTest {
     @Test
     void externalStartPreparationRejectsQueuedUsersAndFencesNewJoinsUntilReleased() {
         UUID userId = UUID.randomUUID();
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "queued",
                 "queued@example.com",
@@ -470,7 +470,7 @@ class MatchmakingServiceTest {
         assertThat(preparation.reservationId()).isNotNull();
         assertThat(preparation.cancellationEvents()).isEmpty();
         assertThat(service.hasTransientActivity(userId)).isFalse();
-        assertThatThrownBy(() -> service.joinQueue(new QueueJoinRequest(
+        assertThatThrownBy(() -> service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "queued",
                 "queued@example.com",
@@ -483,7 +483,7 @@ class MatchmakingServiceTest {
                 .hasMessageContaining("already starting another match");
 
         service.releaseExternalMatchStart(preparation.reservationId());
-        assertThat(service.joinQueue(new QueueJoinRequest(
+        assertThat(service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "queued",
                 "queued@example.com",
@@ -519,7 +519,7 @@ class MatchmakingServiceTest {
             UUID teammateId = new UUID(1, index * 2L + 2);
             ratingsByUserId.put(ownerId, index * 1000);
             ratingsByUserId.put(teammateId, index * 1000);
-            var waiting = service.joinQueue(new QueueJoinRequest(
+            var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                     ownerId,
                     "owner-" + index,
                     "owner-" + index + "@example.com",
@@ -541,7 +541,7 @@ class MatchmakingServiceTest {
         for (UUID userId : List.of(highOwnerOne, highTeammateOne, highOwnerTwo, highTeammateTwo)) {
             ratingsByUserId.put(userId, 100_000);
         }
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 highOwnerOne,
                 "high-owner-one",
                 "high-owner-one@example.com",
@@ -552,7 +552,7 @@ class MatchmakingServiceTest {
                         entrant(highTeammateOne, "high-teammate-one", "high-teammate-one@example.com", "high-teammate-one-socket")),
                 UUID.randomUUID(),
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 highOwnerTwo,
                 "high-owner-two",
                 "high-owner-two@example.com",
@@ -585,7 +585,7 @@ class MatchmakingServiceTest {
         UUID registered = UUID.randomUUID();
         UUID guestTwo = UUID.randomUUID();
 
-        var guestWaiting = service.joinQueue(new QueueJoinRequest(
+        var guestWaiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 guestOne,
                 "Guest-ONE",
                 "guest-one@example.invalid",
@@ -594,7 +594,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.GUEST));
-        var registeredWaiting = service.joinQueue(new QueueJoinRequest(
+        var registeredWaiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 registered,
                 "registered",
                 "registered@example.com",
@@ -613,7 +613,7 @@ class MatchmakingServiceTest {
 
         when(matchService.startMatch(any(), any(), eq(MatchMode.ONES), eq(false)))
                 .thenReturn(List.of());
-        var guestMatchFound = service.joinQueue(new QueueJoinRequest(
+        var guestMatchFound = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 guestTwo,
                 "Guest-TWO",
                 "guest-two@example.invalid",
@@ -637,7 +637,7 @@ class MatchmakingServiceTest {
     void acceptanceStatusIsRecipientRelativeWhenTheOtherPlayerAcceptsFirst() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
@@ -646,7 +646,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "bravo-secret",
                 "second@example.com",
@@ -679,7 +679,7 @@ class MatchmakingServiceTest {
     @Test
     void finalDisconnectFromAnotherTabRemovesTheUserQueueEntry() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
@@ -690,7 +690,7 @@ class MatchmakingServiceTest {
                 QueuePool.REGISTERED));
 
         assertThat(service.markDisconnected("first@example.com", "socket-final-tab")).isTrue();
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 UUID.randomUUID(),
                 "bravo-secret",
                 "second@example.com",
@@ -709,7 +709,7 @@ class MatchmakingServiceTest {
     @Test
     void disconnectKeepsAQueuedPlayerOutOfMatchingDuringTheReconnectGracePeriod() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "first",
                 "first@example.com",
@@ -720,7 +720,7 @@ class MatchmakingServiceTest {
                 QueuePool.REGISTERED));
 
         assertThat(service.markDisconnected("first@example.com", "socket-first")).isTrue();
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 UUID.randomUUID(),
                 "second",
                 "second@example.com",
@@ -750,7 +750,7 @@ class MatchmakingServiceTest {
                 new MatchParticipationCoordinator(),
                 org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
 
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 olderUserId,
                 "older",
                 "older@example.com",
@@ -760,7 +760,7 @@ class MatchmakingServiceTest {
                 null,
                 QueuePool.REGISTERED));
         clock.advance(Duration.ofSeconds(45));
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 newerUserId,
                 "newer",
                 "newer@example.com",
@@ -795,7 +795,7 @@ class MatchmakingServiceTest {
                 new MatchParticipationCoordinator(),
                 org.mockito.Mockito.mock(com.example.botfight.service.match.MatchScheduler.class));
 
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "first",
                 "first@example.com",
@@ -804,7 +804,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "second",
                 "second@example.com",
@@ -828,7 +828,7 @@ class MatchmakingServiceTest {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         Instant queuedAt = clock.instant();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "first",
                 "first@example.com",
@@ -838,7 +838,7 @@ class MatchmakingServiceTest {
                 null,
                 QueuePool.REGISTERED));
         service.markDisconnected("first@example.com", "socket-first");
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "second",
                 "second@example.com",
@@ -869,7 +869,7 @@ class MatchmakingServiceTest {
         UUID firstSoloId = UUID.randomUUID();
         UUID secondSoloId = UUID.randomUUID();
 
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 partyOwnerId,
                 "party-owner",
                 "party-owner@example.com",
@@ -881,7 +881,7 @@ class MatchmakingServiceTest {
                 UUID.randomUUID(),
                 QueuePool.REGISTERED));
         service.markDisconnected("teammate@example.com", "teammate-socket");
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstSoloId,
                 "solo-one",
                 "solo-one@example.com",
@@ -890,7 +890,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondSoloId,
                 "solo-two",
                 "solo-two@example.com",
@@ -914,7 +914,7 @@ class MatchmakingServiceTest {
     @Test
     void expiredDisconnectedQueueEntryIsRemovedAfterTheGracePeriod() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "first",
                 "first@example.com",
@@ -938,7 +938,7 @@ class MatchmakingServiceTest {
     @Test
     void reconnectDoesNotConsumeTheNormalQueueJoinRateLimit() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "first",
                 "first@example.com",
@@ -961,7 +961,7 @@ class MatchmakingServiceTest {
     void provisionalMatchSurvivesSocketReplacementBeforeAcceptance() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
@@ -970,7 +970,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "bravo-secret",
                 "second@example.com",
@@ -996,7 +996,7 @@ class MatchmakingServiceTest {
     void acceptsDuringTheTwoSecondHiddenGraceAfterTheVisibleWindow() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
@@ -1005,7 +1005,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "bravo-secret",
                 "second@example.com",
@@ -1026,7 +1026,7 @@ class MatchmakingServiceTest {
     void expiresAnUnacceptedMatchAfterTheAcceptanceWindowAndGracePeriod() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
@@ -1035,7 +1035,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "bravo-secret",
                 "second@example.com",
@@ -1063,7 +1063,7 @@ class MatchmakingServiceTest {
     void aLateAcceptanceRequestReturnsExpiredEventsAndCannotStartTheMatch() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
@@ -1072,7 +1072,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "bravo-secret",
                 "second@example.com",
@@ -1098,7 +1098,7 @@ class MatchmakingServiceTest {
     void cancellationNotifiesBothPlayersWithoutParticipantData() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
@@ -1107,7 +1107,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "bravo-secret",
                 "second@example.com",
@@ -1131,7 +1131,7 @@ class MatchmakingServiceTest {
     @Test
     void leavingQueueRemovesThePlayerBeforePairing() {
         UUID firstUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "first",
                 "first@example.com",
@@ -1142,7 +1142,7 @@ class MatchmakingServiceTest {
                 QueuePool.REGISTERED));
 
         service.leaveQueue(firstUserId);
-        var waiting = service.joinQueue(new QueueJoinRequest(
+        var waiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 UUID.randomUUID(),
                 "second",
                 "second@example.com",
@@ -1168,7 +1168,7 @@ class MatchmakingServiceTest {
                         UUID.randomUUID(),
                         null));
 
-        assertThatThrownBy(() -> service.joinQueue(new QueueJoinRequest(
+        assertThatThrownBy(() -> service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "pilot",
                 "pilot@example.com",
@@ -1187,7 +1187,7 @@ class MatchmakingServiceTest {
     void repeatedQueueAttemptsAreRateLimitedPerUser() {
         UUID userId = UUID.randomUUID();
 
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "pilot",
                 "pilot@example.com",
@@ -1196,7 +1196,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "pilot",
                 "pilot@example.com",
@@ -1205,7 +1205,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "pilot",
                 "pilot@example.com",
@@ -1215,7 +1215,7 @@ class MatchmakingServiceTest {
                 null,
                 QueuePool.REGISTERED));
 
-        assertThatThrownBy(() -> service.joinQueue(new QueueJoinRequest(
+        assertThatThrownBy(() -> service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "pilot",
                 "pilot@example.com",
@@ -1228,7 +1228,7 @@ class MatchmakingServiceTest {
                 .hasMessage(RateLimitExceededException.GENERIC_MESSAGE);
 
         clock.advance(Duration.ofSeconds(3));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 userId,
                 "pilot",
                 "pilot@example.com",
@@ -1250,7 +1250,7 @@ class MatchmakingServiceTest {
                 entrant(partyOwnerId, "party-owner", "party-owner@example.com", "party-owner-socket"),
                 entrant(teammateId, "teammate", "teammate@example.com", null));
 
-        var partyWaiting = service.joinQueue(new QueueJoinRequest(
+        var partyWaiting = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 partyOwnerId,
                 "party-owner",
                 "party-owner@example.com",
@@ -1259,7 +1259,7 @@ class MatchmakingServiceTest {
                 party,
                 partyId,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstSoloId,
                 "solo-one",
                 "solo-one@example.com",
@@ -1268,7 +1268,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondSoloId,
                 "solo-two",
                 "solo-two@example.com",
@@ -1312,7 +1312,7 @@ class MatchmakingServiceTest {
         UUID secondUserId = UUID.randomUUID();
         UUID thirdUserId = UUID.randomUUID();
         UUID fourthUserId = UUID.randomUUID();
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "one",
                 "one@example.com",
@@ -1321,7 +1321,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "two",
                 "two@example.com",
@@ -1330,7 +1330,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        service.joinQueue(new QueueJoinRequest(
+        service.joinQueue(com.example.botfight.support.TestKits.queue(
                 thirdUserId,
                 "three",
                 "three@example.com",
@@ -1339,7 +1339,7 @@ class MatchmakingServiceTest {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        var found = service.joinQueue(new QueueJoinRequest(
+        var found = service.joinQueue(com.example.botfight.support.TestKits.queue(
                 fourthUserId,
                 "four",
                 "four@example.com",
@@ -1380,7 +1380,7 @@ class MatchmakingServiceTest {
         List<String> sockets = List.of("socket-1", "socket-2", "socket-3", "socket-4");
         List<OutboundMatchmakingEvent> found = List.of();
         for (int index = 0; index < userIds.size(); index++) {
-            found = isolatedQueue.joinQueue(new QueueJoinRequest(
+            found = isolatedQueue.joinQueue(com.example.botfight.support.TestKits.queue(
                     userIds.get(index),
                     "player-" + index,
                     "player-" + index + "@example.com",
@@ -1410,7 +1410,7 @@ class MatchmakingServiceTest {
             String username,
             String principalName,
             String socketSessionId) {
-        return new MatchEntrant(userId, username, principalName, socketSessionId);
+        return com.example.botfight.support.TestKits.entrant(userId, username, principalName, socketSessionId);
     }
 
     private static final class MutableClock extends Clock {
@@ -1468,7 +1468,7 @@ class MatchmakingServiceTest {
         return MatchmakingEventDTO.builder()
                         .type(MatchEventType.MATCH_STARTED)
                         .matchId(UUID.randomUUID())
-                        .status("LOADOUT_SELECT")
+                        .status("KIT_REVEAL")
                         .player(new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, 1 <= 2 ? 1 : 1, false, 0, "melee", false, null, null, null))
                         .opponent(new MatchmakingPlayerDTO(secondUserId, "bravo-secret", 2, 2 <= 2 ? 2 : 1, false, 0, "melee", false, null, null, null))
                         .players(List.of(
@@ -1479,7 +1479,6 @@ class MatchmakingServiceTest {
                         .roundNumber(1)
                         .message("Match accepted.")
                         .roundBrains(List.of())
-                        .abilityOffers(List.of())
                         .viewerUserId(new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, 1 <= 2 ? 1 : 1, false, 0, "melee", false, null, null, null) == null ? null : new MatchmakingPlayerDTO(firstUserId, "alpha-secret", 1, 1 <= 2 ? 1 : 1, false, 0, "melee", false, null, null, null).userId()).build();
     }
 }

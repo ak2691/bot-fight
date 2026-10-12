@@ -111,7 +111,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
             ]),
             lesson("dont-miss", "Don't Miss", [
                 "Fireball is a projectile, so aim matters. Your bot starts about 300 units away from a stationary Opponent 1. Keep adjusting your aim before you shoot.",
-                "Angle To is how far the facing entity is turned away from its target, from 0 to 180 degrees: near zero means it is aimed at the target. This helps ensure you only use fireball when you are aimed at the target.",
+                "In View is true when the target is inside the view arc, the cone centred on your bot's facing. Set the arc to 20 degrees, so the target must be within 10 degrees either side of where you face. This helps ensure you only use fireball when you are aimed at the target.",
                 "Add a new root, add a conditional node with Add node, then connect the root’s output bar to its input bar, leave it as Always, and use Add node to create the Face target action (under Rotation), then connect the conditional’s output to the action’s input to start aiming.",
             ]),
             lesson("dodging", "Dodging", [
@@ -126,7 +126,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                 "Ability Ready means the ability is not on cooldown, preparing, or active. If no other ability is being used in any way, that means the ability can be used at any time.",
                 "Prep Time and Preparing tell you how much time remains in an ability's preparation and whether it is currently being prepared. No other abilities can be used while an ability is preparing or active.",
                 "Cooldown Left and On Cooldown tell you how much time remains before the cooldown is over and whether the ability is currently on cooldown.",
-                "Your opponent has Heavy Slash and uses it constantly, without a care in the world. Your bot has 1 HP, so use bot ability variables to carefully attack.",
+                "Your opponent has Stun and uses it constantly, without a care in the world. Your bot has 1 HP, so use bot ability variables to carefully attack.",
             ]),
         ]),
     }),

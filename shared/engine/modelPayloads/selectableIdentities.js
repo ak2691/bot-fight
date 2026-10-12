@@ -1,4 +1,4 @@
-import { phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+import { ENTITY_CATEGORIES, entityCategoryOf, isAttachedEntity, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
 
 export const SELECTABLE_IDENTITIES = Object.freeze({
     BOT: "bot",
@@ -22,14 +22,19 @@ export const SELECTABLE_DEPENDENCIES = Object.freeze({
     STATUS_EFFECT_LOADOUT: "status-effect-loadout",
 });
 
-export function selectableIdentitiesForAbilityEntity(entity, abilityId = entity?.abilityId) {
-    if (!entity) return Object.freeze([]);
+/**
+ * The identities a brain can select on an ability entity. A summon can be aimed and moved, so it has facing and
+ * movement. An attached entity is part of its owner's attack, so no brain selects it: it has none.
+ */
+export function selectableIdentitiesForAbilityEntity(entity) {
+    if (!entity || isAttachedEntity(entity)) return Object.freeze([]);
     const hasHealth = Boolean(phaseForEntity(entity)?.health);
+    const summon = entityCategoryOf(entity) === ENTITY_CATEGORIES.SUMMON;
     return Object.freeze([
         SELECTABLE_IDENTITIES.ABILITY_ENTITY,
         SELECTABLE_IDENTITIES.POSITION,
         ...(hasHealth ? [SELECTABLE_IDENTITIES.HEALTH] : []),
-        ...([17, 31].includes(Number(abilityId)) ? [SELECTABLE_IDENTITIES.FACING, SELECTABLE_IDENTITIES.MOVEMENT] : []),
+        ...(summon ? [SELECTABLE_IDENTITIES.FACING, SELECTABLE_IDENTITIES.MOVEMENT] : []),
     ]);
 }
 

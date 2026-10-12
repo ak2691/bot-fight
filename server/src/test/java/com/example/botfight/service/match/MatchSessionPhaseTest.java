@@ -41,7 +41,7 @@ class MatchSessionPhaseTest {
         assertThat(session.phase().wireStatus()).isEqualTo(status);
     }
 
-    @Test void pick() { assertPhase(initial().withLoadoutSelection(now.plusSeconds(32)), MatchPhase.LOADOUT_SELECT, "LOADOUT_SELECT"); }
+    @Test void pick() { assertPhase(initial().withLoadoutSelection(now.plusSeconds(32)), MatchPhase.KIT_REVEAL, "KIT_REVEAL"); }
     @Test void build() { assertPhase(building(), MatchPhase.BUILDING, "PREP"); }
     @Test void oneFinishedKeepsBuilding() { assertPhase(building().withFinishedPlayer(first, UUID.randomUUID(), now), MatchPhase.BUILDING, "PREP"); }
     @Test void allFinished() { assertPhase(finished(), MatchPhase.SIMULATION_LOADING, "SIMULATION_LOADING"); }
@@ -49,12 +49,12 @@ class MatchSessionPhaseTest {
     @Test void retry() { assertPhase(finished().simulating().simulationFailed(), MatchPhase.SIMULATION_LOADING, "SIMULATION_LOADING"); }
     @Test void replay() { assertPhase(replay(false), MatchPhase.REPLAY, "SIMULATION_PREPARING"); }
     @Test void nextPick() {
-        MatchSession next = replay(false).nextRound().withLoadoutSelection(now.plusSeconds(48));
-        assertPhase(next, MatchPhase.LOADOUT_SELECT, "LOADOUT_SELECT");
+        MatchSession next = replay(false).nextRound().withCountdown(now.plusSeconds(26));
+        assertPhase(next, MatchPhase.BUILDING, "PREP");
         assertThat(next.players()).allSatisfy(player -> {
-            assertThat(player.loadoutSelected()).isFalse();
+            assertThat(player.loadoutSelected()).isTrue();
             assertThat(player.finished()).isFalse();
-            assertThat(player.clockRemainingMs()).isEqualTo(330_000);
+            assertThat(player.clockRemainingMs()).isEqualTo(375_000);
         });
     }
     @Test void result() { assertPhase(replay(true).resultReady(), MatchPhase.RESULT_READY, "RESULT_READY"); }

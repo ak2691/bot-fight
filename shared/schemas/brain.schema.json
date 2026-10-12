@@ -44,12 +44,11 @@
         "selectable.x",
         "selectable.y",
         "selectable.alive",
-        "selectable.absoluteBearing",
         "selectable.movementDirection",
         "selectable.speed",
         "selectable.approachAngle",
         "selectable.moving",
-        "selectable.relativeBearing",
+        "selectable.inView",
         "selectable.facing",
         "selectable.count",
         "selectable.age",
@@ -86,12 +85,11 @@
             "selectable.x",
             "selectable.y",
             "selectable.alive",
-            "selectable.absoluteBearing",
             "selectable.movementDirection",
             "selectable.speed",
             "selectable.approachAngle",
             "selectable.moving",
-            "selectable.relativeBearing",
+            "selectable.inView",
             "selectable.facing",
             "selectable.count",
             "selectable.age",
@@ -133,11 +131,9 @@
             "selectable.hpNetChangeLastTick",
             "selectable.x",
             "selectable.y",
-            "selectable.absoluteBearing",
             "selectable.movementDirection",
             "selectable.speed",
             "selectable.approachAngle",
-            "selectable.relativeBearing",
             "selectable.facing",
             "selectable.count",
             "selectable.age",
@@ -160,7 +156,7 @@
       ]
     },
     "pairVariableId": {
-      "enum": ["selectable.distance", "selectable.absoluteBearing", "selectable.approachAngle", "selectable.relativeBearing"]
+      "enum": ["selectable.distance", "selectable.approachAngle", "selectable.inView"]
     },
     "singleSelectableVariableId": {
       "enum": [
@@ -215,26 +211,26 @@
       "enum": ["bot.selectedStatusEffectActive", "bot.selectedStatusEffectDurationMs"]
     },
     "abilityFor_any": {
-      "enum": [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35, 36, 37]
+      "enum": [1, 3, 4, 5, 6, 8, 15, 17, 18, 19, 21, 22, 25, 26, 27, 28, 29, 30, 32, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
     },
     "abilityFor_charges": {
-      "enum": [12]
+      "not": {}
     },
     "abilityFor_preparation": {
-      "enum": [3, 6, 7, 9, 10, 13, 15, 16, 18, 22, 23, 24, 28, 30, 32, 33, 35, 36, 37]
+      "enum": [3, 6, 15, 18, 22, 28, 30, 32, 35, 36, 37, 39, 43, 44, 45, 46, 47]
     },
     "abilityFor_has_range": {
-      "enum": [1, 3, 4, 5, 6, 7, 9, 11, 12, 13, 14, 15, 18, 25, 28, 30, 32, 35, 36, 37]
+      "enum": [1, 3, 4, 5, 6, 15, 18, 25, 28, 30, 32, 35, 36, 37, 39, 40, 45, 46, 47]
     },
     "selectable": {
       "type": "string",
       "maxLength": 100,
-      "pattern": "(?:^(?:my_bot|opponent|(?:opponent|teammate)_[1-7]|(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|proximity_mine|gravity_zone|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|null_zone|singularity_zone|tether_bolt|snare_bomb|repeller_drone))$)|(?:^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|proximity_mine|gravity_zone|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|null_zone|singularity_zone|tether_bolt|snare_bomb|repeller_drone)):(?:closest|farthest|oldest|newest):(?:[1-9][0-9]?|100)$)"
+      "pattern": "(?:^(?:my_bot|opponent|(?:opponent|teammate)_[1-7]|(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|backstab|singularity_zone|tether_bolt|snare_bomb|lunge|pellet|boomerang|tar_pit|blade|tether_link))$)|(?:^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|backstab|singularity_zone|tether_bolt|snare_bomb|lunge|pellet|boomerang|tar_pit|blade|tether_link)):(?:closest|farthest|oldest|newest):(?:[1-9][0-9]?|100)$)"
     },
     "selectableUnordered": {
       "type": "string",
       "maxLength": 100,
-      "pattern": "^(?:my_bot|opponent|(?:opponent|teammate)_[1-7]|(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|proximity_mine|gravity_zone|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|null_zone|singularity_zone|tether_bolt|snare_bomb|repeller_drone))$"
+      "pattern": "^(?:my_bot|opponent|(?:opponent|teammate)_[1-7]|(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|backstab|singularity_zone|tether_bolt|snare_bomb|lunge|pellet|boomerang|tar_pit|blade|tether_link))$"
     },
     "selectableBot": {
       "type": "string",
@@ -244,17 +240,17 @@
     "selectableFacing": {
       "type": "string",
       "maxLength": 100,
-      "pattern": "(?:^(?:my_bot|opponent|(?:opponent|teammate)_[1-7]|(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:hunter_drone|repeller_drone))$)|(?:^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:hunter_drone|repeller_drone)):(?:closest|farthest|oldest|newest):(?:[1-9][0-9]?|100)$)"
+      "pattern": "(?:^(?:my_bot|opponent|(?:opponent|teammate)_[1-7]|(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:hunter_drone))$)|(?:^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:hunter_drone)):(?:closest|farthest|oldest|newest):(?:[1-9][0-9]?|100)$)"
     },
     "selectableEntity": {
       "type": "string",
       "maxLength": 100,
-      "pattern": "(?:^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|proximity_mine|gravity_zone|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|null_zone|singularity_zone|tether_bolt|snare_bomb|repeller_drone))$)|(?:^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|proximity_mine|gravity_zone|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|null_zone|singularity_zone|tether_bolt|snare_bomb|repeller_drone)):(?:closest|farthest|oldest|newest):(?:[1-9][0-9]?|100)$)"
+      "pattern": "(?:^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|backstab|singularity_zone|tether_bolt|snare_bomb|lunge|pellet|boomerang|tar_pit|blade|tether_link))$)|(?:^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|backstab|singularity_zone|tether_bolt|snare_bomb|lunge|pellet|boomerang|tar_pit|blade|tether_link)):(?:closest|farthest|oldest|newest):(?:[1-9][0-9]?|100)$)"
     },
     "selectableEntityUnordered": {
       "type": "string",
       "maxLength": 100,
-      "pattern": "^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|proximity_mine|gravity_zone|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|null_zone|singularity_zone|tether_bolt|snare_bomb|repeller_drone))$"
+      "pattern": "^(?:(?:my_bot|my|opponent|(?:opponent|teammate)_[1-7])_(?:grenade|fireball|silence_wave|hunter_drone|windburst_projectile|temporal_rewind_zone|orbital_zone|backstab|singularity_zone|tether_bolt|snare_bomb|lunge|pellet|boomerang|tar_pit|blade|tether_link))$"
     },
     "customNumber": {
       "type": "number",
@@ -281,10 +277,10 @@
       "maximum": 360
     },
     "abilityId": {
-      "enum": [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35, 36, 37]
+      "enum": [1, 3, 4, 5, 6, 8, 15, 17, 18, 19, 21, 22, 25, 26, 27, 28, 29, 30, 32, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
     },
     "statusEffect": {
-      "enum": ["burn", "stun", "bleed", "slow", "shock", "silence", "overclock"]
+      "enum": ["burn", "stun", "silence", "slow", "bleed", "parry", "overdrive", "overcharge", "tethered"]
     },
     "variableOperand": {
       "type": "object",
@@ -509,7 +505,7 @@
           "maxItems": 7,
           "uniqueItems": true,
           "items": {
-            "enum": [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35, 36, 37]
+            "enum": [1, 3, 4, 5, 6, 8, 15, 17, 18, 21, 22, 25, 26, 27, 28, 29, 30, 32, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
           }
         }
       },
@@ -628,6 +624,11 @@
           },
           "rightTargetAngle": {
             "$ref": "#/$defs/angle"
+          },
+          "rightViewArc": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 360
           },
           "selectable1": {
             "$ref": "#/$defs/selectable"
@@ -935,7 +936,7 @@
                               "value": {
                                 "type": "number",
                                 "minimum": 0,
-                                "maximum": 300
+                                "maximum": 225
                               }
                             }
                           }
@@ -1058,8 +1059,8 @@
                             "properties": {
                               "value": {
                                 "type": "number",
-                                "minimum": -300,
-                                "maximum": 300
+                                "minimum": -225,
+                                "maximum": 225
                               }
                             }
                           }
@@ -1237,74 +1238,6 @@
                       "$ref": "#/$defs/selectable"
                     }
                   }
-                }
-              },
-              {
-                "if": {
-                  "properties": {
-                    "left": {
-                      "const": "selectable.absoluteBearing"
-                    }
-                  },
-                  "required": ["left"]
-                },
-                "then": {
-                  "properties": {
-                    "comparator": {
-                      "$ref": "#/$defs/numberComparator"
-                    },
-                    "right": {
-                      "allOf": [
-                        {
-                          "$ref": "#/$defs/numberConditionRight"
-                        },
-                        {
-                          "if": {
-                            "properties": {
-                              "type": {
-                                "const": "number"
-                              }
-                            }
-                          },
-                          "then": {
-                            "properties": {
-                              "value": {
-                                "type": "number",
-                                "minimum": -360,
-                                "maximum": 360
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    "selectable1": {
-                      "$ref": "#/$defs/selectableFacing"
-                    },
-                    "selectable2": {
-                      "$ref": "#/$defs/selectable"
-                    },
-                    "selectable": {
-                      "$ref": "#/$defs/selectable"
-                    },
-                    "leftSelectable": {
-                      "$ref": "#/$defs/selectable"
-                    }
-                  },
-                  "allOf": [
-                    {
-                      "$ref": "#/$defs/conditionRightPair"
-                    },
-                    {
-                      "$ref": "#/$defs/conditionRightSelectable"
-                    },
-                    {
-                      "$ref": "#/$defs/conditionRightAbility"
-                    },
-                    {
-                      "$ref": "#/$defs/conditionRightStatusEffect"
-                    }
-                  ]
                 }
               },
               {
@@ -1529,7 +1462,7 @@
                 "if": {
                   "properties": {
                     "left": {
-                      "const": "selectable.relativeBearing"
+                      "const": "selectable.inView"
                     }
                   },
                   "required": ["left"]
@@ -1537,32 +1470,10 @@
                 "then": {
                   "properties": {
                     "comparator": {
-                      "$ref": "#/$defs/numberComparator"
+                      "$ref": "#/$defs/booleanComparator"
                     },
                     "right": {
-                      "allOf": [
-                        {
-                          "$ref": "#/$defs/numberConditionRight"
-                        },
-                        {
-                          "if": {
-                            "properties": {
-                              "type": {
-                                "const": "number"
-                              }
-                            }
-                          },
-                          "then": {
-                            "properties": {
-                              "value": {
-                                "type": "number",
-                                "minimum": 0,
-                                "maximum": 180
-                              }
-                            }
-                          }
-                        }
-                      ]
+                      "$ref": "#/$defs/booleanConditionRight"
                     },
                     "selectable1": {
                       "$ref": "#/$defs/selectableFacing"
@@ -1577,7 +1488,7 @@
                       "$ref": "#/$defs/selectable"
                     },
                     "targetMode": {
-                      "enum": ["target", "angle", "coordinates"]
+                      "enum": ["target", "coordinates"]
                     },
                     "targetX": {
                       "type": "number",
@@ -1589,8 +1500,10 @@
                       "minimum": -600,
                       "maximum": 600
                     },
-                    "targetAngle": {
-                      "$ref": "#/$defs/angle"
+                    "viewArc": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 360
                     }
                   },
                   "allOf": [
@@ -1606,31 +1519,6 @@
                       "then": {
                         "required": ["targetX", "targetY"]
                       }
-                    },
-                    {
-                      "if": {
-                        "properties": {
-                          "targetMode": {
-                            "const": "angle"
-                          }
-                        },
-                        "required": ["targetMode"]
-                      },
-                      "then": {
-                        "required": ["targetAngle"]
-                      }
-                    },
-                    {
-                      "$ref": "#/$defs/conditionRightPair"
-                    },
-                    {
-                      "$ref": "#/$defs/conditionRightSelectable"
-                    },
-                    {
-                      "$ref": "#/$defs/conditionRightAbility"
-                    },
-                    {
-                      "$ref": "#/$defs/conditionRightStatusEffect"
                     }
                   ]
                 }
@@ -3164,7 +3052,7 @@
           "if": {
             "properties": {
               "action": {
-                "enum": [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 23, 26, 28, 29, 30, 31, 32, 33, 35, 36, 37]
+                "enum": [1, 3, 4, 5, 6, 8, 15, 17, 18, 21, 26, 28, 29, 30, 32, 35, 36, 37, 38, 39, 40, 41, 42, 44, 45, 46, 47]
               }
             },
             "required": ["action"]
@@ -3172,7 +3060,7 @@
           "then": {
             "properties": {
               "action": {
-                "enum": [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 23, 26, 28, 29, 30, 31, 32, 33, 35, 36, 37]
+                "enum": [1, 3, 4, 5, 6, 8, 15, 17, 18, 21, 26, 28, 29, 30, 32, 35, 36, 37, 38, 39, 40, 41, 42, 44, 45, 46, 47]
               },
               "selectable": {
                 "$ref": "#/$defs/selectable"
@@ -3275,7 +3163,7 @@
           "if": {
             "properties": {
               "action": {
-                "enum": [22, 24, 27]
+                "enum": [22, 27, 43]
               }
             },
             "required": ["action"]
@@ -3283,7 +3171,7 @@
           "then": {
             "properties": {
               "action": {
-                "enum": [22, 24, 27]
+                "enum": [22, 27, 43]
               },
               "selectable": {
                 "$ref": "#/$defs/selectable"
@@ -3774,7 +3662,7 @@
           "if": {
             "properties": {
               "action": {
-                "enum": [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 23, 26, 28, 29, 30, 31, 32, 33, 35, 36, 37]
+                "enum": [1, 3, 4, 5, 6, 8, 15, 17, 18, 21, 26, 28, 29, 30, 32, 35, 36, 37, 38, 39, 40, 41, 42, 44, 45, 46, 47]
               }
             },
             "required": ["action"]
@@ -3782,7 +3670,7 @@
           "then": {
             "properties": {
               "action": {
-                "enum": [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 23, 26, 28, 29, 30, 31, 32, 33, 35, 36, 37]
+                "enum": [1, 3, 4, 5, 6, 8, 15, 17, 18, 21, 26, 28, 29, 30, 32, 35, 36, 37, 38, 39, 40, 41, 42, 44, 45, 46, 47]
               },
               "selectable": {
                 "$ref": "#/$defs/selectable"
@@ -3891,7 +3779,7 @@
           "if": {
             "properties": {
               "action": {
-                "enum": [22, 24, 27]
+                "enum": [22, 27, 43]
               }
             },
             "required": ["action"]
@@ -3899,7 +3787,7 @@
           "then": {
             "properties": {
               "action": {
-                "enum": [22, 24, 27]
+                "enum": [22, 27, 43]
               },
               "selectable": {
                 "$ref": "#/$defs/selectable"
@@ -4021,35 +3909,33 @@
             4,
             5,
             6,
-            7,
             8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
             15,
-            16,
             17,
             18,
             19,
             21,
             22,
-            23,
-            24,
             25,
             26,
             27,
             28,
             29,
             30,
-            31,
             32,
-            33,
             35,
             36,
             37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
             "run_chain"
           ]
         },
@@ -4110,35 +3996,33 @@
             4,
             5,
             6,
-            7,
             8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
             15,
-            16,
             17,
             18,
             19,
             21,
             22,
-            23,
-            24,
             25,
             26,
             27,
             28,
             29,
             30,
-            31,
             32,
-            33,
             35,
             36,
             37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
             "run_chain"
           ]
         }
@@ -4267,35 +4151,33 @@
                   4,
                   5,
                   6,
-                  7,
                   8,
-                  9,
-                  10,
-                  11,
-                  12,
-                  13,
-                  14,
                   15,
-                  16,
                   17,
                   18,
                   19,
                   21,
                   22,
-                  23,
-                  24,
                   25,
                   26,
                   27,
                   28,
                   29,
                   30,
-                  31,
                   32,
-                  33,
                   35,
                   36,
                   37,
+                  38,
+                  39,
+                  40,
+                  41,
+                  42,
+                  43,
+                  44,
+                  45,
+                  46,
+                  47,
                   "run_chain"
                 ]
               }
@@ -4353,34 +4235,32 @@
                   4,
                   5,
                   6,
-                  7,
                   8,
-                  9,
-                  10,
-                  11,
-                  12,
-                  13,
-                  14,
                   15,
-                  16,
                   17,
                   18,
                   21,
-                  23,
                   26,
                   28,
                   29,
                   30,
-                  31,
                   32,
-                  33,
                   35,
                   36,
                   37,
+                  38,
+                  39,
+                  40,
+                  41,
+                  42,
+                  44,
+                  45,
+                  46,
+                  47,
                   19,
                   22,
-                  24,
                   27,
+                  43,
                   25
                 ]
               }

@@ -16,8 +16,8 @@ test("a practice loadout defaults to Slash and holds one weapon", () => {
 
 test("practice abilities toggle and stop at six picks", () => {
     let loadout = { abilities: [] };
-    for (const id of [3, 4, 5, 6, 7, 8, 9]) loadout = toggleSandboxAbility(loadout, id);
+    for (const id of [3, 4, 5, 6, 8, 15, 17, 18]) loadout = toggleSandboxAbility(loadout, id);
     assert.equal(loadout.abilities.length, 1 + SANDBOX_MAX_ABILITY_PICKS);
-    assert.ok(!loadout.abilities.includes(9));
+    assert.ok(!loadout.abilities.includes(18));
     assert.deepEqual(toggleSandboxAbility(loadout, 3).abilities.includes(3), false);
 });

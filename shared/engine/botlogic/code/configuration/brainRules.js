@@ -146,6 +146,8 @@ function checkTree(brain, requireActions, errors) {
 
 /** Actions and selected-ability conditions may only use equipped (or standard) abilities. */
 function checkLoadout(brain, errors) {
+    // In matches, loadout is the full authoritative kit, including locked tiers.
+    // Combat eligibility comes from each segment loadout, not this validation allowlist.
     // A brain without a loadout (puzzle opponents) claims no ability set to check against.
     if (!Array.isArray(brain.loadout?.abilities)) return;
     const usable = new Set([...STANDARD_ABILITIES, ...brain.loadout.abilities]);

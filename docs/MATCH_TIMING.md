@@ -57,26 +57,19 @@ but it cannot introduce a wall-clock offset error.
   countdown. The server creates the persisted match and emits `MATCH_STARTED`
   only after both acceptance requests succeed; a provisional pairing has no
   database match yet.
-- There are no guaranteed offers. Every offer comes from the match seed: the same offers for every
-  player (2v2 too), minus the abilities a player already owns.
-- **The pick phase is 30 seconds in round 1 and 20 seconds in rounds 2 to 6.** Round 1 picks a weapon
-  (Slash, Thrust, Cleave or Smash) and one of three tier 1 abilities; each later round picks one ability
-  (three offers in rounds 2 to 4, two in rounds 5 and 6; rounds 1-2 draw from tier 1, 3-4 from tier 2,
-  5-6 from tier 3). `loadoutSelectionEndsAt` is the authoritative deadline: the visible 30 or 20 seconds
-  plus the hidden two-second submission grace (32 or 22 seconds after the phase begins). **This
-  intentionally replaces the old 60/62-second ability-selection contract**; the grace is unchanged.
-  If every player locks in early, building-room preparation lasts up to two seconds but never extends
-  beyond that authoritative deadline. A player who has not picked when it passes gets a deterministic
-  auto-pick: Slash as the weapon in round 1, and the first offer in offer order. The event field keeps
-  its existing name for wire compatibility; its meaning is the active selection phase's deadline. The
-  pick phase never touches a player's clock.
-- During building-room preparation the client displays "Both players have selected, preparing
-  building room."
-- **Building runs a per-player chess clock.** A player's clock starts at 5:00 (1v1), 7:00 (2v2) or the
-  custom lobby's base (30 seconds to 10 minutes), and gains the increment (30 seconds; custom lobbies
-  choose 0 to 60 seconds) at the start of every build, round 1 included. The clock only runs while that
-  player is building: the pick, the replay and the result hold are free, and a player who has submitted
-  stops their own clock. The server owns the clocks; the client only displays them.
+- Each player locks a validated fixed kit before queueing or when readying in a custom lobby:
+  one weapon and one ability per tier. Both full kits are revealed in the match-start snapshot.
+- **Round 1 has a fixed 10-second `KIT_REVEAL` hold.** `loadoutSelectionEndsAt` carries its absolute
+  deadline; there is no submission grace for this hold and it cannot end early. No pick submissions,
+  random offers or per-round selection phases remain. Later rounds go directly from replay hold to build.
+- Round 1 unlocks weapon and tier 1, round 3 tier 2, round 5 tier 3. Gap rounds 2, 4 and 6 add nothing.
+  `timedRounds.unlockedTier` announces the unlock (null on gaps). Newly unlocked abilities start ready.
+- **Building runs a per-player chess clock.** Base is 3:00 (1v1), 4:00 (2v2), or the custom lobby's
+  bounded base (30 seconds to 10 minutes, default 5:00). At the start of every build, add +45 seconds
+  on rounds 1, 3 and 5, and +30 seconds on rounds 2, 4 and 6. Custom increment (0–60 seconds) is
+  the gap-round increment; unlock rounds receive that value +15 seconds. `timedRounds.incrementSeconds`
+  carries the actual round increment. Reveal, replay and result hold spend no clock; submitting stops
+  that player's clock. Server deadlines are authoritative.
   - Each player's `buildEndsAt` (on their `players[]` entry) is the absolute instant their clock reaches
     zero. `clockRemainingMs` is the clock as it stood when the build began, or what was left once they
     submitted. The event's `buildingEndsAt` is the instant the **last** player's build can still be
@@ -89,7 +82,7 @@ but it cannot introduce a wall-clock offset error.
     auto-submits its current brain just before its clock reaches zero and the server keeps that player
     open for the grace so it can arrive; if the submission is invalid, or nothing arrives, the server
     submits last round's brain. With `PREVIOUS` the server resolves the player exactly at their visible
-    deadline with last round's brain and the new loadout (an empty brain in round 1).
+    deadline with last round's brain and the same full kit (an empty brain in round 1).
   - The build ends when every player has submitted or run out. A player who runs out is resolved at
     their own deadline, even while a teammate or opponent is still building; resolving one player never
     cuts anyone else's clock short.
@@ -100,9 +93,9 @@ but it cannot introduce a wall-clock offset error.
   scheduler or serialize state transitions for unrelated matches.
 - Once calculation finishes, the server publishes `SIMULATION_PREPARING` with the initial arena state,
   `serverNow`, and the absolute replay deadlines. A three-second server-authored preparation window
-  preserves the arena entrance animation before playback begins. Each round's replay is one 20-second
+  preserves the arena entrance animation before playback begins. Each round's replay is one 15-second
   segment of a single continuous fight (positions, HP, statuses, cooldowns, stamina and entities carry
-  over; only brains, loadouts and custom variables change), so a replay is at most 20 seconds long and
+  over; only brains, loadouts and custom variables change), so a replay is at most 15 seconds long and
   shorter when a team is knocked out.
 - Authoritative replay frames are delivered in one-second windows with two
   seconds of lookahead. The first window is sent two seconds into preparation,
@@ -121,7 +114,7 @@ but it cannot introduce a wall-clock offset error.
   `MATCH_RESULT_READY`.
 - The post-result hold ends at `roundReadyAt`, normally three seconds after
   `resultRevealsAt`. The backend schedules `MATCH_ROUND_READY` for that
-  deadline; the client switches to the next ability selection when that event
+  deadline; the client switches to the next build when that event
   arrives and does not run its own post-result hold timer.
 - Terminal match chat closes at `matchChatEndsAt`, normally 30 seconds after
   `resultRevealsAt`. The backend schedules removal of the chat window at that
@@ -141,38 +134,15 @@ relative duration, as `SIMULATION_PREPARING` does.
 
 ## Round-transition regression checklist
 
-Run this sequence whenever round lifecycle, loadouts, building sessions, clocks or submission
-ownership changes. A match has six rounds, so the transitions that matter are 1 to 2, 2 to 3, 4 to 5
-and 5 to 6 (the tier and offer-count changes), and the last one:
-
-1. Finish round one and verify `MATCH_ROUND_READY` for round two has `loadoutSelected: false`; the
-   weapon and first ability are carried as the base, the round-two offers are an empty draft, and no
-   weapon offers are sent (`timedRounds.weaponOffers` is empty after round 1).
-2. Let round one's pick expire without selecting anything. The server must deterministically add Slash
-   plus the first offer, enter `PREP`, and allow a bot submission even if the client still holds the
-   pre-timeout brain. The server-owned finalized loadout must be the loadout used by the submission and
-   simulation.
-3. Repeat for rounds two, three, five and six: start with no pick for that round, add exactly one offer
-   on timeout (the first offer, never one the player already owns), and submit successfully. Rounds
-   five and six offer two abilities, rounds one to four three. Do not stop after proving only the
-   round-two transition.
-4. Check the clocks across rounds: each build adds the increment to the clock the previous round left,
-   a player who submitted early keeps the time they saved, and a player whose clock ran out starts the
-   next round with only the increment.
-5. Exercise reconnect during the result hold, at `MATCH_ROUND_READY` and mid-build; the resumed round
-   must expose the same active deadline, the same per-player `buildEndsAt`, and the same draft state.
-6. End a match both ways: a knockout mid-segment (no further rounds, completion reason `SIMULATION`),
-   and six rounds with no knockout (`HP_DECISION`, with the winning team or a draw).
-
-Recurring mistakes to guard against:
-
-- Reusing the previous encoded loadout as if it were the new round's draft;
-- Letting one player's expiry (or submit) change another player's clock or deadline;
-- Running a clock outside BUILDING, or adding the increment twice for one build;
-- Creating the next deadline when replay preparation finishes instead of when
-  the next selection phase actually activates;
-- Treating a client-echoed loadout as authority after the server auto-picks;
-- Testing only the first non-opening round, which lets round-three state leaks
-  survive unnoticed (and now rounds five and six too); and
-- Verifying timer values without verifying `loadoutSelected`, inherited picks,
-  automatic pick counts, and submission ownership together.
+1. Match start reveals every participant's complete immutable kit, with a 10-second free hold.
+   Reject missing, malformed, unknown, duplicate or wrong-tier kit input before queue/start.
+2. At reveal expiry, enter build once and add the round-1 increment once. No client input can skip the hold.
+3. Round boundaries enter build immediately. Verify subsets: weapon+tier 1 in rounds 1–2,
+   +tier 2 in rounds 3–4, and +tier 3 in rounds 5–6. Each new ability starts ready; prior state carries over.
+4. A brain referencing a locked kit ability is valid, but its action does nothing until its unlock.
+   Outside-kit references fail worker rules. Client loadouts cannot control authoritative eligibility.
+5. Check +45/+30 increments (custom gap increment/+15), per-player submit deduction, timeout fallback,
+   two-second build grace, and no changes to another player's clock. Never spend clock outside build.
+6. Reconnect during reveal, replay/result hold, round boundary and build: preserve full kits, unlocked
+   subsets, original deadlines and clocks. Deferred disconnect grace resumes at the next build.
+7. End by KO or by round-6 total HP decision; equal HP or simultaneous elimination is a draw.

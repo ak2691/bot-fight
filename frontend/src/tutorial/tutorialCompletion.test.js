@@ -123,9 +123,10 @@ test("Don't Miss supplied solution completes only after a Fireball hits the stat
     globalThis.localStorage = storage;
 
     try {
-        assert.equal(playerFireballBranch.conditions[0].left, "selectable.relativeBearing");
-        assert.equal(playerFireballBranch.conditions[0].comparator, "lte");
-        assert.equal(playerFireballBranch.conditions[0].right.value, 10);
+        assert.equal(playerFireballBranch.conditions[0].left, "selectable.inView");
+        assert.equal(playerFireballBranch.conditions[0].comparator, "eq");
+        assert.equal(playerFireballBranch.conditions[0].right.value, true);
+        assert.equal(playerFireballBranch.conditions[0].viewArc, 20);
         assert.equal(playerFireballBranch.actions[0].action, TUTORIAL_ACTIONS.FIREBALL);
         assert.equal(aimBranch.conditions[0].type, "always");
         assert.equal(aimBranch.actions[0].action, "rotate_toward_enemy");

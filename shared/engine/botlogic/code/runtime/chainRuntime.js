@@ -1,5 +1,6 @@
 import { activeRemainingMs, windupRemainingMs } from "../../../gameconfig/AbilityState.js";
 import { canCancelWindup } from "../../../gameconfig/StaminaSystem.js";
+import { hasActiveEffect, STATUS_EFFECT_APPLICATIONS } from "../../../ecs/contracts/StatusContracts.js";
 import { ACTION_HEADS, BOT_CODE_ACTIONS } from "../contracts/BotLogicContracts.js";
 import { CHAIN_STEP_TYPES, MAX_CALL_DEPTH, TICK_MS } from "../configuration/constants.js";
 
@@ -99,8 +100,7 @@ export function resumeChain(stack, ctx) {
 }
 
 function isStunned(bot) {
-    return (bot?.statusEffects ?? []).some((status) => String(status?.type ?? "").toLowerCase() === "stun"
-        && (status?.mode === "presence" || Number(status?.remainingMs ?? 0) > 0));
+    return hasActiveEffect(bot, STATUS_EFFECT_APPLICATIONS.STUN);
 }
 
 /** True while the bot is winding up or running the ability. Anything else means it has ended. */

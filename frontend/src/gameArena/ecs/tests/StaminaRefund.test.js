@@ -148,7 +148,7 @@ function mainStaminaTrace({ shapes, loadout }, ability, ticks) {
 
 test("a Slash hit in the arena refunds 10 once and never touches the pause", () => {
     const trace = mainStaminaTrace(arena({ ability: SLASH, defenderX: 380 }), SLASH, 4);
-    const hitTick = trace.findIndex((entry) => entry.hp < 300);
+    const hitTick = trace.findIndex((entry) => entry.hp < 225);
     assert.ok(hitTick >= 0, "Slash lands");
     assert.equal(trace[hitTick].stamina, 50);
     assert.equal(trace.at(-1).stamina, 50, "the swing does not pay twice");
@@ -157,7 +157,7 @@ test("a Slash hit in the arena refunds 10 once and never touches the pause", () 
 
 test("a Fireball pays once for the activation that spawned it, burn ticks pay nothing", () => {
     const trace = mainStaminaTrace(arena({ ability: FIREBALL, defenderX: 800 }), FIREBALL, 40);
-    const impact = trace.findIndex((entry) => entry.hp < 300);
+    const impact = trace.findIndex((entry) => entry.hp < 225);
     assert.ok(impact > 1, "the projectile takes time to arrive");
     assert.equal(trace[impact - 1].stamina, 40);
     assert.equal(trace[impact].stamina, 50);

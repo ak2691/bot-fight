@@ -49,7 +49,7 @@ class MatchSchedulerTest {
     private MatchSession active;
 
     @BeforeEach void setUp() {
-        active = session(MatchPhase.LOADOUT_SELECT, 1, clock.instant().plusSeconds(32));
+        active = session(MatchPhase.KIT_REVEAL, 1, clock.instant().plusSeconds(32));
         when(matches.sessionForScheduling(id)).thenAnswer(ignored -> active);
         when(matches.isSchedulingDeadlineCurrent(eq(id), any(), anyInt(), any())).thenReturn(true);
         when(matches.completeSimulation(id)).thenReturn(List.of());

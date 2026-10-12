@@ -1,6 +1,5 @@
 import { abilityChargesFor, abilityReadyInMs, abilityRechargeRemainingMs, abilityTimingReady, anotherAbilityActive } from "../../../gameconfig/AbilityResourceSystem.js";
-import { abilityChannel, channelNotReadyStatuses } from "../../../gameconfig/AbilityChannels.js";
-import { statusIsActive } from "../../../ecs/contracts/StatusContracts.js";
+import { abilityChannel, notReadyWhileBlocked } from "../../../gameconfig/AbilityChannels.js";
 import { activeRemainingMs, channelWindingUp, windupRemainingMs } from "../../../gameconfig/AbilityState.js";
 import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
 import { ACTION_HEADS, BOT_CODE_ACTIONS } from "../contracts/BotLogicContracts.js";
@@ -53,8 +52,8 @@ export function abilityReady(bot, ability) {
     if (!botHasAbility(bot, abilityId)) return false;
     // Another ability's wind-up in this ability's channel stops it from starting; other channels never do.
     if (windingUpBlocks(bot, abilityId)) return false;
-    // A status that blocks the channel and reports it not ready (slow, for the dash channel).
-    if (channelNotReadyStatuses(abilityChannel(abilityId)).some((status) => statusIsActive(bot, status))) return false;
+    // A block on the channel that reports it not ready (slow, for the dash channel).
+    if (notReadyWhileBlocked(bot, abilityId)) return false;
 
     // Selection happens before this fixed step advances its timers. Do not
     // reserve the action for an ability whose recovery/reload ends later in

@@ -4,6 +4,7 @@ import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arena
 import { abilityContract, entityContractForAbility, SPAWN_PATTERN_TYPES } from "../contracts/AbilityContracts.js";
 import { selectableIdentitiesForAbilityEntity } from "../../modelPayloads/selectableIdentities.js";
 import { ENTITY_KIND } from "./EntityCombat.js";
+import { resolveDataNumber, resolveDataValue } from "../../gameconfig/dataValues.js";
 
 let nextEntityId = 1;
 
@@ -68,6 +69,7 @@ export function createEntity({
         phaseLocked: false,
         phaseEnteredThisTick: false,
         hitLedger: {},
+        entityHitLedger: {},
         locked: true,
         damageMultiplier: state.damageMultiplier ?? null,
         entityKey,
@@ -169,8 +171,8 @@ function buildEntityOptions(bot, contract, context) {
     });
     const health = healthDefinition
         ? {
-            hp: Number(resolveStat(healthDefinition.hp ?? healthDefinition.maxHp, { bot, stats, context })),
-            maxHp: Number(resolveStat(healthDefinition.maxHp ?? healthDefinition.hp, { bot, stats, context })),
+            hp: resolveDataNumber(healthDefinition.hp ?? healthDefinition.maxHp, { stats, owner: bot, context }),
+            maxHp: resolveDataNumber(healthDefinition.maxHp ?? healthDefinition.hp, { stats, owner: bot, context }),
         }
         : null;
     return {
@@ -218,11 +220,7 @@ function buildTransform(bot, spawn, targeting, size, context, placement) {
         ? Number(spawn.rotation ?? 0)
         : ownerRotation + Number(spawn?.rotation ?? 0)) + placement.angle;
     if (targeting?.position === "target") {
-        const radius = targeting.clampToRadius == null
-            ? 0
-            : Number(typeof targeting.clampToRadius === "number"
-                ? targeting.clampToRadius
-                : resolveValue({ stat: targeting.clampToRadius, fallback: 0 }, { bot, stats: context.stats ?? {}, context }));
+        const radius = resolveDataNumber(targeting.clampToRadius, { stats: context.stats ?? {}, owner: bot, context });
         const width = Number(context.width ?? ARENA_WIDTH_UNITS);
         const height = Number(context.height ?? ARENA_HEIGHT_UNITS);
         const targetX = context.targetX ?? resolveTargetDefault(targeting.defaultX, bot.x);
@@ -257,9 +255,7 @@ export function ownerRelativePose(bot, spawn, placement = { angle: 0, lateral: 0
 function buildMotion(bot, firstPhase, { stats, context }, placement) {
     const direction = compassDirection(bot.rotation + placement.angle);
     const speedValue = firstPhase?.movement?.unitsPerTick;
-    const speed = typeof speedValue === "number"
-        ? speedValue
-        : Number(resolveStat(speedValue, { bot, stats, context }));
+    const speed = resolveDataNumber(speedValue, { stats, owner: bot, context });
     const traveled = context.traveledOverride ?? 0;
     return {
         x: direction.x * speed,
@@ -271,40 +267,16 @@ function buildMotion(bot, firstPhase, { stats, context }, placement) {
 function buildLifetime(definition, { bot, stats, context }) {
     const remaining = context.durationOverride
         ?? (definition?.duration
-            ? Number(resolveStat(definition.duration, { bot, stats, context }))
+            ? resolveDataNumber(definition.duration, { stats, owner: bot, context })
             : null);
     const adjusted = remaining == null ? null : remaining + Number(definition?.add ?? 0);
     return { ageMs: 0, remainingMs: adjusted };
 }
 
-function resolveRecord(record, values, { skip = [] } = {}) {
+function resolveRecord(record, { bot, stats, context }, { skip = [] } = {}) {
     return Object.fromEntries(Object.entries(record ?? {})
         .filter(([key]) => !skip.includes(key))
-        .map(([key, value]) => [key, resolveValue(value, values)]));
-}
-
-function resolveValue(value, { bot, stats, context }) {
-    if (value == null) return value;
-    if (typeof value === "number" || typeof value === "boolean" || typeof value === "string") {
-        return value;
-    }
-    if (Array.isArray(value)) return value.map((item) => resolveValue(item, { bot, stats, context }));
-    if (Object.hasOwn(value, "stat")) return stats[value.stat] ?? value.fallback;
-    if (Object.hasOwn(value, "ownerStat")) return bot[value.ownerStat] ?? value.fallback;
-    if (Object.hasOwn(value, "context")) {
-        return context[value.context] ?? resolveValue(value.fallback, { bot, stats, context });
-    }
-    if (Object.hasOwn(value, "add")) {
-        return Number(resolveValue(value.add, { bot, stats, context })) + Number(value.amount ?? 0);
-    }
-    return value;
-}
-
-function resolveStat(name, values) {
-    if (name == null) return null;
-    return typeof name === "number"
-        ? name
-        : resolveValue({ stat: name, fallback: 0 }, values);
+        .map(([key, value]) => [key, resolveDataValue(value, { stats, owner: bot, context })]));
 }
 
 function resolveTargetDefault(value, fallback) {

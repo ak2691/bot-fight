@@ -1,24 +1,24 @@
 import { BOT_ABILITY_PRESENTATIONS } from "../botAbilityPresentationDefinitions.js";
-import absoluteGuard from "./absoluteGuard.js";
-import basicHeal from "./basicHeal.js";
 import cleave from "./cleave.js";
-import concussiveShot from "./concussiveShot.js";
+import counterHit from "./counterHit.js";
 import dash from "./dash.js";
 import disruptorDart from "./disruptorDart.js";
+import execute from "./execute.js";
 import frostRing from "./frostRing.js";
 import gun from "./gun.js";
-import heavySlash from "./heavySlash.js";
+import lunge from "./lunge.js";
 import meleeSlash from "./meleeSlash.js";
-import overclock from "./overclock.js";
+import overcharge from "./overcharge.js";
+import overdrive from "./overdrive.js";
+import parry from "./parry.js";
 import phaseStrike from "./phaseStrike.js";
-import pistol from "./pistol.js";
-import railShot from "./railShot.js";
-import reactiveArmor from "./reactiveArmor.js";
 import repulsorBurst from "./repulsorBurst.js";
+import shotgunBlast from "./shotgunBlast.js";
 import smash from "./smash.js";
 import sprintTrail from "./sprintTrail.js";
 import stun from "./stun.js";
 import temporalRewindZone from "./temporalRewindZone.js";
+import tetherChain from "./tetherChain.js";
 import thrust from "./thrust.js";
 import vampiricBeam from "./vampiricBeam.js";
 
@@ -33,25 +33,25 @@ import vampiricBeam from "./vampiricBeam.js";
  * one entry in botAbilityPresentationDefinitions.js, and the type name in the JSON.
  */
 export const BOT_ABILITY_RENDERERS = Object.freeze({
-    absoluteGuard,
-    basicHeal,
     cleave,
-    concussiveShot,
+    counterHit,
     dash,
     disruptorDart,
+    execute,
     frostRing,
     gun,
-    heavySlash,
+    lunge,
     meleeSlash,
-    overclock,
+    overcharge,
+    overdrive,
+    parry,
     phaseStrike,
-    pistol,
-    railShot,
-    reactiveArmor,
     repulsorBurst,
+    shotgunBlast,
     smash,
     sprintTrail,
     stun,
+    tetherChain,
     temporalRewindZone,
     thrust,
     vampiricBeam,

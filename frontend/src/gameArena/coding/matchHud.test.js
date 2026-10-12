@@ -10,7 +10,7 @@ test("round label reads Round k / 6", () => {
 
 test("team HP starts full and follows the frozen end of the last segment", () => {
     const players = [{ slot: 1, teamNumber: 1 }, { slot: 2, teamNumber: 2 }, { slot: 3, teamNumber: 2 }];
-    assert.deepEqual(teamHpTotals(players, null), { blue: 300, red: 600 });
+    assert.deepEqual(teamHpTotals(players, null), { blue: 225, red: 450 });
     assert.deepEqual(teamHpTotals(players, [{ slot: 1, hp: 120 }, { slot: 2, hp: 0 }, { slot: 3, hp: 75 }]), { blue: 120, red: 75 });
 });
 

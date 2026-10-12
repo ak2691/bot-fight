@@ -82,7 +82,7 @@ function moveTowardTarget() {
 function actionForAbility(abilityId) {
     const action = { action: abilityId, selectable: BOT_CODE_SELECTABLES.OPPONENT };
     if (abilityId === 19) Object.assign(action, { movementMode: "target", movementDirection: 0 });
-    if ([22, 24].includes(abilityId)) action.targetMode = "target";
+    if (abilityId === 22) action.targetMode = "target";
     if (abilityId === 25) action.phaseFacingMode = 0;
     return action;
 }
@@ -103,25 +103,17 @@ function opponentCode(abilityId) {
     switch (abilityId) {
         case 2:
             return { loadout: loadout(1), code: castCode(1) };
-        case 16:
-            return { loadout: loadout(3), code: castCode(3) };
-        case 23:
-            return { loadout: loadout(22), code: castCode(22) };
         case 10:
             return { loadout: loadout(1), code: castCode(1) };
         case 25:
             return { loadout: loadout(2), code: castCode(2) };
         case 6:
-            return { loadout: loadout(13), code: castCode(13) };
+            return { loadout: loadout(3), code: castCode(3) };
         case 15:
             return {
-                loadout: loadout(13),
-                code: castCode(13, { castConditions: [beginChargingAfter(0.8)] }),
+                loadout: loadout(3),
+                code: castCode(3, { castConditions: [beginChargingAfter(0.8)] }),
             };
-        case 24:
-            return { loadout: loadout(12), code: castCode(12) };
-        case 11:
-            return { loadout: loadout(), code: code([root("mine-approach-if", [moveTowardTarget()])]) };
         case 29:
             return { loadout: loadout(), code: code([root("snare-approach-if", [moveTowardTarget()])]) };
         default:
@@ -136,7 +128,7 @@ function positioningFor(abilityId) {
         playerRotation: 180,
         opponentRotation: 0,
     };
-    if ([1, 16, 23, 10, 7, 8, 17, 18, 35, 36, 37].includes(abilityId)) {
+    if ([1, 8, 17, 18, 35, 36, 37].includes(abilityId)) {
         return { player: { x: TEST_CENTER_X, y: TEST_CENTER_Y }, opponent: { x: TEST_CENTER_X, y: 708 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 6) {
@@ -150,15 +142,6 @@ function positioningFor(abilityId) {
     }
     if (abilityId === 15) {
         return { player: { x: TEST_CENTER_X, y: 510 }, opponent: { x: TEST_CENTER_X, y: 690 }, playerRotation: 180, opponentRotation: 0 };
-    }
-    if (abilityId === 24) {
-        return { player: { x: TEST_CENTER_X, y: 480 }, opponent: { x: TEST_CENTER_X, y: 660 }, playerRotation: 180, opponentRotation: 0 };
-    }
-    if (abilityId === 11) {
-        return { player: { x: TEST_CENTER_X, y: 540 }, opponent: { x: TEST_CENTER_X, y: 840 }, playerRotation: 180, opponentRotation: 0 };
-    }
-    if (abilityId === 14) {
-        return { player: { x: TEST_CENTER_X, y: 480 }, opponent: { x: TEST_CENTER_X, y: 720 }, playerRotation: 180, opponentRotation: 0 };
     }
     return defaults;
 }

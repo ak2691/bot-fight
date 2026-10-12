@@ -101,6 +101,8 @@ const abilityVariableIds = STATE_VARIABLES.filter((s) => s.supportsAbility).map(
 const statusVariableIds = STATE_VARIABLES.filter((s) => s.supportsStatusEffect).map((s) => s.id);
 const abilityEnumFor = (variable) => ref(`abilityFor_${(variable.requiredTag ?? "any").replace(/[^a-z]/gi, "_")}`);
 
+const tagEnum = (ids) => (ids.length ? { enum: ids } : { not: {} });
+
 function commonDefs() {
     const tags = unique(STATE_VARIABLES.filter((s) => s.supportsAbility).map((s) => s.requiredTag ?? "any"));
     return {
@@ -113,7 +115,8 @@ function commonDefs() {
         statusVariableId: { enum: statusVariableIds },
         ...Object.fromEntries(tags.map((tag) => [
             `abilityFor_${tag.replace(/[^a-z]/gi, "_")}`,
-            { enum: ALL_ABILITY_DEFINITIONS.filter((a) => tag === "any" || a.tags.includes(tag)).map((a) => a.id) },
+            // An empty list matches nothing: `enum: []` is not valid JSON Schema, so it is written as `not: {}`.
+            tagEnum(ALL_ABILITY_DEFINITIONS.filter((a) => tag === "any" || a.tags.includes(tag)).map((a) => a.id)),
         ])),
         ...selectableDefs(),
         customNumber,
@@ -222,6 +225,7 @@ function treeDefs() {
         rightTargetX: x,
         rightTargetY: x,
         rightTargetAngle: ref("angle"),
+        rightViewArc: num(1, 360),
     };
     const rightIs = (idsRef) => ({
         properties: { right: { properties: { type: { const: "variable" }, value: ref(idsRef) }, required: ["type", "value"] } },
@@ -294,6 +298,7 @@ function treeDefs() {
                 });
             }
         }
+        if (variable.viewArc) properties.viewArc = num(1, 360);
         if (variable.supportsAbility) {
             properties.ability = abilityEnumFor(variable);
         }

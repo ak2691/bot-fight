@@ -25,7 +25,7 @@ class MatchEventGuardWorkflowTest extends MatchWorkflowFixture {
     void staleSelectionSnapshotIsRejectedAfterTheMatchEntersBuilding() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        List<OutboundMatchmakingEvent> started = matchmakingService.joinQueue(new QueueJoinRequest(
+        List<OutboundMatchmakingEvent> started = matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -34,7 +34,7 @@ class MatchEventGuardWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        List<OutboundMatchmakingEvent> selectionEvents = matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -44,8 +44,8 @@ class MatchEventGuardWorkflowTest extends MatchWorkflowFixture {
                 null,
                 QueuePool.REGISTERED));
 
-        List<OutboundMatchmakingEvent> selectionEvents = TestMatches.selectLoadout(service, firstUserId, "melee");
-        List<OutboundMatchmakingEvent> buildingEvents = TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        List<OutboundMatchmakingEvent> buildingEvents = TestMatches.beginBuild(service, secondUserId);
 
         assertThat(started).isNotEmpty();
         assertThat(selectionEvents).hasSize(2);
@@ -56,6 +56,6 @@ class MatchEventGuardWorkflowTest extends MatchWorkflowFixture {
                 assertThat(guard.currentEventRejectionReason(event)).isNull());
         // The 5:00 base plus the 30 second increment, then the 2 second submission grace.
         assertThat(Duration.between(clock.instant(), buildingEvents.get(0).event().buildingEndsAt()))
-                .isEqualTo(Duration.ofSeconds(332));
+                .isEqualTo(Duration.ofSeconds(227));
     }
 }

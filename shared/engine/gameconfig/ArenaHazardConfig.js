@@ -22,27 +22,27 @@ export const CLOSING_ZONE_CONFIG = Object.freeze({
 });
 
 /**
- * Timed rounds: 20 s segments, 6 rounds, 120 s in all. The zone only exists in rounds 5 and 6. It
- * starts at a 1200-unit diameter at the start of round 5 (80 s), contracts to 900 over the next 5 s,
- * then to 600 over the 5 s after round 6 starts (100 s). Damage is unchanged. A warning ring shows
+ * Timed rounds: 15 s segments, 6 rounds, 90 s in all. The zone only exists in rounds 5 and 6. It
+ * starts at a 1200-unit diameter at the start of round 5 (60 s), contracts to 900 over the next 5 s,
+ * then to 600 over the 5 s after round 6 starts (75 s). Damage is unchanged. A warning ring shows
  * the next diameter for the round before each step. Mirrors the server's
- * `ClosingZoneConfig.timedRoundsV2()`.
+ * `ClosingZoneConfig.timedRounds()`.
  */
-export const TIMED_ROUNDS_V2_DURATION_MS = 120_000;
-export const TIMED_ROUNDS_V2_ZONE_CONFIG = Object.freeze({
-    startDelayMs: 80_000,
+export const TIMED_ROUNDS_DURATION_MS = 90_000;
+export const TIMED_ROUNDS_ZONE_CONFIG = Object.freeze({
+    startDelayMs: 60_000,
     approachDurationMs: 5_000,
-    phaseDurationMs: 20_000,
+    phaseDurationMs: 15_000,
     phaseCount: 2,
     initialSafeRadiusPaddingUnits: 32,
     geometryUpdateMs: 1_000,
     damageIntervalMs: 500,
     damagePercentMaxHp: 0.02,
-    simulationDurationMs: TIMED_ROUNDS_V2_DURATION_MS,
+    simulationDurationMs: TIMED_ROUNDS_DURATION_MS,
     startDiameterUnits: 1_200,
     steps: Object.freeze([
-        Object.freeze({ startMs: 80_000, contractMs: 5_000, toDiameterUnits: 900 }),
-        Object.freeze({ startMs: 100_000, contractMs: 5_000, toDiameterUnits: 600 }),
+        Object.freeze({ startMs: 60_000, contractMs: 5_000, toDiameterUnits: 900 }),
+        Object.freeze({ startMs: 75_000, contractMs: 5_000, toDiameterUnits: 600 }),
     ]),
-    warningLeadMs: 20_000,
+    warningLeadMs: 15_000,
 });

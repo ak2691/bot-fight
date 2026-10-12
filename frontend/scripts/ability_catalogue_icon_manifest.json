@@ -5,7 +5,11 @@
     "slash": {
       "output": "swing.webp",
       "source": "frontend/src/assets/arena/melee-slashes-sheet.png",
-      "grid": { "columns": 6, "rows": 2, "frame_index": 0 },
+      "grid": {
+        "columns": 6,
+        "rows": 2,
+        "frame_index": 0
+      },
       "crop": "alpha",
       "fit": "contain",
       "padding": 32
@@ -42,105 +46,30 @@
       "fit": "contain",
       "padding": 34
     },
-    "heavy_slash": {
-      "output": "heavy_slash.webp",
-      "source": "frontend/src/assets/arena/melee-slashes-sheet.png",
-      "grid": { "columns": 6, "rows": 2, "frame_index": 6 },
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 32
-    },
     "repelling_blast": {
       "output": "repulsor_burst.webp",
       "source": "frontend/src/assets/arena/abilities/repulsorblast/spritesheet.png",
-      "grid": { "columns": 10, "rows": 1, "frame_index": 3 },
+      "grid": {
+        "columns": 10,
+        "rows": 1,
+        "frame_index": 3
+      },
       "crop": "alpha",
       "fit": "contain",
       "padding": 28
-    },
-    "concussive_shot": {
-      "output": "concussive_shot.webp",
-      "source": "frontend/src/assets/arena/abilities/rays/concussive-shot.png",
-      "grid": { "columns": 1, "rows": 7, "used_frames": 6, "frame_index": 3 },
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 38
-    },
-    "basic_heal": {
-      "output": "basic_heal.webp",
-      "source": "frontend/src/assets/arena/abilities/support/basic-heal.png",
-      "grid": { "columns": 16, "rows": 1, "frame_index": 8 },
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 34
-    },
-    "proximity_mine": {
-      "output": "proximity_mine.webp",
-      "source": "frontend/src/assets/arena/abilities/projectiles/mine/static-004.png",
-      "selection": "fully armed static presentation",
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 42
-    },
-    "pistol": {
-      "output": "pistol_shot.webp",
-      "layers": [
-        {
-          "source": "frontend/src/assets/arena/abilities/rays/fire-gun.png",
-          "selection": "subtle supporting crop",
-          "crop": "alpha",
-          "target_extent": 410,
-          "opacity": 0.34,
-          "anchor": "center"
-        },
-        {
-          "source": "frontend/src/assets/arena/abilities/rays/muzzle-flash.png",
-          "grid": { "columns": 4, "rows": 2, "frame_index": 3 },
-          "selection": "most visible muzzle-flash frame",
-          "crop": "alpha",
-          "target_extent": 260,
-          "anchor": "center"
-        }
-      ],
-      "composite": "alpha_over_center",
-      "padding": 34
-    },
-    "rail_shot": {
-      "output": "rail_shot.webp",
-      "source": "frontend/src/assets/arena/abilities/rays/rail-shot.webp",
-      "grid": { "columns": 2, "rows": 5, "used_frames": 9, "frame_index": 6 },
-      "selection": "exclude tenth green guide cell",
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 28
-    },
-    "gravity_grenade": {
-      "output": "gravity_grenade.webp",
-      "source": "frontend/src/assets/arena/abilities/zones/gravity-grenade.png",
-      "grid": { "columns": 10, "rows": 10, "used_frames": 91, "frame_index": 55 },
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 34
     },
     "silence_pulse": {
       "output": "silence_pulse.webp",
       "source": "frontend/src/assets/arena/abilities/zones/silence-pulse.webp",
-      "grid": { "columns": 2, "rows": 3, "used_frames": 5, "frame_index": 2 },
+      "grid": {
+        "columns": 2,
+        "rows": 3,
+        "used_frames": 5,
+        "frame_index": 2
+      },
       "crop": "alpha",
       "fit": "contain",
       "padding": 28
-    },
-    "reactive_armor": {
-      "output": "reactive_armor.webp",
-      "source": "frontend/src/beta/PixiCanvas.jsx#drawStatusSymbol",
-      "procedural": "status_symbol",
-      "status": "RA",
-      "geometry_reference": "drawStatusSymbol(status === RA)",
-      "color": "#fbbf24",
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 74,
-      "symbol_scale": 18
     },
     "hunter_drone": {
       "output": "hunter_drone.webp",
@@ -153,7 +82,11 @@
     "wind_burst": {
       "output": "wind_burst.webp",
       "source": "frontend/src/assets/arena/abilities/wind-burst/atlas_17.webp",
-      "grid": { "columns": 1, "rows": 3, "frame_index": 1 },
+      "grid": {
+        "columns": 1,
+        "rows": 3,
+        "frame_index": 1
+      },
       "crop": "alpha",
       "fit": "contain",
       "padding": 28
@@ -161,7 +94,11 @@
     "rewind": {
       "output": "temporal_rewind.webp",
       "source": "frontend/src/assets/arena/abilities/support/temporal-rewind.png",
-      "grid": { "columns": 5, "rows": 3, "frame_index": 7 },
+      "grid": {
+        "columns": 5,
+        "rows": 3,
+        "frame_index": 7
+      },
       "selection": "fully formed clock face with visible hands",
       "crop": "alpha",
       "fit": "contain",
@@ -170,31 +107,15 @@
     "orbital_strike": {
       "output": "orbital_strike.webp",
       "source": "frontend/src/assets/arena/abilities/orbital-strike/orbitalstrike-explosion/spritesheet.png",
-      "grid": { "columns": 9, "rows": 1, "frame_index": 4 },
+      "grid": {
+        "columns": 9,
+        "rows": 1,
+        "frame_index": 4
+      },
       "selection": "brightest midpoint of explosion",
       "crop": "alpha",
       "fit": "contain",
       "padding": 34
-    },
-    "absolute_guard": {
-      "output": "absolute_guard.webp",
-      "source": "frontend/src/beta/PixiCanvas.jsx#drawStatusSymbol",
-      "procedural": "status_symbol",
-      "status": "AG",
-      "geometry_reference": "drawStatusSymbol(status === AG)",
-      "color": "#e2e8f0",
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 74,
-      "symbol_scale": 18
-    },
-    "null_zone": {
-      "output": "null_zone.webp",
-      "source": "frontend/src/assets/arena/abilities/zones/null-zone.png",
-      "grid": { "columns": 5, "rows": 1, "frame_index": 2 },
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 28
     },
     "phase_strike": {
       "output": "phase_strike.webp",
@@ -207,7 +128,11 @@
     "frost_ring": {
       "output": "frost_ring.webp",
       "source": "frontend/src/assets/arena/abilities/frostring/IceShatter_96x96.png",
-      "grid": { "columns": 49, "rows": 1, "frame_index": 19 },
+      "grid": {
+        "columns": 49,
+        "rows": 1,
+        "frame_index": 19
+      },
       "crop": "alpha",
       "fit": "contain",
       "padding": 34
@@ -215,7 +140,11 @@
     "singularity": {
       "output": "singularity.webp",
       "source": "frontend/src/assets/arena/abilities/singularity/atlas_11.webp",
-      "grid": { "columns": 2, "rows": 2, "frame_index": 0 },
+      "grid": {
+        "columns": 2,
+        "rows": 2,
+        "frame_index": 0
+      },
       "crop": "alpha",
       "fit": "contain",
       "padding": 34
@@ -244,14 +173,6 @@
       "fit": "contain",
       "padding": 38
     },
-    "repeller_drone": {
-      "output": "repeller_drone.webp",
-      "source": "frontend/src/assets/arena/abilities/bot/drone-design.png",
-      "selection": "temporary catalogue placeholder until the Repeller Drone sprite sheet exists",
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 48
-    },
     "vampiric_beam": {
       "output": "vampiric_beam.webp",
       "source": "frontend/src/assets/arena/abilities/rays/rail-shot.webp",
@@ -259,14 +180,6 @@
       "crop": "alpha",
       "fit": "contain",
       "padding": 28
-    },
-    "overclock": {
-      "output": "overclock.webp",
-      "source": "frontend/src/assets/arena/abilities/support/temporal-rewind.png",
-      "selection": "temporary catalogue placeholder until the Overclock sprite sheet exists",
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 34
     }
   }
 }

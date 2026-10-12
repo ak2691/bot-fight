@@ -29,10 +29,10 @@ class MatchCodeViewServiceTest extends MatchWorkflowFixture {
         UUID opponentUserId = UUID.randomUUID();
         UUID opponentTwoUserId = UUID.randomUUID();
         service.startTeamMatch(List.of(
-                new MatchEntrant(requesterId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
-                new MatchEntrant(teammateUserId, "pilot-teammate", "pilot-teammate@example.com", "socket-two", 1),
-                new MatchEntrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
-                new MatchEntrant(opponentTwoUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null);
+                com.example.botfight.support.TestKits.entrant(requesterId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
+                com.example.botfight.support.TestKits.entrant(teammateUserId, "pilot-teammate", "pilot-teammate@example.com", "socket-two", 1),
+                com.example.botfight.support.TestKits.entrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
+                com.example.botfight.support.TestKits.entrant(opponentTwoUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null);
         UUID matchId = savedMatch.getId();
 
         assertThatThrownBy(() -> codeView.requestCodeView(

@@ -37,9 +37,9 @@ test("bot payloads group health, stats, transform, and active statuses", () => {
             attackDamageMultiplier: 1.25,
             attackSpeedMultiplier: 1.1,
             statusEffects: [
-                { type: "slow", remainingMs: 1200, effects: [{ type: "movement_modifier", mode: "constant", movementMultiplier: .5, rotationMultiplier: .5 }] },
+                { type: "slow", remainingMs: 1200, effects: [{ type: "modifier", mode: "constant", stat: "moveSpeed", multiply: .5 }, { type: "modifier", mode: "constant", stat: "turnSpeed", multiply: .5 }] },
                 { type: "silence", mode: "presence", effects: [{ type: "silence", mode: "constant" }] },
-                { type: "burn", remainingMs: 2500, tickMs: 1000, effects: [{ type: "damage", mode: "tick", amount: 2 }] },
+                { type: "burn", remainingMs: 2500, tickMs: 1000, effects: [], on: { schedule: { intervalMs: 1000, effects: [{ type: "damage", amount: 2 }] } } },
             ],
             abilities: [5],
             abilityState: { 5: { stage: "cooldown", remainingMs: 3200 } },
@@ -127,18 +127,18 @@ test("one immutable tick snapshot matches per-actor payloads, actions, and previ
         size: 60,
         hp: 75 + index,
         maxHp: 100,
-        abilities: [5, 13],
+        abilities: [5, 26],
         statusEffects: [{
             type: "slow",
             remainingMs: 700 + index,
-            effects: [{ type: "movement_modifier", mode: "constant", movementMultiplier: .8 }],
+            effects: [{ type: "modifier", mode: "constant", stat: "moveSpeed", multiply: .8 }],
         }],
-        abilityState: { 5: { stage: "cooldown", remainingMs: 1_000 + index, charges: 1 }, 13: { stage: "cooldown", remainingMs: 500 } },
+        abilityState: { 5: { stage: "cooldown", remainingMs: 1_000 + index, charges: 1 }, 26: { stage: "cooldown", remainingMs: 500 } },
 }));
     const entities = Array.from({ length: 128 }, (_, index) => ({
         id: `entity-${index}`,
         type: index % 2 === 0 ? "proximityMine" : "fireball",
-        abilityId: index % 2 === 0 ? 5 : 13,
+        abilityId: index % 2 === 0 ? 5 : 26,
         ownerId: bots[index % bots.length].id,
         ownerSlot: bots[index % bots.length].slot,
         x: 150 + index * 3,
@@ -313,7 +313,7 @@ test("timed buffs are exposed through the generic status collection", () => {
             statusEffects: [{
                 type: "overclock",
                 remainingMs: 3200,
-                effects: [{ type: "cooldown_modifier", mode: "constant", multiplier: 0.5 }],
+                effects: [{ type: "modifier", mode: "constant", stat: "cooldown", multiply: 0.5 }],
             }],
         },
     ], "custom:33");
@@ -337,7 +337,7 @@ test("canonical buff statuses win over stale flat timers when building logic pay
         statusEffects: [{
             type: "overclock",
             remainingMs: 3200,
-            effects: [{ type: "cooldown_modifier", mode: "constant", multiplier: 0.5 }],
+            effects: [{ type: "modifier", mode: "constant", stat: "cooldown", multiply: 0.5 }],
         }],
     }], "custom:33");
 
@@ -364,7 +364,7 @@ test("2v2 bot payloads expose stable teammate and numbered opponent selectors", 
         { id: "main", type: "circle", userId: "user-1", slot: 1, teamNumber: 1, x: 300, y: 150, hp: 100, abilities: [19] },
         { id: "bot-user-2", type: "bot", userId: "user-2", slot: 2, teamNumber: 1, x: 700, y: 150, hp: 90, abilities: [20] },
         { id: "bot-user-3", type: "bot", userId: "user-3", slot: 3, teamNumber: 2, x: 300, y: 850, hp: 80, abilities: [5] },
-        { id: "bot-user-4", type: "bot", userId: "user-4", slot: 4, teamNumber: 2, x: 700, y: 850, hp: 70, abilities: [9] },
+        { id: "bot-user-4", type: "bot", userId: "user-4", slot: 4, teamNumber: 2, x: 700, y: 850, hp: 70, abilities: [8] },
     ], "custom:19");
 
     assert.deepEqual(payload.objects.map((object) => [

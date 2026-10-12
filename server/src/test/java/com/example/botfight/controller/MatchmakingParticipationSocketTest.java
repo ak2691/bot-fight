@@ -91,7 +91,7 @@ class MatchmakingParticipationSocketTest {
         SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create();
         headers.setSessionId("lobby-member-socket");
 
-        Throwable failure = catchThrowable(() -> controller.joinQueue(new MatchmakingJoinRequestDTO("ONES"), authentication, headers));
+        Throwable failure = catchThrowable(() -> controller.joinQueue(new MatchmakingJoinRequestDTO("ONES", null, new com.example.botfight.DTO.match.MatchKitDTO(1, java.util.List.of(3, 6, 22))), authentication, headers));
 
         assertThat(failure)
                 .isInstanceOf(AuthException.class)

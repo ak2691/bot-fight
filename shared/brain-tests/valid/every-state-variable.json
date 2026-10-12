@@ -224,14 +224,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.absoluteBearing",
+                "left": "selectable.movementDirection",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "selectable1": "my_bot",
-                "selectable2": "opponent_1"
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 9,
@@ -251,7 +250,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.movementDirection",
+                "left": "selectable.speed",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -277,13 +276,14 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.speed",
+                "left": "selectable.approachAngle",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "leftSelectable": "opponent_1"
+                "selectable1": "opponent_1",
+                "selectable2": "my_bot"
               }
             ],
             "priority": 11,
@@ -303,14 +303,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.approachAngle",
-                "comparator": "lt",
+                "left": "selectable.moving",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
-                "selectable1": "opponent_1",
-                "selectable2": "my_bot"
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 12,
@@ -330,13 +329,18 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.moving",
+                "left": "selectable.inView",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
                   "value": true
                 },
-                "leftSelectable": "opponent_1"
+                "selectable1": "my_bot",
+                "selectable2": "opponent_1",
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0,
+                "viewArc": 360
               }
             ],
             "priority": 13,
@@ -356,18 +360,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.relativeBearing",
+                "left": "selectable.facing",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "selectable1": "my_bot",
-                "selectable2": "opponent_1",
-                "targetMode": "target",
-                "targetX": 0,
-                "targetY": 0,
-                "targetAngle": 0
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 14,
@@ -387,13 +386,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.facing",
+                "left": "selectable.count",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "leftSelectable": "opponent_1"
+                "leftSelectable": "opponent_1_grenade"
               }
             ],
             "priority": 15,
@@ -413,7 +412,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.count",
+                "left": "selectable.age",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -439,13 +438,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.age",
+                "left": "selectable.edgeDistance",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "leftSelectable": "opponent_1_grenade"
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 17,
@@ -465,7 +464,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.edgeDistance",
+                "left": "selectable.dangerZoneEdgeDistance",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -491,13 +490,14 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.dangerZoneEdgeDistance",
-                "comparator": "lt",
+                "left": "bot.selectedAbilityReady",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
-                "leftSelectable": "opponent_1"
+                "ability": 1,
+                "leftSelectable": "my_bot"
               }
             ],
             "priority": 19,
@@ -517,7 +517,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityReady",
+                "left": "bot.selectedAbilityActive",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
@@ -544,7 +544,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityActive",
+                "left": "bot.selectedAbilityOnCooldown",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
@@ -571,11 +571,11 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityOnCooldown",
-                "comparator": "eq",
+                "left": "bot.selectedAbilityActiveMs",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 50
                 },
                 "ability": 1,
                 "leftSelectable": "my_bot"
@@ -598,7 +598,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityActiveMs",
+                "left": "bot.selectedAbilityCooldownMs",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -625,7 +625,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityCooldownMs",
+                "left": "bot.selectedAbilitySinceHit",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -652,14 +652,12 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilitySinceHit",
+                "left": "match.elapsedSeconds",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
-                  "value": 50
-                },
-                "ability": 1,
-                "leftSelectable": "my_bot"
+                  "value": 0
+                }
               }
             ],
             "priority": 25,
@@ -679,13 +677,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityCharges",
-                "comparator": "lt",
+                "left": "bot.selectedAbilityPreparing",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
-                "ability": 12,
+                "ability": 3,
                 "leftSelectable": "my_bot"
               }
             ],
@@ -706,13 +704,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityPreparing",
-                "comparator": "eq",
+                "left": "bot.selectedAbilityBaseRange",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 50
                 },
-                "ability": 3,
+                "ability": 1,
                 "leftSelectable": "my_bot"
               }
             ],
@@ -733,13 +731,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityBaseRange",
+                "left": "bot.selectedAbilityPreparationMs",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
-                  "value": 50
+                  "value": 10
                 },
-                "ability": 1,
+                "ability": 3,
                 "leftSelectable": "my_bot"
               }
             ],
@@ -760,14 +758,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityPreparationMs",
-                "comparator": "lt",
+                "left": "bot.anyAbilityPreparing",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 10
+                  "type": "boolean",
+                  "value": true
                 },
-                "ability": 3,
-                "leftSelectable": "my_bot"
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 29,
@@ -787,13 +784,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.anyAbilityPreparing",
-                "comparator": "eq",
+                "left": "bot.stamina",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 50
                 },
-                "leftSelectable": "opponent_1"
+                "leftSelectable": "my_bot"
               }
             ],
             "priority": 30,
@@ -813,11 +810,11 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.stamina",
-                "comparator": "lt",
+                "left": "bot.fastTurning",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
                 "leftSelectable": "my_bot"
               }
@@ -839,7 +836,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.fastTurning",
+                "left": "bot.sprinting",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
@@ -865,12 +862,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.sprinting",
+                "left": "bot.selectedStatusEffectActive",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
                   "value": true
                 },
+                "statusEffect": "burn",
                 "leftSelectable": "my_bot"
               }
             ],
@@ -891,11 +889,11 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedStatusEffectActive",
-                "comparator": "eq",
+                "left": "bot.selectedStatusEffectDurationMs",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 50
                 },
                 "statusEffect": "burn",
                 "leftSelectable": "my_bot"
@@ -918,33 +916,6 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedStatusEffectDurationMs",
-                "comparator": "lt",
-                "right": {
-                  "type": "number",
-                  "value": 50
-                },
-                "statusEffect": "burn",
-                "leftSelectable": "my_bot"
-              }
-            ],
-            "priority": 35,
-            "action": "none",
-            "selectable": "opponent_1",
-            "actions": [
-              {
-                "action": "none",
-                "selectable": "opponent_1"
-              }
-            ],
-            "branchType": "if",
-            "children": []
-          },
-          {
-            "id": "b35",
-            "conditions": [
-              {
-                "type": "expression",
                 "left": "selectable.exists",
                 "comparator": "eq",
                 "right": {
@@ -954,7 +925,7 @@
                 "leftSelectable": "opponent_1_grenade"
               }
             ],
-            "priority": 36,
+            "priority": 35,
             "action": "none",
             "selectable": "opponent_1",
             "actions": [

@@ -3,7 +3,7 @@ import test from "node:test";
 import { abilityHitsTarget } from "../../../../../shared/engine/ecs/abilities/AbilityHitDetectionSystem.js";
 import { createAbilityEntity } from "../../../../../shared/engine/ecs/entities/EntityFactory.js";
 import { ABILITY_STATS } from "../../../../../shared/engine/loadout/BotLoadout.js";
-import { ENTITY_CONTRACTS, phaseEffects, triggerView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { ENTITY_CONTRACTS, phaseEffects, activationView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { abilityIdFromBoundary } from "../../../../../shared/engine/gameconfig/AbilityCompatibility.js";
 import { abilityIdFromName } from "../../../../../shared/engine/gameconfig/AbilityRegistry.js";
 import { applyBotAction, tickAbilityEntityWorld } from "../../testing/pureTicks.js";
@@ -30,7 +30,7 @@ test("Sniper hits at 1200 range and misses beyond it, with flat damage", () => {
     assert.equal(abilityHitsTarget(attacker, { x: 100 + reach + 1, y: 100, size: 60 }), false);
     assert.equal(abilityHitsTarget(attacker, { x: 100 + 150, y: 100, size: 60 }), true);
     assert.equal(ABILITY_STATS[3].falloff, undefined);
-    assert.equal(triggerView(3).effects[0].amount, 40);
+    assert.equal(activationView(3).effects[0].amount, 35);
 });
 
 test("Sniper ray width of 6 sets its side edges", () => {

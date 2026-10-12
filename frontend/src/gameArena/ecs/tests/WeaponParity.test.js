@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { abilityHitsTarget } from "../../../../../shared/engine/ecs/abilities/AbilityHitDetectionSystem.js";
 import { ABILITY_STATS, abilityDefinition, decodeBotLoadout, encodeBotLoadout } from "../../../../../shared/engine/loadout/BotLoadout.js";
-import { EFFECT_TYPES, TARGET_KINDS, triggerView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { EFFECT_TYPES, TARGET_KINDS, activationView } from "../../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { compassDirection } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
 import { applyBotAction, resolveTriggeredAbilityCombat as resolveAbilityCombat } from "../../testing/pureTicks.js";
 import { preparingAbilityId, activeRemainingMs, pendingCooldownMs } from "../../../../../shared/engine/gameconfig/AbilityState.js";
@@ -32,7 +32,7 @@ const hits = (weapon, target) => abilityHitsTarget(triggered(weapon), target);
 
 for (const weapon of WEAPONS) {
     test(`${weapon.name} contract matches the weapon table`, () => {
-        const view = triggerView(weapon.id);
+        const view = activationView(weapon.id);
         const hitbox = view.hitbox;
         assert.equal(hitbox.shape, weapon.shape);
         assert.equal(hitbox.includeTargetRadius, true);
@@ -45,8 +45,8 @@ for (const weapon of WEAPONS) {
         }
         const damage = view.effects.find((effect) => effect.type === EFFECT_TYPES.DAMAGE);
         assert.equal(damage.amount, weapon.damage);
-        const knockback = view.effects.find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK);
-        assert.equal(knockback?.amount, weapon.knockback);
+        const knockback = view.effects.find((effect) => effect.type === EFFECT_TYPES.DISPLACE && effect.direction === "away");
+        assert.equal(knockback?.distance, weapon.knockback);
         if (knockback) assert.deepEqual([...knockback.targetKinds], [TARGET_KINDS.BOT, TARGET_KINDS.SUMMON]);
         assert.equal(ABILITY_STATS[weapon.id].windupMs ?? 0, weapon.windupMs);
         assert.equal(ABILITY_STATS[weapon.id].activeMs, weapon.activeMs);

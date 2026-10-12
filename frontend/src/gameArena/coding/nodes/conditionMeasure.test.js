@@ -15,14 +15,14 @@ const HEADING = "selectable.movementDirection";
 const TOWARD = "selectable.approachAngle";
 const visibleIds = () => VISIBLE_STATE_VARIABLES.map((variable) => variable.id);
 
-test("the picker offers one Move Direction and hides Direction To, Facing and Approach Angle", () => {
+test("the picker offers one Move Direction and hides Facing, Speed and Approach Angle", () => {
     const ids = visibleIds();
-    for (const hidden of ["selectable.absoluteBearing", "selectable.facing", TOWARD, "selectable.speed"]) {
+    for (const hidden of ["selectable.facing", TOWARD, "selectable.speed"]) {
         assert.equal(ids.includes(hidden), false, `${hidden} is hidden`);
         assert.ok(STATE_VARIABLES.some((variable) => variable.id === hidden), `${hidden} still evaluates`);
     }
     assert.deepEqual(VISIBLE_STATE_VARIABLES.filter((variable) => variable.label === "Move Direction").map((variable) => variable.id), [HEADING]);
-    assert.equal(ids.includes("selectable.relativeBearing"), true, "Angle To stays");
+    assert.equal(ids.includes("selectable.inView"), true, "In View stays");
     assert.equal(STATE_VARIABLE_BY_ID.get(TOWARD).selectableType, VARIABLE_SELECTABLE_TYPES.PAIR);
     assert.equal(STATE_VARIABLE_BY_ID.get(HEADING).selectableType, undefined);
 });

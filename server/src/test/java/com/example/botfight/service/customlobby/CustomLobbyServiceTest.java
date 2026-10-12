@@ -89,6 +89,21 @@ class CustomLobbyServiceTest {
     }
 
     @Test
+    void readinessValidatesOnlyTheAuthenticatedMembersKitAndKeepsItBlind() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        var lobby = service.create(authentication);
+        assertThatThrownBy(() -> service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1,List.of(3, 4, 22))))
+                .isInstanceOf(AuthException.class).hasMessageContaining("tier");
+        assertThat(service.currentForPrincipal(owner.getEmail()).members().getFirst().ready()).isFalse();
+        var ready = service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1,List.of(3, 6, 22)));
+        assertThat(ready.lobby().members().getFirst().ready()).isTrue();
+        assertThat(new tools.jackson.databind.json.JsonMapper().writeValueAsString(ready.lobby())).doesNotContain("sgtw", "abilities", "weapon");
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
+        assertThatThrownBy(() -> service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1,List.of(3, 6, 22))))
+                .isInstanceOf(AuthException.class).hasMessageContaining("not in");
+    }
+
+    @Test
     void createsAnIdempotentLobbyWithTheOwnerNotReady() {
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
 
@@ -311,8 +326,10 @@ class CustomLobbyServiceTest {
 
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.BLUE_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.RED_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
 
         UUID matchId = UUID.randomUUID();
         MatchmakingEventDTO event = mock(MatchmakingEventDTO.class);
@@ -357,8 +374,10 @@ class CustomLobbyServiceTest {
         service.accept(authentication, created.invite().inviteId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.BLUE_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.RED_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
 
         when(matchmakingService.prepareExternalMatchStart(anyCollection()))
                 .thenThrow(new AuthException("a queue match is already starting"));
@@ -384,8 +403,10 @@ class CustomLobbyServiceTest {
         service.accept(authentication, created.invite().inviteId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.BLUE_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.RED_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
 
         MatchmakingService.ExternalMatchStartPreparation preparation =
@@ -450,8 +471,10 @@ class CustomLobbyServiceTest {
         service.accept(authentication, thirdInvite.invite().inviteId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.BLUE_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.BLUE_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
 
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(third);
         assertThatThrownBy(() -> service.setTeam(
@@ -467,6 +490,7 @@ class CustomLobbyServiceTest {
         CustomLobbyDTO lobby = service.create(authentication);
 
         service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.BLUE_TEAM);
+        service.ready(authentication, lobby.lobbyId(), new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22)));
 
         assertThatThrownBy(() -> service.setTeam(
                 authentication, lobby.lobbyId(), CustomLobbyService.RED_TEAM))

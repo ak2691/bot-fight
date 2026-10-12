@@ -11,7 +11,7 @@ a browser arena, and submit the normalized configuration for an authoritative
 fight. The React client owns editing, testing feedback, matchmaking UI, Pixi
 presentation, and replay display. The Spring application owns authentication,
 sessions, submissions, validation, matchmaking state, persistence, and rated
-`duel-v2` orchestration through the authenticated Node worker.
+`duel-v3` orchestration through the authenticated Node worker.
 
 Gameplay has one implementation in `shared/engine/`, imported by the browser
 for previews and by `sim-worker/` for authoritative simulation. Spring owns

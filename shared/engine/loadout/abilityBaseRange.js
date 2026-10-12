@@ -2,7 +2,7 @@ import {
     entityContractForAbility,
     PHASE_TYPES,
     phaseSpeed,
-    triggerView,
+    activationView,
 } from "../ecs/contracts/AbilityContracts.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
 import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
@@ -30,7 +30,7 @@ function projectileBaseRange(entity) {
 export function abilityBaseRange(abilityId) {
     const id = abilityIdFromBoundary(abilityId);
     if (id == null) return null;
-    const hitbox = triggerView(id)?.hitbox;
+    const hitbox = activationView(id)?.hitbox;
     switch (hitbox?.shape) {
         case "arc":
         case "ray":

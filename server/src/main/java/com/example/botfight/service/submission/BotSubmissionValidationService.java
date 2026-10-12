@@ -36,6 +36,10 @@ public class BotSubmissionValidationService {
         this.worker = worker;
     }
 
+    public List<String> brainStructureErrors(JsonNode brain) {
+        return brain == null || !brain.isObject() ? List.of("brain must be an object") : schemaValidator.validate(brain);
+    }
+
     public BotSubmissionValidationResponseDTO validate(BotSubmissionPayloadDTO payload) {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();

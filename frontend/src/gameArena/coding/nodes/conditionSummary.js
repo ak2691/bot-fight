@@ -30,6 +30,7 @@ export function summarizeCondition(condition, lookups) {
             ? `(${formatNumber(condition.targetX)}, ${formatNumber(condition.targetY)})`
             : condition.targetMode === "angle" ? `${formatNumber(condition.targetAngle)}°` : lookups.selectable(condition.selectable2);
         entities.push(`${lookups.selectable(condition.selectable1)} → ${target}`);
+        if (left?.viewArc) entities.push(`${formatNumber(condition.viewArc ?? 360)}° arc`);
     } else if (condition.leftSelectable) {
         entities.push(lookups.selectable(condition.leftSelectable));
     }

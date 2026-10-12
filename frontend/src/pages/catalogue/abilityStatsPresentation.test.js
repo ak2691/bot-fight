@@ -1,10 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-    abilityEffectChips,
-    abilityHighlights,
-    abilityPhaseSteps,
-    abilityStatGroups,
+import { abilityHighlights,
     abilityStatsForDisplay,
 } from "./abilityStatsPresentation.js";
 import { ALL_ABILITY_DEFINITIONS } from "../../../../shared/engine/loadout/BotLoadout.js";
@@ -27,14 +23,6 @@ test("ability preparation uses the same player-facing term as bot variables", ()
 
 test("charges and coverage share the Charges and Arc labels", () => {
     assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { maxCharges: 10, arc: 180 } }), [{ label: "Arc", value: "180°" }, { label: "Charges", value: "10" }]);
-});
-
-test("charged abilities expose their reload time", () => {
-    for (const [abilityId, expectedCharges, expectedReload] of [[12, "10", "3 sec"]]) {
-        const rows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId));
-        assert.ok(rows.some(({ label, value }) => label === "Charges" && value === expectedCharges), abilityId);
-        assert.ok(rows.some(({ label, value }) => label === "Reload" && value === expectedReload), abilityId);
-    }
 });
 
 test("generic recharge metadata uses the Recharge label", () => {
@@ -73,25 +61,10 @@ test("Snare Bomb lists each phase from its entity data", () => {
         ],
     );
     assert.equal(
-        abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 14))
-            .some(({ section }) => ["Travel phase", "Fuse phase", "Active phase"].includes(section)),
+        abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 4))
+            .some(({ section }) => ["Travel phase", "Armed phase", "Active phase"].includes(section)),
         true,
     );
-});
-
-test("authored status effects keep their duration in the effect value", () => {
-    for (const abilityId of [5, 6, 7, 9, 13, 15, 26, 28, 29, 30]) {
-        const rows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId));
-        assert.equal(rows.some(({ label }) => label === "Status duration"), false, abilityId);
-        assert.ok(rows.filter(({ label }) => label === "Status effect").every(({ value }) => /\([^)]* sec\)$/.test(value)), abilityId);
-    }
-});
-
-test("grenade and proximity mine expose their impact radii", () => {
-    assert.ok(abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 4))
-        .some(({ label, value }) => label === "Radius" && value === "70 units"));
-    assert.ok(abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 11))
-        .some(({ label, value }) => label === "Radius" && value === "87.5 units"));
 });
 
 test("rectangular projectiles expose independent hitbox dimensions", () => {
@@ -122,34 +95,6 @@ test("rectangular projectiles expose independent hitbox dimensions", () => {
     assert.ok(windBurstRows.some(({ label, value }) => label === "Hitbox length" && value === "115 units"));
 });
 
-test("pull effects expose their per-tick strength", () => {
-    for (const [abilityId, strength] of [[14, 6], [27, 10], [28, 250]]) {
-        const ability = ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId);
-        assert.deepEqual(
-            abilityStatsForDisplay(ability)
-                .filter(({ label }) => label === "Pull strength")
-                .map(({ label, value, section }) => ({ label, value, section })),
-            abilityId === 14
-                ? [
-                    { label: "Pull strength", value: `${strength} units per tick`, section: "Travel phase" },
-                    { label: "Pull strength", value: `${strength} units per tick`, section: "Fuse phase" },
-                ]
-                : [{ label: "Pull strength", value: `${strength} units per tick`, section: abilityId === 27 ? "Fuse phase" : "Return phase" }],
-        );
-    }
-});
-
-test("Null Zone separates its short active phase from its zone duration", () => {
-    const ability = ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 24);
-    assert.deepEqual(
-        abilityStatsForDisplay(ability).filter(({ label }) => label === "Active" || label === "Duration"),
-        [
-            { label: "Active", value: "0.3 sec" },
-            { label: "Duration", value: "5 sec" },
-        ],
-    );
-});
-
 test("lifesteal abilities describe damage-based healing", () => {
     assert.deepEqual(abilityStatsForDisplay({ effects: [{ type: "healing", mirrorsDamage: true }], stats: {} }), [
         { label: "Effect", value: "Restore damage dealt as HP" },
@@ -171,26 +116,6 @@ test("positive-effect percentages are included in player-facing stats", () => {
     ]);
 });
 
-test("authored positive-effect rows do not repeat generated effect metadata", () => {
-    const reactiveArmor = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 16));
-    assert.deepEqual(reactiveArmor.filter(({ label }) => label === "Damage reduction"), [{ label: "Damage reduction", value: "50%" }]);
-    assert.deepEqual(reactiveArmor.filter(({ label }) => label === "Damage reflection"), [{ label: "Damage reflection", value: "50%" }]);
-
-    const overclock = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 33));
-    assert.deepEqual(overclock.filter(({ label }) => label === "Cooldown recovery"), [{ label: "Cooldown recovery", value: "50%" }]);
-
-    const damageImmunity = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 23));
-    assert.deepEqual(damageImmunity.filter(({ label }) => label === "Damage immunity"), [{ label: "Damage immunity", value: "100%" }]);
-
-    for (const [abilityId, duration] of [[16, "4 sec"], [23, "1.5 sec"], [33, "4 sec"]]) {
-        assert.deepEqual(
-            abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId))
-                .filter(({ label }) => label === "Duration"),
-            [{ label: "Duration", value: duration }],
-        );
-    }
-});
-
 test("every catalog ability has displayable stats", () => {
     for (const ability of ALL_ABILITY_DEFINITIONS) assert.doesNotThrow(() => abilityStatsForDisplay(ability), ability.id);
 });
@@ -199,7 +124,7 @@ const abilityById = (id) => ALL_ABILITY_DEFINITIONS.find((ability) => ability.id
 
 test("highlights lead with damage, show falloff as min-max and never exceed four tiles", () => {
     const grenade = abilityHighlights(abilityById(4));
-    assert.equal(grenade[0].value, "25\u201340");
+    assert.equal(grenade[0].value, "18\u201330");
     assert.equal(grenade[0].label, "Damage \u00b7 edge to centre");
     assert.equal(grenade[0].tone, "damage");
     assert.deepEqual(grenade.slice(1).map((tile) => tile.label), ["Blast radius", "Cooldown", "Throw speed"]);
@@ -211,34 +136,15 @@ test("highlights lead with damage, show falloff as min-max and never exceed four
     }
 });
 
-test("highlights use flat damage, wind-up and reach for melee abilities", () => {
-    const heavySlash = abilityHighlights(abilityById(7));
-    assert.deepEqual(heavySlash.map((tile) => tile.label), ["Damage", "Wind-up before the hit", "Reach \u00b7 arc", "Cooldown"]);
-    assert.equal(heavySlash[0].value, "30");
-    assert.deepEqual(heavySlash[2], { value: "115", unit: "u \u00b7 150\u00b0", label: "Reach \u00b7 arc", tone: "neutral" });
-});
-
-test("hitscan falloff reads far to near and charges show their reload", () => {
-    const pistol = abilityHighlights(abilityById(12));
-    assert.equal(pistol[0].label, "Damage · far to near");
-    assert.deepEqual(pistol.at(-1), { value: "10", unit: "charges", label: "3 s reload", tone: "neutral" });
-});
-
 test("Sniper and Fireball show flat damage and no ammunition", () => {
     const sniper = abilityHighlights(abilityById(3));
-    assert.equal(sniper[0].value, "40");
+    assert.equal(sniper[0].value, "35");
     assert.equal(sniper[0].label, "Damage");
     assert.ok(sniper.every((tile) => tile.unit !== "charges"));
     const fireball = abilityHighlights(abilityById(5));
     assert.equal(fireball[0].value, "20");
     assert.ok(fireball.every((tile) => tile.unit !== "charges"));
     assert.equal(abilityById(3).label, "Sniper");
-});
-
-test("healing abilities lead with a green healing tile instead of damage", () => {
-    const heal = abilityHighlights(abilityById(10));
-    assert.deepEqual(heal[0], { value: "25", unit: "HP", label: "Healing", tone: "heal" });
-    assert.ok(heal.every((tile) => tile.tone !== "damage"));
 });
 
 test("damage-over-time-only abilities lead with the status damage per second", () => {
@@ -257,20 +163,3 @@ test("every ability has a plain-language description", () => {
     }
 });
 
-test("phase steps, effect chips and grouped stats come from the real ability data", () => {
-    const steps = abilityPhaseSteps(abilityById(4));
-    assert.deepEqual(steps.map((step) => step.title), ["TRAVEL", "ARMED", "ACTIVE"]);
-    assert.equal(steps[0].line, "Flies at 32 u/tick");
-    assert.equal(steps[0].detail, "12 \u00d7 12 u hitbox");
-    assert.equal(abilityPhaseSteps(abilityById(7)).length, 0);
-
-    const bleed = abilityEffectChips(abilityById(7)).find((chip) => chip.guideId === "bleed");
-    assert.equal(bleed.label, "Bleed \u00b7 2 dmg/s for 5 s");
-    assert.equal(bleed.tone, "status");
-
-
-    const grenadeGroups = abilityStatGroups(abilityById(4));
-    const travel = grenadeGroups.find((group) => group.title === "Travel \u00b7 Armed");
-    assert.deepEqual(travel.rows, [{ label: "Hitbox", value: "12 \u00d7 12 u" }, { label: "Speed", value: "32 \u2192 0 u/tick" }]);
-    assert.ok(grenadeGroups.every((group) => group.rows.every((row) => !row.label.endsWith(":"))));
-});

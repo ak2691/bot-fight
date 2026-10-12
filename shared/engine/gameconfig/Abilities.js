@@ -1,14 +1,17 @@
 import { abilityId } from "./AbilityRegistry.js";
 import { GAMEPLAY_DATA, withoutNulls } from "./gameplayData.js";
+import { presetEffects, presetInterrupts } from "./StatusPresets.js";
+import { DISPLACE_DIRECTION, MODIFIER_STATS, STATUS_EFFECT_APPLICATIONS } from "./vocabulary.js";
 import {
+    abilityContract,
     EFFECT_TYPES,
     entityContractForAbility,
     findVerb,
     PHASE_EVENT_TYPES,
     phaseEffects,
     scheduledHitVerb,
-    triggerEffects,
-    triggerVerbs,
+    activationEffects,
+    activationVerbs,
     VERBS,
 } from "../ecs/contracts/AbilityContracts.js";
 
@@ -20,32 +23,41 @@ const ABILITY_TIMING_BY_ID = Object.freeze(Object.fromEntries(GAMEPLAY_DATA.abil
 
 /**
  * The read model the stats below are projected from: for an ability that spawns an entity, the entity's phases
- * (each with the effects its events apply); for any other ability, one phase built from its trigger verbs.
+ * (each with the effects its events apply); for any other ability, one phase built from its activation verbs.
  * `embeddedPhase` is the shot a summon fires from its timer event.
  */
 function phasesFor(abilityValue) {
     const id = abilityId(abilityValue);
     if (id == null) return [];
     const entity = entityContractForAbility(id);
+    const activation = activationPhase(id);
     if (entity?.phases?.length) {
-        return entity.phases.map((phase) => ({
+        const entityPhases = entity.phases.map((phase) => ({
             ...phase,
             effects: phaseEffects(phase),
             // The projection below keeps the old `speed` name for the unitsPerTick of a phase.
             movement: phase.movement ? { ...phase.movement, speed: phase.movement.unitsPerTick } : undefined,
         }));
+        // An activation hit that comes with entities (Phase Strike's blink) keeps its own box for the stats; the
+        // entity's phases follow it.
+        return findVerb(activationVerbs(id), VERBS.HIT) ? [activation, ...entityPhases] : entityPhases;
     }
-    const verbs = triggerVerbs(id);
+    return [activation];
+}
+
+/** The ability's activation verbs as one phase: its hit's hitbox, its effects and its move. */
+function activationPhase(id) {
+    const verbs = activationVerbs(id);
     const hit = findVerb(verbs, VERBS.HIT);
     const move = findVerb(verbs, VERBS.MOVE);
-    return [{
+    return {
         id: "active",
         hitbox: hit?.hitbox ?? undefined,
-        effects: triggerEffects(id),
-        movement: move ? { speed: move.unitsPerTick, distance: move.distance, trailMs: move.trailMs } : undefined,
+        effects: activationEffects(id),
+        movement: move ? { speed: move.unitsPerTick, distance: move.distance } : undefined,
         visual: verbs.find((verb) => verb.visual)?.visual,
         on: {},
-    }];
+    };
 }
 
 function embeddedShotPhase(id) {
@@ -55,15 +67,21 @@ function embeddedShotPhase(id) {
 
 function allEffectsFor(id, phases) {
     const embeddedPhase = embeddedShotPhase(id);
-    // Trigger-time effects (Rewind's restore) join the effects of the entity's phases.
-    const effects = [...triggerEffects(id), ...[...phases, ...(embeddedPhase ? [embeddedPhase] : [])]
+    // Activation-time effects join the effects of the entity's phases.
+    const effects = [...activationEffects(id), ...[...phases, ...(embeddedPhase ? [embeddedPhase] : [])]
         .flatMap((phase) => phase.effects ?? [])];
-    return effects.filter((effect, index, values) => values.findIndex((candidate) =>
+    // A conditional effect (one with `when`) is a bonus on some hits, not the ability's base numbers: the catalogue skips it.
+    return effects.filter((effect, index, values) => !effect?.when && values.findIndex((candidate) =>
         JSON.stringify(candidate) === JSON.stringify(effect)) === index);
 }
 
 function firstEffect(effects, type) {
     return effects.find((effect) => effect?.type === type) ?? null;
+}
+
+/** The first displace effect with `direction`: away is a knockback, toward a pull. */
+function firstDisplace(effects, direction) {
+    return effects.find((effect) => effect?.type === EFFECT_TYPES.DISPLACE && effect.direction === direction) ?? null;
 }
 
 function phaseProjection(id) {
@@ -103,20 +121,17 @@ function phaseProjection(id) {
     if (damageEffect?.falloff) stats.falloff = damageEffect.falloff;
     const healing = firstEffect(effects, EFFECT_TYPES.HEALING);
     if (healing?.amount != null && !healing.mirrorsDamage) stats.healing = Number(healing.amount);
-    const knockback = firstEffect(effects, EFFECT_TYPES.KNOCKBACK);
-    if (knockback?.amount != null) stats.knockback = Number(knockback.amount);
-    const pull = firstEffect(effects, EFFECT_TYPES.PULL);
-    if (pull?.amount != null) stats.pullPerTick = Number(pull.amount);
-    const interrupt = firstEffect(effects, EFFECT_TYPES.INTERRUPT);
+    const knockback = firstDisplace(effects, DISPLACE_DIRECTION.AWAY);
+    if (knockback?.distance != null) stats.knockback = Number(knockback.distance);
+    const pull = firstDisplace(effects, DISPLACE_DIRECTION.TOWARD);
+    if (pull?.distance != null) stats.pullPerTick = Number(pull.distance);
+    const interrupt = effects.find((effect) => effect?.type === EFFECT_TYPES.STATUS && presetInterrupts(effect.subtype));
     if (interrupt?.durationMs != null) stats.interruptMs = Number(interrupt.durationMs);
-    const restore = firstEffect(effects, EFFECT_TYPES.RESTORE_STATE);
-    if (restore?.delayMs != null) stats.delayMs = Number(restore.delayMs);
 
     const statuses = {};
     for (const effect of effects) {
-        if (![EFFECT_TYPES.STATUS, EFFECT_TYPES.BUFF].includes(effect?.type)) continue;
-        const subtype = effect.subtype ?? effect.buff;
-        if (!subtype) continue;
+        if (effect?.type !== EFFECT_TYPES.STATUS || !effect.subtype) continue;
+        const subtype = effect.subtype;
         statuses[subtype] = {
             ...(effect.amount == null ? {} : { amount: Number(effect.amount) }),
             ...(effect.durationMs == null ? {} : { durationMs: Number(effect.durationMs) }),
@@ -134,7 +149,6 @@ function phaseProjection(id) {
     if (length != null) stats.hitboxLength = Number(length);
     if (movement.speed != null) stats.speed = Number(movement.speed);
     if (movement.distance != null) stats.distance = Number(movement.distance);
-    if (movement.trailMs != null) stats.trailMs = Number(movement.trailMs);
     if (movement.turnDegrees != null) stats.turnStepDegrees = Number(movement.turnDegrees);
     if (visualPhase.visual?.visualSize != null) stats.visualSize = Number(visualPhase.visual.visualSize);
     if (visualPhase.visual?.visibleMs != null) stats.visualMs = Number(visualPhase.visual.visibleMs);
@@ -153,11 +167,13 @@ function phaseProjection(id) {
     }
     const entityHealth = entity?.phases?.find((phase) => phase?.health)?.health;
     if (entityHealth?.hp != null) stats.hp = Number(entityHealth.hp);
-    if (restore?.delayMs == null && restore?.durationMs != null) stats.delayMs = Number(restore.durationMs);
-    const buff = effects.find((effect) => effect?.type === EFFECT_TYPES.BUFF && effect?.buff === "overclock");
-    if (buff?.amount != null) {
-        stats.cooldownRecoveryPercent = Number(buff.amount) * 100;
-        stats.cooldownRecoveryMultiplier = Number(buff.multiplier ?? (1 - Number(buff.amount)));
+    const cooldown = effects
+        .filter((effect) => effect?.type === EFFECT_TYPES.STATUS)
+        .flatMap((effect) => presetEffects(effect.subtype))
+        .find((entry) => entry.type === STATUS_EFFECT_APPLICATIONS.MODIFIER && entry.stat === MODIFIER_STATS.COOLDOWN);
+    if (cooldown) {
+        stats.cooldownRecoveryPercent = (1 - Number(cooldown.multiply)) * 100;
+        stats.cooldownRecoveryMultiplier = Number(cooldown.multiply);
     }
     return stats;
 }
@@ -169,13 +185,24 @@ const ABILITY_STATS_BY_ID = Object.freeze(Object.fromEntries(
     ]),
 ));
 
+const EMPTY_TIMING = Object.freeze({});
+
+/**
+ * An ability's own timing and charge numbers, as authored in abilities.json (the ability's contract carries them, so a
+ * test's extra data reaches the runtime). The runtime reads timing here (cooldown, wind-up, active time, charges and
+ * reload); ABILITY_STATS below is the catalogue's view of the same numbers.
+ */
+export function abilityTiming(abilityValue) {
+    return abilityContract(abilityValue)?.timing ?? EMPTY_TIMING;
+}
+
 /** Returns the configured charge cap for an active ability definition. */
 export function abilityMaxChargesForShape(abilityIdValue) {
     return ABILITY_TIMING_BY_ID[abilityId(abilityIdValue)]?.maxCharges ?? null;
 }
 
-// Compatibility projection for UI/loadout payloads. New gameplay code should
-// read the active phase contract directly.
+// Compatibility projection for the catalogue and loadout payloads. Gameplay code reads the ability's timing
+// (abilityTiming) or the active phase contract directly.
 export const ABILITY_STATS = ABILITY_STATS_BY_ID;
 
 export function abilityStats(value) {

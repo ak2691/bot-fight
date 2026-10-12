@@ -16,16 +16,9 @@ function botAtStartingState(shape, startingState = null) {
         pendingHealing: 0,
         lastPredictedAction: null,
         abilitySpawn: [],
-        dueSteps: [],
         triggeredAbility: null,
         abilityVisual: null,
-        temporalRewindMs: 0,
-        temporalRewindPulseMs: 0,
-        temporalRewindX: null,
-        temporalRewindY: null,
-        temporalRewindHp: null,
-        temporalRewindVisualX: null,
-        temporalRewindVisualY: null,
+        rewindPulseMs: 0,
     };
     return resetBotShapeToStartingConfiguration(clean, start);
 }

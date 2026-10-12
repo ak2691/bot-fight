@@ -3,8 +3,8 @@ import { stateHash } from "./stateHash.js";
 import { createFight } from "./fight.js";
 import { normalizeAbilityStrategyConfiguration, evaluatePuzzleTick } from "./botlogic/code/BotCode.js";
 import { initialAbilityState } from "./gameconfig/AbilityResourceSystem.js";
-import { CLOSING_ZONE_CONFIG, TIMED_ROUNDS_V2_ZONE_CONFIG } from "./gameconfig/ArenaHazardConfig.js";
-import { BASE_BOT_STATS, STANDARD_ABILITY_IDS, encodeBotLoadout } from "./loadout/BotLoadout.js";
+import { CLOSING_ZONE_CONFIG, TIMED_ROUNDS_ZONE_CONFIG } from "./gameconfig/ArenaHazardConfig.js";
+import { BASE_BOT_STATS, STANDARD_ABILITY_IDS, encodeBotLoadout, decodeBotLoadout } from "./loadout/BotLoadout.js";
 import { AUTO_STEP_MS } from "./modelPayloads/arenaConstants.js";
 import { createBotState, isBotState } from "./modelPayloads/botState.js";
 
@@ -30,10 +30,10 @@ import { createBotState, isBotState } from "./modelPayloads/botState.js";
  * options); any other slot uses `bot.strategyConfiguration`. `hooks.combatLog` records the combat log and
  * `hooks.onTick(fight, elapsedMs)` observes every tick (the golden tests); neither changes the result.
  */
-export const DUEL_RULESET_VERSION = "duel-v2";
+export const DUEL_RULESET_VERSION = "duel-v3";
 export const ENGINE_VERSION = "e1-dev";
 export const MAX_SIMULATION_BOTS = 8;
-export const SEGMENT_DURATION_MS = 20_000;
+export const SEGMENT_DURATION_MS = 15_000;
 export const MAX_SEGMENTS = 6;
 export const SINGLE_FIGHT_DURATION_MS = CLOSING_ZONE_CONFIG.simulationDurationMs;
 export const REPLAY_BATCH_MS = 1_000;
@@ -46,7 +46,7 @@ const DEFAULT_ARENA_SIZE = 1200;
 
 export function simulateFight(request, hooks = {}) {
     if (!request || request.rulesetVersion !== DUEL_RULESET_VERSION) {
-        throw new Error("rulesetVersion must be duel-v2");
+        throw new Error("rulesetVersion must be duel-v3");
     }
     if (typeof request.seed === "string") {
         if (!/^-?(0|[1-9][0-9]{0,18})$/.test(request.seed)
@@ -58,7 +58,7 @@ export function simulateFight(request, hooks = {}) {
 
     const segments = Array.isArray(request.segments) ? request.segments : [];
     const segmented = segments.length > 0;
-    const zoneConfig = segmented ? TIMED_ROUNDS_V2_ZONE_CONFIG : CLOSING_ZONE_CONFIG;
+    const zoneConfig = segmented ? TIMED_ROUNDS_ZONE_CONFIG : CLOSING_ZONE_CONFIG;
     const maxDurationMs = zoneConfig.simulationDurationMs;
     if (segmented) validateSegments(request, segments, maxDurationMs);
     const arena = {
@@ -73,7 +73,7 @@ export function simulateFight(request, hooks = {}) {
         throw new Error(`initialElapsedMs must leave room within the ${maxDurationMs / 1000} second duel`);
     }
 
-    const roster = request.bots.map((spec) => ({ spec, brain: prepareBrain(spec.brain) }));
+    const roster = request.bots.map((spec) => ({ spec, brain: prepareBrain(spec.brain, spec.selectedLoadout) }));
     const bots = roster.map(({ spec, brain }) => createBot(spec, brain, initialElapsedMs));
     const fight = createFight(bots, { closingZoneConfig: zoneConfig, combatLog: hooks.combatLog ?? null });
     const slots = new Map(roster.map((entry) => [entry.spec.slot, { brain: entry.brain, loadout: loadoutOf(entry.brain) }]));
@@ -245,9 +245,9 @@ export function batchFrames(frames) {
 
 // ---- bots and brains ------------------------------------------------------------------------------------------
 
-function prepareBrain(brain) {
+function prepareBrain(brain, selectedLoadout) {
     const configuration = normalizeAbilityStrategyConfiguration(brain);
-    return { configuration, abilities: abilityIdsOf(brain) };
+    return { configuration, abilities: selectedLoadout?.startsWith("custom:") ? decodeBotLoadout(selectedLoadout).abilities : abilityIdsOf(brain) };
 }
 
 function abilityIdsOf(brain) {
@@ -325,7 +325,10 @@ function applySegment(fight, slots, segment) {
         const bot = fight.bots.find((candidate) => candidate.slot === update.slot);
         const previous = slots.get(update.slot);
         if (!bot || !previous) continue;
-        const brain = update.brain == null ? previous.brain : prepareBrain(update.brain);
+        const brain = update.brain == null
+            ? { ...previous.brain, abilities: update.selectedLoadout?.startsWith("custom:")
+                ? decodeBotLoadout(update.selectedLoadout).abilities : previous.brain.abilities }
+            : prepareBrain(update.brain, update.selectedLoadout);
         slots.set(update.slot, { brain, loadout: loadoutOf(brain) });
 
         const known = new Set(bot.abilities);
@@ -368,7 +371,7 @@ function reconcileVariables(values, previousConfiguration, configuration, variab
 function validateRoster(request) {
     const bots = request.bots;
     if (!Array.isArray(bots) || bots.length < 2 || bots.length > MAX_SIMULATION_BOTS) {
-        throw new Error(`duel-v2 requires between two and ${MAX_SIMULATION_BOTS} bots`);
+        throw new Error(`duel-v3 requires between two and ${MAX_SIMULATION_BOTS} bots`);
     }
     const slots = new Set();
     const teams = new Set();
@@ -381,7 +384,7 @@ function validateRoster(request) {
         slots.add(bot.slot);
         teams.add(team);
     }
-    if (teams.size < 2) throw new Error("duel-v2 requires at least two teams");
+    if (teams.size < 2) throw new Error("duel-v3 requires at least two teams");
 }
 
 function validateSegments(request, segments, maxDurationMs) {

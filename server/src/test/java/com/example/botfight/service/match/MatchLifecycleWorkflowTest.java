@@ -33,10 +33,10 @@ class MatchLifecycleWorkflowTest extends MatchWorkflowFixture {
     @Test
     void teamMatchStartsOnlyWithAnExactTwoVersusTwoRoster() {
         List<MatchEntrant> entrants = List.of(
-                new MatchEntrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "socket-1", 1),
-                new MatchEntrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "socket-2", 1),
-                new MatchEntrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2),
-                new MatchEntrant(UUID.randomUUID(), "team-two-b", "team-two-b@example.com", "socket-4", 2));
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "socket-1", 1),
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "socket-2", 1),
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2),
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-two-b", "team-two-b@example.com", "socket-4", 2));
 
         List<OutboundMatchmakingEvent> events = lifecycle.startTeamMatch(entrants, MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null);
 
@@ -47,19 +47,19 @@ class MatchLifecycleWorkflowTest extends MatchWorkflowFixture {
     @Test
     void malformedTeamRosterAndDuplicateSocketAreRejectedBeforePersistence() {
         List<MatchEntrant> threePlayers = List.of(
-                new MatchEntrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "socket-1", 1),
-                new MatchEntrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "socket-2", 1),
-                new MatchEntrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2));
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "socket-1", 1),
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "socket-2", 1),
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2));
 
         assertThatThrownBy(() -> lifecycle.startTeamMatch(threePlayers, MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null))
                 .isInstanceOf(AuthException.class)
                 .hasMessage("2v2 matches require exactly two players on each team");
 
         List<MatchEntrant> duplicateSockets = List.of(
-                new MatchEntrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "same-socket", 1),
-                new MatchEntrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "same-socket", 1),
-                new MatchEntrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2),
-                new MatchEntrant(UUID.randomUUID(), "team-two-b", "team-two-b@example.com", "socket-4", 2));
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "same-socket", 1),
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "same-socket", 1),
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2),
+                com.example.botfight.support.TestKits.entrant(UUID.randomUUID(), "team-two-b", "team-two-b@example.com", "socket-4", 2));
 
         assertThatThrownBy(() -> lifecycle.startTeamMatch(duplicateSockets, MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null))
                 .isInstanceOf(AuthException.class)
@@ -73,10 +73,10 @@ class MatchLifecycleWorkflowTest extends MatchWorkflowFixture {
         UUID opponentUserId = UUID.randomUUID();
         UUID opponentTeammateUserId = UUID.randomUUID();
         lifecycle.startTeamMatch(List.of(
-                new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
-                new MatchEntrant(teammateUserId, "pilot-one-b", "pilot-one-b@example.com", "socket-two", 1),
-                new MatchEntrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
-                new MatchEntrant(opponentTeammateUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null);
+                com.example.botfight.support.TestKits.entrant(firstUserId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
+                com.example.botfight.support.TestKits.entrant(teammateUserId, "pilot-one-b", "pilot-one-b@example.com", "socket-two", 1),
+                com.example.botfight.support.TestKits.entrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
+                com.example.botfight.support.TestKits.entrant(opponentTeammateUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null);
 
         List<OutboundMatchmakingEvent> voteEvents = lifecycle.surrender(firstUserId);
 
@@ -122,7 +122,7 @@ class MatchLifecycleWorkflowTest extends MatchWorkflowFixture {
     void oneVersusOneForfeitRequiresOnlyThatTeamMember() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -131,7 +131,7 @@ class MatchLifecycleWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -160,10 +160,10 @@ class MatchLifecycleWorkflowTest extends MatchWorkflowFixture {
         UUID opponentUserId = UUID.randomUUID();
         UUID opponentTeammateUserId = UUID.randomUUID();
         lifecycle.startTeamMatch(List.of(
-                new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
-                new MatchEntrant(teammateUserId, "pilot-one-b", "pilot-one-b@example.com", "socket-two", 1),
-                new MatchEntrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
-                new MatchEntrant(opponentTeammateUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null);
+                com.example.botfight.support.TestKits.entrant(firstUserId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
+                com.example.botfight.support.TestKits.entrant(teammateUserId, "pilot-one-b", "pilot-one-b@example.com", "socket-two", 1),
+                com.example.botfight.support.TestKits.entrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
+                com.example.botfight.support.TestKits.entrant(opponentTeammateUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS, MatchMode.TWOS != MatchMode.CUSTOM, null, null);
 
         List<OutboundMatchmakingEvent> voteEvents = lifecycle.surrender(firstUserId);
         List<OutboundMatchmakingEvent> withdrawalEvents = lifecycle.surrender(firstUserId);
@@ -190,7 +190,7 @@ class MatchLifecycleWorkflowTest extends MatchWorkflowFixture {
     void repeatedSurrenderDoesNotCompleteOrScoreMatchTwice() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -199,7 +199,7 @@ class MatchLifecycleWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",

@@ -85,7 +85,7 @@ class MatchmakingSocketControllerTest {
                 Mockito.mock(CustomLobbyService.class),
                 Mockito.mock(CustomLobbyStatePublisher.class));
 
-        controller.joinQueue(new MatchmakingJoinRequestDTO("ONES"), principal, headers);
+        controller.joinQueue(new MatchmakingJoinRequestDTO("ONES", null, new com.example.botfight.DTO.match.MatchKitDTO(1, List.of(3, 6, 22))), principal, headers);
 
         verify(matchmakingService).joinQueue(ArgumentMatchers.argThat(request -> Objects.equals(request.userId(), user.getId()) && Objects.equals(request.username(), user.getUsername()) && Objects.equals(request.principalName(), "pilot@example.com") && Objects.equals(request.socketSessionId(), "queue-tab-two") && Objects.equals(request.partyId(), null)));
     }

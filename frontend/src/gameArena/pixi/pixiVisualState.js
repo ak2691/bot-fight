@@ -1,3 +1,4 @@
+import { entityRendererForVisualType } from "./renderers/entityRenderers.js";
 import { abilityDefinition, VISUAL_INTERPOLATION } from "../../../../shared/engine/loadout/BotLoadout.js";
 import { abilityId } from "../../../../shared/engine/gameconfig/AbilityRegistry.js";
 import { CLOSING_ZONE_TYPE } from "../../../../shared/engine/gameconfig/ArenaHazardConfig.js";
@@ -5,19 +6,18 @@ import { AUTO_STEP_MS } from "../../../../shared/engine/modelPayloads/arenaConst
 import { isBotState } from "../../../../shared/engine/modelPayloads/botState.js";
 import { compassDegreesToRadians } from "../../../../shared/engine/botlogic/planner/arenaAngles.js";
 import { statusIsActive } from "../../../../shared/engine/ecs/contracts/StatusContracts.js";
-import { entityContract, eventVerbs, phaseForEntity, phaseSpeed, triggerView, VERBS } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { entityContract, eventVerbs, phaseForEntity, phaseSpeed, activationView, VERBS } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { BOT_ABILITY_VISUAL_PRIORITY } from "./botAbilityPresentationDefinitions.js";
 import { activeRemainingMs, windupRemainingMs } from "../../../../shared/engine/gameconfig/AbilityState.js";
+import { DASH_CHANNEL, abilityChannel } from "../../../../shared/engine/gameconfig/AbilityChannels.js";
 
-const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "mineExplosion", "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
+const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball", "windburstProjectile"]);
 // These names only occur in replay payloads written before phase visuals were
 // authoritative. Keep their timer fallback so historical replays remain
 // renderable; new payloads use phaseId and the normal renderer contract.
 const LEGACY_REPLAY_PHASE_VISUAL_TYPES = new Set([
     "grenadeExplosion",
-    "mineExplosion",
-    "gravityExplosion",
     "orbitalExplosion",
     "singularityExplosion",
     "staticSnareBurst",
@@ -26,7 +26,6 @@ const LEGACY_REPLAY_PHASE_VISUAL_TYPES = new Set([
 // Presentation duration is resolved only from the browser contract below.
 const PROJECTILE_TRAILS = Object.freeze({
     fireball: { color: 0xfb923c, length: 48, width: 10 },
-    gravityZone: { color: 0xc4b5fd, length: 38, width: 7 },
 });
 const FROST_RING_FRAME_MS = 300 / 49;
 const SINGULARITY_FRAME_MS = 100;
@@ -35,25 +34,16 @@ export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
     hunterDrone: {
         texturePath: ["drone"], animation: "static", rotationOffset: -Math.PI / 2,
     },
-    // Keep previously recorded repeller replays on the shared drone art.
-    repellerDrone: {
-        texturePath: ["drone"], animation: "static", rotationOffset: -Math.PI / 2,
-    },
     windburstProjectile: { texturePath: ["windburst"], animation: "time", frameMs: 65 },
     fireball: { texturePath: ["fireball"], animation: "time", frameMs: 65 },
     grenadeExplosion: { texturePath: ["grenadeMineExplosion"], animation: "progress", durationMs: 200, remaining: "visible" },
-    mineExplosion: { texturePath: ["grenadeMineExplosion"], animation: "progress", durationMs: 300, remaining: "visible" },
-    gravityExplosion: { texturePath: ["grenadeMineExplosion"], animation: "progress", durationMs: 300, remaining: "visible" },
-    gravityZone: { texturePath: ["gravityGrenade"], animation: "time", frameMs: 65 },
     silenceWave: {
         texturePath: ["silencePulse"], animation: "time", frameMs: 80, rotationOffset: -Math.PI / 2,
     },
-    nullZone: { texturePath: ["nullZone"], animation: "time", frameMs: 100 },
     // Rewind is a persistent phase visual. Its clock loops through
     // the clock frames for the entity's whole gameplay lifetime; the delayed
     // restore effect is not also used as a visual progress timer.
     temporalRewindZone: { texturePath: ["temporalRewind"], animation: "time", frameMs: 100 },
-    orbitalMarker: { texturePath: ["orbitalMarker"], animation: "static" },
     orbitalExplosion: { texturePath: ["orbitalExplosion"], animation: "progress", durationMs: 400, remaining: "orbital" },
     singularityZone: { texturePath: ["singularity"], animation: "time", frameMs: SINGULARITY_FRAME_MS },
     singularityExplosion: { texturePath: ["orbitalExplosion"], animation: "progress", durationMs: 400, remaining: "orbital" },
@@ -259,12 +249,9 @@ export function entityVisualRotation(shape) {
 }
 
 export const BOT_PRESENTATION_DEFINITIONS = Object.freeze({
-    7: { texturePath: ["heavySlash"], animation: "progress" }, 8: { texturePath: ["repulsorBlast"], animation: "presentationClock" },
-    3: { texturePath: ["rays", "rail_shot"], animation: "alpha" }, 12: { texturePath: ["rays", "pistol"], animation: "alpha" },
-    9: { texturePath: ["rays", "concussive_shot"], animation: "alpha" },
-    13: { texturePath: ["rays", "rail_shot"], animation: "alpha" }, 25: { texturePath: ["phaseStrike"], animation: "progress" },
-    16: { texturePath: ["shield"], animation: "progress" }, 23: { texturePath: ["shield"], animation: "progress" },
-    10: { texturePath: ["basicHeal"], animation: "particles" },
+    8: { texturePath: ["repulsorBlast"], animation: "presentationClock" },
+    3: { texturePath: ["rays", "rail_shot"], animation: "alpha" },
+    25: { texturePath: ["phaseStrike"], animation: "progress" },
     18: { texturePath: ["windburst"], animation: "entity" },
 });
 
@@ -432,6 +419,9 @@ export function presentationDefinitionForShape(shape) {
             fallback: "graphics",
         };
     }
+    if (entityRendererForVisualType(phaseVisual?.type)) {
+        return { kind: "procedural", layer: "zones", visualType: phaseVisual.type };
+    }
     if (presentationType === "grenade") {
         const state = visualForShape(shape)?.state ?? grenadeVisualState(shape);
         return {
@@ -442,12 +432,6 @@ export function presentationDefinitionForShape(shape) {
             frameMs: state === "detonate" ? null : 90,
             durationMs: state === "detonate" ? AUTO_STEP_MS * 2 : null,
             remaining: state === "detonate" ? "grenadeDetonate" : null,
-        };
-    }
-    if (presentationType === "proximityMine") {
-        const state = visualForShape(shape)?.state ?? (shape.armed ? "static" : "moving");
-        return {
-            kind: "entity", layer: "projectiles", texturePath: ["mine", state], animation: "time", frameMs: 90,
         };
     }
     const definition = ENTITY_PRESENTATION_DEFINITIONS[presentationType];
@@ -642,34 +626,36 @@ export function normalizeReplayObstacleShape(obstacle, previousObstacle, {
 export function botStatusLabels(shape) {
     if (shape?.hp != null && Number(shape.hp) <= 0) return [];
     const labels = [];
-    if (statusIsActive(shape, "reactive-armor")) labels.push("RA");
-    if (statusIsActive(shape, "absolute-guard")) labels.push("AG");
     if (statusIsActive(shape, "burn")) labels.push("BURN");
     if (statusIsActive(shape, "bleed")) labels.push("BLEED");
     if (statusIsActive(shape, "slow")) labels.push("SLOW");
     if (statusIsActive(shape, "silence")) labels.push("SIL");
     if (statusIsActive(shape, "shock")) labels.push("SHOCK");
     if (statusIsActive(shape, "stun")) labels.push("STUN");
-    if (statusIsActive(shape, "overclock")) labels.push("OVERCLOCK");
+    if (statusIsActive(shape, "overdrive")) labels.push("OVERDRIVE");
+    if (statusIsActive(shape, "parry")) labels.push("PARRY");
+    if (statusIsActive(shape, "overcharge")) labels.push("OVERCHARGE");
+    if (statusIsActive(shape, "tethered")) labels.push("TETHERED");
     return labels;
 }
 
 export function activeBotVisual(shape) {
     if (shape?.hp != null && Number(shape.hp) <= 0) return null;
     const abilityVisual = Number(shape?.abilityVisual?.ms ?? 0) > 0 ? shape.abilityVisual.ability : null;
-    if (abilityVisual === 19) return null;
-    if (abilityVisual != null) {
-        return triggerView(abilityVisual)?.visual?.type
-            ? abilityVisual : null;
+    // A dash-channel ability runs alongside other abilities, so its bot visual never takes the single slot.
+    const slotAbility = abilityVisual != null && abilityChannel(abilityVisual) !== DASH_CHANNEL ? abilityVisual : null;
+    if (slotAbility != null) {
+        return activationView(slotAbility)?.visual?.type
+            ? slotAbility : null;
     }
     const active = BOT_ABILITY_VISUAL_PRIORITY
         .find((id) => activeRemainingMs(shape, id) > 0
-            && Boolean(triggerView(id)?.visual?.type));
-    return abilityVisual ?? active ?? null;
+            && Boolean(activationView(id)?.visual?.type));
+    return active ?? null;
 }
 
 export function entityCaption(shape) {
-    if (["hunterDrone", "repellerDrone"].includes(shape?.type)) return `${formatEntityHp(shape.hp ?? 50)} HP`;
+    if (shape?.type === "hunterDrone") return `${formatEntityHp(shape.hp ?? 50)} HP`;
     if (["snareBomb", "staticSnare"].includes(shape?.type)) return `${formatEntityHp(shape.hp ?? 20)} HP`;
     return "";
 }

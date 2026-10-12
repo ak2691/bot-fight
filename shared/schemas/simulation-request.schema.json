@@ -16,7 +16,7 @@
       "$ref": "#/$defs/uuid"
     },
     "rulesetVersion": {
-      "const": "duel-v2"
+      "const": "duel-v3"
     },
     "seed": {
       "anyOf": [

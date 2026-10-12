@@ -1,12 +1,13 @@
 import { GAMEPLAY_DATA } from "../gameconfig/gameplayData.js";
 import { ABILITY_STATS, abilityStats } from "../gameconfig/Abilities.js";
+import { positiveStatusEffects } from "../gameconfig/StatusPresets.js";
 import { abilityIdentity } from "../gameconfig/AbilityRegistry.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
 import {
     abilityAppliesToOwner,
     phaseEffects as phaseEffectsOf,
-    triggerEffects,
-    triggerView,
+    activationEffects,
+    activationView,
     EFFECT_TYPES,
 } from "../ecs/contracts/AbilityContracts.js";
 import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
@@ -16,27 +17,31 @@ import { abilityBaseRange } from "./abilityBaseRange.js";
 export { ABILITY_STATS, abilityBaseRange };
 
 export const BASE_BOT_STATS = Object.freeze({
-    maxHp: 300,
+    maxHp: 225,
     moveSpeed: 15,
     attackDamagePercent: 100,
     attackSpeedPercent: 100,
 });
 
-/** A weapon plus one ability for each of the six rounds. */
+/** Loadout encoding also serves practice and puzzles; match kits are validated separately. */
 export const MAX_EQUIPPED_ABILITIES = 7;
-/**
- * The timed-rounds pick for each round, mirroring the server's MatchLoadoutService: round 1 picks a
- * weapon and one ability, every later round one ability. Rounds 1-2 draw from tier 1, 3-4 from tier 2
- * and 5-6 from tier 3 (the catalog `round` field is the tier); tier 3 offers two, the others three.
- */
-export const ROUND_ABILITY_DRAFT = Object.freeze({
-    1: Object.freeze({ tier: 1, offered: 3, picks: 1, weaponPick: true }),
-    2: Object.freeze({ tier: 1, offered: 3, picks: 1, weaponPick: false }),
-    3: Object.freeze({ tier: 2, offered: 3, picks: 1, weaponPick: false }),
-    4: Object.freeze({ tier: 2, offered: 3, picks: 1, weaponPick: false }),
-    5: Object.freeze({ tier: 3, offered: 2, picks: 1, weaponPick: false }),
-    6: Object.freeze({ tier: 3, offered: 2, picks: 1, weaponPick: false }),
+export const ROUND_ABILITY_UNLOCK = Object.freeze({
+    1: Object.freeze({ tier: 1, weapon: true }),
+    2: Object.freeze({ tier: null, weapon: false }),
+    3: Object.freeze({ tier: 2, weapon: false }),
+    4: Object.freeze({ tier: null, weapon: false }),
+    5: Object.freeze({ tier: 3, weapon: false }),
+    6: Object.freeze({ tier: null, weapon: false }),
 });
+
+/** The combat subset; the brain's loadout remains the full kit. */
+export function unlockedKitLoadout(kit, roundNumber) {
+    const tier = Math.ceil(Math.max(1, Math.min(6, roundNumber)) / 2);
+    return { abilities: normalizedBotLoadout(kit).abilities.filter((id) => {
+        const ability = abilityDefinition(id);
+        return ability.category === "weapon" || ability.round <= tier;
+    }) };
+}
 
 export const VISUAL_INTERPOLATION = Object.freeze({
     NONE: "none",
@@ -51,77 +56,71 @@ export const ABILITY_TAGS = Object.freeze({
 });
 
 const BOT_ABILITY_CATALOG = [
-    { id: 1, round: 0, category: "weapon", visualInterpolation: "none", description: "A quick sweeping cut in front of you that hits everything inside the arc.", summary: "No wind-up, 8 damage over a 120° arc with a short reach." },
-    { id: 3, round: 1, visualInterpolation: "none", description: "Line up a long-range shot. After a short aiming delay it fires an instant beam that hits the first bot in line for heavy damage. You can keep turning while you aim.", summary: "Hitscan with a 900 ms wind-up, 1200 range and flat 40 damage." },
-    { id: 4, round: 1, visualInterpolation: "linear", description: "Throw an explosive that blows up when it hits something, or after a short delay. Damage is highest at the centre of the blast.", summary: "An explosive projectile that triggers on hit or after some duration." },
-    { id: 5, round: 1, visualInterpolation: "linear", description: "Hurl a large ball of fire that damages whoever it hits and sets them burning.", summary: "A large projectile with a 5.5 second cooldown that deals 20 damage and applies a burn effect." },
-    { id: 6, round: 2, visualInterpolation: "none", description: "A short-range strike that hurts the target and freezes them in place for a moment.", summary: "Short-ranged stun." },
-    { id: 7, round: 1, visualInterpolation: "none", description: "A slow, wide swing that hits hard and causes bleeding.", summary: "A slash with preparation time that deals damage and applies a bleed effect." },
-    { id: 8, round: 2, visualInterpolation: "none", description: "A burst around you that damages nearby bots and shoves them away.", summary: "Quick burst that deals damage and knocks opponents away." },
-    { id: 9, round: 1, visualInterpolation: "none", description: "Charge up a shot that damages the target and slows them down.", summary: "Charge a 20-damage shot that slows its target for 3 seconds." },
-    { id: 10, round: 1, visualInterpolation: "none", description: "Stand still for a moment to restore some of your health.", summary: "Channel briefly to restore 25 HP." },
-    { id: 11, round: 1, visualInterpolation: "linear", description: "Drop a mine that stays on the arena and hurts any bot that gets close. Enemies can destroy it.", summary: "Place one visible, destructible proximity trap." },
-    { id: 12, round: 1, visualInterpolation: "none", description: "A fast-firing beam with lighter damage than the Sniper. It hits harder up close.", summary: "Shoots hitscan shot with distance falloff. Faster than the Sniper but far less damage." },
-    { id: 13, round: 2, visualInterpolation: "none", description: "Charge a powerful long beam that damages the target and shocks them.", summary: "Charge a strong beam that shocks its target." },
-    { id: 14, round: 2, visualInterpolation: "linear", description: "Throw a grenade that drags bots toward it before it blows up.", summary: "Spawns a gravitational pull zone and explodes after some time." },
-    { id: 15, round: 2, visualInterpolation: "linear", description: "Fire a pulse that stops the target from using abilities for a while.", summary: "Silences opponents on hit." },
-    { id: 16, round: 2, visualInterpolation: "none", description: "Take less damage for a short time and bounce part of it back at the attacker.", summary: "Reduce and reflect damage." },
-    { id: 17, round: 2, visualInterpolation: "linear", description: "Deploy a drone that shoots the nearest opponent for as long as it lasts.", summary: "Deploy a firing drone that targets the nearest opponent" },
-    { id: 18, round: 2, visualInterpolation: "linear", description: "Fire a fast blast of wind that damages bots and pushes them back.", summary: "Fast projectile that pushes bots back." },
-    { id: 19, round: 0, visualInterpolation: "linear", standard: true, description: "Burst quickly in one direction, relative to a target or along a fixed heading.", summary: "Standard 150-unit movement burst; aim it relative to a target or in an arena direction." },
-    { id: 21, round: 3, visualInterpolation: "none", description: "Mark your position and health, then snap back to them a few seconds later.", summary: "Marks position and HP, then return to them after three seconds." },
-    { id: 22, round: 3, visualInterpolation: "none", description: "Call down repeated explosions on a marked patch of the arena.", summary: "Shoots explosive strikes at marked zone at multiple intervals." },
-    { id: 23, round: 3, visualInterpolation: "none", description: "Become untouchable for a short time: no damage and no status effects.", summary: "Ignore all hostile damage, statuses, interrupts, and displacement temporarily." },
-    { id: 24, round: 3, visualInterpolation: "none", description: "Create an area where any bot standing inside cannot use abilities.", summary: "Spawns a zone where bots are silenced if they are inside it." },
-    { id: 25, round: 2, visualInterpolation: "linear", description: "Strike forward and, if it connects, teleport behind the target.", summary: "Strike forwards and teleports wielder behind the target it hit." },
-    { id: 26, round: 1, visualInterpolation: "none", description: "A ring of frost around you that damages, pushes and slows nearby bots.", summary: "Blast a 120-unit frost ring that deals damage, knockback, and a 2-second slow." },
-    { id: 27, round: 3, visualInterpolation: "none", description: "Mark a spot that drags nearby bots toward it, then detonates.", summary: "Mark a zone that pulls nearby enemies before detonating." },
-    { id: 28, round: 1, visualInterpolation: "linear", description: "Launch a bolt that tugs the target back toward you and slows them.", summary: "Launch a bolt that deals light damage, pulls once, and slows on contact." },
-    { id: 29, round: 1, visualInterpolation: "linear", description: "Plant a trap that slows and hurts bots that touch it. It hits even harder if it is destroyed.", summary: "Place a destructible 16-second snare that deals 25 damage on contact or 40 damage when destroyed, with a stronger explosion on destruction." },
-    { id: 30, round: 2, visualInterpolation: "none", description: "Charge a dart that interrupts what the target is doing and slows them.", summary: "Charge a 20-damage dart that interrupts and slows its target for 1.5 seconds." },
-    { id: 31, round: 2, visualInterpolation: "linear", description: "Deploy a drone that fires lasers that push opponents away.", summary: "Deploy a drone that shoots repelling lasers." },
-    { id: 32, round: 2, visualInterpolation: "none", description: "Fire a beam that damages the target and heals you for the damage it deals.", summary: "Fire a lifesteal beam." },
-    { id: 33, round: 3, visualInterpolation: "none", description: "Recover faster for a while, so all your abilities come back sooner.", summary: "Reduces cooldown time of all abilities temporarily." },
-    // Weapons are never match-draft offers (round 0, not standard); Slash alone stays in the tier 1 pool.
-    { id: 35, round: 0, category: "weapon", visualInterpolation: "none", description: "A thin, straight stab with the longest reach of any weapon. It only connects if you are facing the target.", summary: "10 damage along a narrow 190-unit line after a short wind-up." },
-    { id: 36, round: 0, category: "weapon", visualInterpolation: "none", description: "A slow, wide swing that hits harder than any other weapon. The long wind-up gives opponents time to dodge.", summary: "15 damage over a 160° arc after a 500 ms wind-up." },
-    { id: 37, round: 0, category: "weapon", visualInterpolation: "none", description: "A boxy overhead blow that hurts and shoves the target away from you.", summary: "11 damage and 120 knockback in a wide rectangle after a short wind-up." },
+    { id: 1, visualInterpolation: "none", description: "A quick sweeping cut in front of you that hits everything inside the arc.", summary: "No wind-up, 8 damage over a 120° arc with a short reach." },
+    { id: 3, visualInterpolation: "none", description: "Line up a long-range shot. After a short aiming delay it fires an instant beam that hits the first bot in line for heavy damage. You can keep turning while you aim.", summary: "Hitscan beam after a long aiming delay, with the longest reach of any ability." },
+    { id: 4, visualInterpolation: "linear", description: "Throw an explosive that blows up when it hits something, or after a short delay. Damage is highest at the centre of the blast.", summary: "An explosive projectile that triggers on hit or after some duration." },
+    { id: 5, visualInterpolation: "linear", description: "Hurl a large ball of fire that damages whoever it hits and sets them burning.", summary: "A large projectile with a 5.5 second cooldown that deals 20 damage and applies a burn effect." },
+    { id: 6, visualInterpolation: "none", description: "A short-range strike that hurts the target and freezes them in place for a moment.", summary: "Short-ranged stun." },
+    { id: 8, visualInterpolation: "none", description: "A burst around you that damages nearby bots and shoves them away.", summary: "Quick burst that deals damage and knocks opponents away." },
+    { id: 15, visualInterpolation: "linear", description: "Fire a pulse that damages the target and stops it from using abilities for a while.", summary: "Damaging pulse that silences opponents on hit." },
+    { id: 17, visualInterpolation: "linear", description: "Deploy a drone that shoots the nearest opponent for as long as it lasts.", summary: "Deploy a firing drone that targets the nearest opponent" },
+    { id: 18, visualInterpolation: "linear", description: "Fire a fast blast of wind that damages bots and pushes them back.", summary: "Fast projectile that pushes bots back." },
+    { id: 19, visualInterpolation: "linear", standard: true, description: "Burst quickly in one direction, relative to a target or along a fixed heading.", summary: "Standard 150-unit movement burst; aim it relative to a target or in an arena direction." },
+    { id: 21, visualInterpolation: "none", description: "Mark your position and health, then snap back to them a few seconds later.", summary: "Marks position and HP, then snaps back to them later." },
+    { id: 22, visualInterpolation: "none", description: "Mark a spot in the arena. After a short warning, one big blast damages and stuns anything still standing inside it.", summary: "Marks a spot, then one blast hits anything standing inside it." },
+    { id: 25, visualInterpolation: "linear", description: "Strike forward and, if it connects, blink through the target. A moment later, strike again from behind for extra damage if you are still behind it.", summary: "Blinks through the target, then strikes again from behind." },
+    { id: 26, visualInterpolation: "none", description: "A ring of frost around you that damages, pushes and slows nearby bots.", summary: "A ring of frost that damages, pushes back and slows nearby bots." },
+    { id: 27, visualInterpolation: "none", description: "Mark a spot that drags nearby bots toward it, then detonates.", summary: "Mark a zone that pulls nearby enemies before detonating." },
+    { id: 28, visualInterpolation: "linear", description: "Launch a bolt that tugs the target back toward you and slows them.", summary: "Launch a bolt that deals light damage, pulls once, and slows on contact." },
+    { id: 29, visualInterpolation: "linear", description: "Plant a trap that slows and hurts bots that touch it. It hits even harder if it is destroyed.", summary: "Place a destructible 16-second snare that deals 25 damage on contact or 40 damage when destroyed, with a stronger explosion on destruction." },
+    { id: 30, visualInterpolation: "none", description: "Charge a dart that slows the target. If the target was winding up an ability, the dart also stuns it for longer.", summary: "Charge a dart that slows its target, and stuns it if it was winding up." },
+    { id: 32, visualInterpolation: "none", description: "Fire a beam that damages the target and heals you for the damage it deals.", summary: "Fire a lifesteal beam." },
+    // Weapons occupy the fixed kit weapon slot, separate from all three tiers.
+    { id: 35, visualInterpolation: "none", description: "A thin, straight stab with the longest reach of any weapon. It only connects if you are facing the target.", summary: "10 damage along a narrow 190-unit line after a short wind-up." },
+    { id: 36, visualInterpolation: "none", description: "A slow, wide swing that hits harder than any other weapon. The long wind-up gives opponents time to dodge.", summary: "15 damage over a 160° arc after a 500 ms wind-up." },
+    { id: 37, visualInterpolation: "none", description: "A boxy overhead blow that hurts and shoves the target away from you.", summary: "11 damage and 120 knockback in a wide rectangle after a short wind-up." },
+    { id: 38, visualInterpolation: "linear", description: "Crouch, then leap forward and stab with a blade that makes the target bleed. The crouch is your tell.", summary: "A crouch, a leap forward, then a stab that causes bleeding." },
+    { id: 39, visualInterpolation: "linear", description: "Fire a close fan of pellets. They hit hard together at close range and do little once they spread out.", summary: "A short-range fan of pellets after a short wind-up." },
+    { id: 40, visualInterpolation: "linear", description: "Throw a boomerang that flies straight out, then curves back to you. It can hit an enemy on the way out and again on the way back.", summary: "Flies out, then returns to you; can hit on the way out and on the way back." },
+    { id: 41, visualInterpolation: "none", description: "Brace for the next attack that damages you. It does no damage, and the bot that attacked you is stunned for a moment. Parry only one attack at a time, and it lasts a short moment.", summary: "Blocks the next attack and stuns its attacker." },
+    { id: 42, visualInterpolation: "none", description: "For a short time every stamina cost is free, so you can dash, sprint and turn without running dry.", summary: "Stamina costs are free for a short time." },
+    { id: 43, visualInterpolation: "linear", description: "Throw a tar glob at a spot in front of you. It forms a pool that slows bots standing in it and wears them down.", summary: "A pool that slows and damages bots standing in it." },
+    { id: 44, visualInterpolation: "none", description: "Charge your weapon for a short time: all your damage is doubled while it lasts, and each weapon hit uses up one of the charges.", summary: "Doubles all your damage for a few weapon hits." },
+    { id: 45, visualInterpolation: "none", description: "Wind up a long, visible strike. It hits much harder when the target is low on health.", summary: "A long strike after a long wind-up that hits much harder on a low-health target." },
+    { id: 46, visualInterpolation: "linear", description: "Throw a ring of blades that fly outward, then curve back to you. Each blade can hit an enemy once on the way out and once on the way back.", summary: "A ring of blades that fly out and return to you, each able to hit on both legs." },
+    { id: 47, visualInterpolation: "linear", description: "Fire a bolt that tethers the first bot it hits. A tethered bot takes more damage and is pulled back toward you whenever it strays too far.", summary: "A bolt that tethers a bot and pulls it back when it strays." },
 ];
 
 const CATALOGUE_ENTITY_TAGS = new Set(["projectile", "zone", "trap", "summon"]);
-const STATUS_EFFECT_TYPES = new Set([EFFECT_TYPES.STATUS, EFFECT_TYPES.BUFF]);
-const POSITIVE_EFFECT_TYPES = new Set([
-    EFFECT_TYPES.BUFF,
-    EFFECT_TYPES.DAMAGE_REDUCTION,
-    EFFECT_TYPES.DAMAGE_IMMUNITY,
-    EFFECT_TYPES.DAMAGE_REFLECTION,
-]);
+const STATUS_EFFECT_TYPES = new Set([EFFECT_TYPES.STATUS]);
+const POSITIVE_EFFECT_LABELS = Object.freeze({
+    damage_reduction: "Damage reduction",
+    damage_reflection: "Damage reflection",
+    damage_immunity: "Damage immunity",
+    cooldown_recovery: "Cooldown recovery",
+});
 
 function percent(value) {
     const numeric = Number(value) * 100;
     return `${Number.isInteger(numeric) ? numeric : numeric.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}%`;
 }
 
+/** The player-facing numbers of an ability's status effects, read from each applied status preset. */
 function positiveEffectDetailsForEffects(effects) {
     return Object.freeze((effects ?? [])
-        .filter((effect) => POSITIVE_EFFECT_TYPES.has(effect.type))
-        .map((effect) => {
-            if (effect.type === EFFECT_TYPES.DAMAGE_REDUCTION) {
-                return Object.freeze({ label: "Damage reduction", value: percent(1 - Number(effect.multiplier ?? effect.amount ?? 0)) });
-            }
-            if (effect.type === EFFECT_TYPES.DAMAGE_REFLECTION) {
-                return Object.freeze({ label: "Damage reflection", value: percent(effect.multiplier ?? effect.amount ?? 0) });
-            }
-            if (effect.type === EFFECT_TYPES.BUFF && effect.buff === "overclock") {
-                return Object.freeze({ label: "Cooldown recovery", value: percent(effect.amount ?? 0) });
-            }
-            return Object.freeze({ label: "Damage immunity", value: percent(effect.amount ?? 1) });
-        }));
+        .filter((effect) => effect.type === EFFECT_TYPES.STATUS)
+        .flatMap((effect) => positiveStatusEffects(effect.subtype))
+        .map(({ kind, value }) => Object.freeze({ label: POSITIVE_EFFECT_LABELS[kind], value: percent(value) })));
 }
 
 function abilityCapabilities(ability) {
     const identity = abilityIdentity(ability.id);
     if (!identity) throw new Error(`Unknown ability in catalog: ${ability.id}`);
+    // Tier and weapon are data (abilities.json); the catalogue text does not repeat them.
+    const record = GAMEPLAY_DATA.abilities.abilities.find((candidate) => candidate.id === identity.id);
+    if (!record) throw new Error(`Ability ${identity.id} has no abilities.json record`);
+    const round = record.tier ?? 0;
+    const category = record.weapon ? "weapon" : "ability";
     const stats = abilityStats(identity.id) ?? {};
     const entity = entityContractForAbility(identity.id);
     const selectableIdentities = selectableIdentitiesForAbilityEntity(entity, identity.id);
@@ -138,8 +137,9 @@ function abilityCapabilities(ability) {
         catalogueTags.add(entityMetadata.entityCategory);
     }
     const entityEffects = (entity?.phases ?? []).flatMap(phaseEffectsOf);
-    const effects = Object.freeze([...triggerEffects(ability.id), ...entityEffects]
-        .filter((effect, index, values) => values.findIndex((candidate) =>
+    // A conditional effect (one with `when`) is a bonus on some hits, so the catalogue does not list it as a base effect.
+    const effects = Object.freeze([...activationEffects(ability.id), ...entityEffects]
+        .filter((effect, index, values) => !effect?.when && values.findIndex((candidate) =>
             JSON.stringify(candidate) === JSON.stringify(effect)) === index));
     if (effects.some(isStatusEffect)) catalogueTags.add(ABILITY_TAGS.STATUS_EFFECT);
     if (Number(stats.maxCharges) > 0) {
@@ -147,7 +147,7 @@ function abilityCapabilities(ability) {
         if (stats.chargeType === "hp") catalogueTags.add(ABILITY_TAGS.HP_CHARGES);
     }
     const tags = new Set([identity.type, ...catalogueTags]);
-    if (ability.category === "weapon") tags.add("weapon");
+    if (category === "weapon") tags.add("weapon");
     if (abilityBaseRange(ability.id) != null) tags.add(ABILITY_TAGS.RANGE);
     if (stats.windupMs) tags.add("preparation");
     if (stats.durationMs) tags.add("duration");
@@ -159,9 +159,10 @@ function abilityCapabilities(ability) {
         name: identity.name,
         label: identity.label,
         kind: identity.type,
-        category: ability.category ?? "ability",
-        actionLabel: `${ability.category === "weapon" ? "Weapon" : "Ability"}: ${identity.label}`,
-        catalogueLabel: ability.category === "weapon" ? `Weapon: ${identity.label}` : identity.label,
+        round,
+        category,
+        actionLabel: `${category === "weapon" ? "Weapon" : "Ability"}: ${identity.label}`,
+        catalogueLabel: category === "weapon" ? `Weapon: ${identity.label}` : identity.label,
         ...entityMetadata,
         selectableIdentities,
         stats: Object.freeze({ ...stats }),
@@ -179,7 +180,7 @@ function phaseCatalogueTag(abilityId, entity, entityCategory) {
     if (entity && !phase) return entityCategory ?? null;
     if (entityCategory && ["projectile", "zone", "summon"].includes(phase?.type)) return phase.type;
     if (!entity && abilityAppliesToOwner(abilityId)) return "self";
-    const hitbox = entity ? phase.hitbox : triggerView(abilityId)?.hitbox;
+    const hitbox = entity ? phase.hitbox : activationView(abilityId)?.hitbox;
     if (!hitbox?.shape) return "self";
     switch (hitbox.shape) {
         case "ray": return "ray";
@@ -200,13 +201,16 @@ export const BOT_ABILITIES = Object.freeze(ALL_ABILITY_DEFINITIONS.filter(({ id 
 export const SELECTABLE_BOT_ABILITIES = BOT_ABILITIES;
 
 const STATUS_EFFECT_LABELS = Object.freeze({
-    overclock: "Overclock",
     burn: "Burn",
     stun: "Stun",
     bleed: "Bleed",
     slow: "Slow",
     shock: "Shock",
     silence: "Silence",
+    overdrive: "Overdrive",
+    parry: "Parry",
+    overcharge: "Overcharge",
+    tethered: "Tethered",
 });
 
 export const STATUS_EFFECT_DEFINITIONS = Object.freeze([
@@ -230,7 +234,7 @@ function isStatusEffect(effect) {
 }
 
 function statusEffectId(effect) {
-    return effect?.type === EFFECT_TYPES.BUFF ? effect.buff : effect.subtype;
+    return effect.subtype;
 }
 
 export function abilityDefinition(id) {
@@ -285,8 +289,7 @@ const ABILITY_BY_CODE = Object.freeze(Object.fromEntries(Object.entries(ABILITY_
 export function encodeBotLoadout(loadout) {
     const normalized = normalizedBotLoadout(loadout);
     // The compact ID is also the match/replay presentation order. Preserve
-    // the normalized selection order so later round picks stay after earlier
-    // picks in the ability status panel.
+    // the normalized order: weapon, tier 1, tier 2, tier 3 for a match kit.
     const abilities = normalized.abilities.map((id) => ABILITY_CODES[id]).filter(Boolean).join("");
     return `custom:${abilities}`;
 }

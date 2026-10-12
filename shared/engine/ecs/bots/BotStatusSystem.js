@@ -1,18 +1,21 @@
 import { withoutBotStatuses } from "../../gameconfig/DefensiveState.js";
-import { withCombatAbility } from "../combatLog.js";
+import { isEntityShape } from "../entities/EntityCombat.js";
 import {
-    STATUS_EFFECT_APPLICATIONS,
     normalizeStatusEffect,
     statusEffectsFor,
 } from "../contracts/StatusContracts.js";
-import { applyStatus, dealDamage } from "../abilities/effects.js";
+import { runStatusEffects } from "../abilities/effects.js";
+import { PHASE_EVENT_TYPES } from "../../gameconfig/vocabulary.js";
 
 /**
- * Advances every timed status of the bot, in place, and applies its declarative tick effects (damage and
- * movement locks go through the combat mutators).
+ * Advances every timed status of a bot or an HP entity, in place. A status's `schedule` event runs its effects
+ * every tick it is held, and its `lifetimeEnd` event runs once when its clock counts down to 0 (not when the
+ * statuses are cleared by a death). Effects go through the effect registry, as a phase's effects do.
  */
-export function tickBotStatus(shape, elapsedMs) {
-    if ((shape.hp ?? 0) <= 0) return shape;
+export function tickStatuses(shape, elapsedMs, bots = []) {
+    const entity = isEntityShape(shape);
+    if (!entity && (shape.hp ?? 0) <= 0) return shape;
+    if (statusEffectsFor(shape).length === 0) return shape;
 
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
     const statuses = new Map();
@@ -53,31 +56,47 @@ export function tickBotStatus(shape, elapsedMs) {
         if (tickMs > 0) {
             tickElapsedMs += activeElapsedMs;
             while (tickElapsedMs >= tickMs) {
-                for (const effect of status.effects.filter(({ mode }) => mode === "tick")) {
-                    withCombatAbility(status.abilityId, () => applyTickEffect(shape, status, effect));
-                    if (Number(shape.hp ?? 0) <= 0) return withoutBotStatuses(shape);
-                    for (const changed of statusEffectsFor(shape)) {
-                        statuses.set(`${changed.type}:${changed.mode}`, changed);
-                    }
+                runStatusEvent(shape, status, PHASE_EVENT_TYPES.SCHEDULE, bots);
+                if (!entity && Number(shape.hp ?? 0) <= 0) return withoutBotStatuses(shape);
+                for (const changed of statusEffectsFor(shape)) {
+                    statuses.set(`${changed.type}:${changed.mode}`, changed);
                 }
                 tickElapsedMs -= tickMs;
             }
             const current = statuses.get(key);
             if (current && current.remainingMs > 0) current.tickElapsedMs = tickElapsedMs;
         }
+        if (remainingMs <= 0) {
+            runStatusEvent(shape, status, PHASE_EVENT_TYPES.LIFETIME_END, bots);
+            if (!entity && Number(shape.hp ?? 0) <= 0) return withoutBotStatuses(shape);
+            for (const changed of statusEffectsFor(shape)) {
+                statuses.set(`${changed.type}:${changed.mode}`, changed);
+            }
+        }
         shape.statusEffects = [...statuses.values()];
     }
-    return Number(shape.hp ?? 0) <= 0 ? withoutBotStatuses(shape) : shape;
+    return !entity && Number(shape.hp ?? 0) <= 0 ? withoutBotStatuses(shape) : shape;
 }
 
-function applyTickEffect(shape, status, effect) {
-    if (effect.type === STATUS_EFFECT_APPLICATIONS.DAMAGE) {
-        const amount = Math.max(0, Number(effect.amount ?? 0) * Number(effect.multiplier ?? 1));
-        if (amount > 0) dealDamage(shape, amount, statusSource(status.sourceSlot, status.type));
-    } else if (effect.type === STATUS_EFFECT_APPLICATIONS.MOVEMENT_LOCK) {
-        const durationMs = Math.max(0, Number(effect.durationMs ?? 0));
-        if (durationMs > 0) applyStatus(shape, { type: "movement-lock", remainingMs: durationMs, effects: [] });
-    }
+/**
+ * Runs the effects of one schedule or lifetimeEnd event on the holder. The effects' source is the status's source bot
+ * (its sourceSlot), as far as that bot is alive: its position is known then, and a source that is dead has none.
+ */
+function runStatusEvent(holder, status, eventType, bots) {
+    const event = status.on?.[eventType];
+    if (!event) return;
+    runStatusEffects(holder, status, event.effects ?? [], { source: statusSourceOf(status, bots) });
+}
+
+/**
+ * The source of a status's effects. It keeps the damage attribution it always had (a status source names its slot and
+ * type, so bleed's exclusion and hit-stagger are unchanged), and adds the position of the living bot in sourceSlot.
+ */
+function statusSourceOf(status, bots) {
+    const base = statusSource(status.sourceSlot, status.type);
+    if (status.sourceSlot == null) return base;
+    const sourceBot = bots.find((bot) => Number(bot.slot) === Number(status.sourceSlot) && Number(bot.hp ?? 0) > 0);
+    return sourceBot ? { ...base, x: sourceBot.x, y: sourceBot.y } : base;
 }
 
 function statusSource(slot, statusType) {

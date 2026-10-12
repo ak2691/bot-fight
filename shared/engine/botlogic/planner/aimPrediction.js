@@ -1,5 +1,5 @@
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, AUTO_STEP_MS } from "../../modelPayloads/arenaConstants.js";
-import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
+import { abilityTiming } from "../../gameconfig/Abilities.js";
 import { entityContractForAbility, phaseSpeed } from "../../ecs/contracts/AbilityContracts.js";
 import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
 import { windupRemainingMs } from "../../gameconfig/AbilityState.js";
@@ -37,7 +37,7 @@ export function projectileSpeedPerSecond(abilityId) {
 
 /** Remaining wind-up for `auto`: what is left if it already started, otherwise the full wind-up. */
 export function windupRemainingSeconds(player, abilityId) {
-    const windupMs = Number(ABILITY_STATS[abilityId]?.windupMs ?? 0);
+    const windupMs = Number(abilityTiming(abilityId).windupMs ?? 0);
     const preparingMs = windupRemainingMs(player, abilityId);
     return (preparingMs > 0 ? preparingMs : windupMs) / 1000;
 }

@@ -12,6 +12,7 @@ const ENGINE_GLOBALS = {
   ...globals.es2021,
   console: 'readonly',
   structuredClone: 'readonly',
+  TextEncoder: 'readonly',
 };
 const ENGINE_BANNED_IMPORTS = [
   { group: ['react', 'react-*', 'react/*', 'pixi.js', 'pixi.js/*', '@pixi/*', '@stomp/*', 'ajv', 'ajv/*'], message: 'The engine cannot depend on UI, rendering, network or validator libraries.' },

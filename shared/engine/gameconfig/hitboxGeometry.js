@@ -1,8 +1,9 @@
 import { movingCircleCollision, movingRectangleCollision } from "./geometry.js";
 import { compassDegreesToRadians, compassDirection } from "../botlogic/planner/arenaAngles.js";
-import { entityContract, entityShot, phaseForEntity, triggerView } from "../ecs/contracts/AbilityContracts.js";
+import { entityContract, entityShot, phaseForEntity, activationView } from "../ecs/contracts/AbilityContracts.js";
 import { COMBAT_VISUAL_ABILITY_IDS, combatVisualDurationMs, combatVisualRemainingMs } from "./visualState.js";
 import { activeRemainingMs } from "./AbilityState.js";
+import { resolveDataNumber } from "./dataValues.js";
 
 export const COLLIDER_SHAPES = Object.freeze({
     CIRCLE: "circle",
@@ -26,7 +27,7 @@ export function entityAbilitySpawnTransform(entity, spawn = null, ownerRotation 
 }
 
 /**
- * Resolves the pose a trigger verb fires from, using authored activation capture fields when
+ * Resolves the pose an activation verb fires from, using authored activation capture fields when
  * present and otherwise resolving the verb's origin against the current owner.
  */
 export function abilityPose(bot, spawn = null, capture = null) {
@@ -64,7 +65,7 @@ export function hitboxGeometryForBot(bot, position = null) {
     const abilityId = activeDirectAbilityForBot(bot);
     if (abilityId == null) return null;
 
-    const hitbox = triggerView(abilityId)?.hitbox;
+    const hitbox = activationView(abilityId)?.hitbox;
     if (!hitbox?.shape) return null;
 
     const remainingMs = combatVisualRemainingMs(bot, abilityId);
@@ -79,8 +80,8 @@ export function hitboxGeometryForBot(bot, position = null) {
     const opacity = Math.min(1, remainingMs / durationMs);
 
     if (hitbox.shape === "rectangle") {
-        const length = phaseStat(hitbox.length ?? hitbox.range, {}, 0);
-        const height = Math.max(0, phaseStat(hitbox.width, {}, Number(bot?.size ?? 60)));
+        const length = resolveDataNumber(hitbox.length ?? hitbox.range, {}, 0);
+        const height = Math.max(0, resolveDataNumber(hitbox.width, {}, Number(bot?.size ?? 60)));
         if (length <= 0 || height <= 0) return null;
         const direction = { x: Math.cos(rotation), y: Math.sin(rotation) };
         return {
@@ -98,8 +99,8 @@ export function hitboxGeometryForBot(bot, position = null) {
     }
 
     if (hitbox.shape === "ray") {
-        const length = phaseStat(hitbox.range, {}, 0);
-        const width = phaseStat(hitbox.width, {}, 5);
+        const length = resolveDataNumber(hitbox.range, {}, 0);
+        const width = resolveDataNumber(hitbox.width, {}, 5);
         return length > 0 ? {
             shape: "ray",
             x: origin.x,
@@ -115,7 +116,7 @@ export function hitboxGeometryForBot(bot, position = null) {
     }
 
     if (hitbox.shape === "circle") {
-        const radius = phaseStat(hitbox.radius, {}, 0);
+        const radius = resolveDataNumber(hitbox.radius, {}, 0);
         return radius > 0 ? {
             shape: COLLIDER_SHAPES.CIRCLE,
             x: origin.x,
@@ -129,7 +130,7 @@ export function hitboxGeometryForBot(bot, position = null) {
     }
 
     if (hitbox.shape !== "arc") return null;
-    const radius = phaseStat(hitbox.range, {}, 0);
+    const radius = resolveDataNumber(hitbox.range, {}, 0);
     if (radius <= 0) return null;
     return {
         shape: "sector",
@@ -137,7 +138,7 @@ export function hitboxGeometryForBot(bot, position = null) {
         y: origin.y,
         radius,
         rotation,
-        halfAngle: phaseStat(hitbox.arc, {}, 36) * Math.PI / 360,
+        halfAngle: resolveDataNumber(hitbox.arc, {}, 36) * Math.PI / 360,
         opacity,
         remainingMs,
         durationMs,
@@ -236,10 +237,9 @@ export function hitboxGeometryForEntity(entity) {
 
     const trigger = phase?.trigger;
     const radiusValue = phase?.hitbox?.radius
-        ?? phase?.statOverrides?.radius
         ?? trigger?.radius
         ?? phase?.radius;
-    const radius = resolveStatValue(radiusValue, {}, phase);
+    const radius = resolveDataNumber(radiusValue, {}, NaN);
     const radiusMultiplier = Number(phase?.hitbox?.radiusMultiplier ?? 1);
     return {
         shape: COLLIDER_SHAPES.CIRCLE,
@@ -269,7 +269,7 @@ function summonAbilityHitboxGeometry(entity) {
     const remainingMs = Number(entity?.shotVisualMs ?? 0);
     if (!shot || remainingMs <= 0) return null;
     const rangeValue = shot.hitbox?.range ?? shot.hitbox?.length;
-    const length = resolveStatValue(rangeValue, {}, shot);
+    const length = resolveDataNumber(rangeValue, {}, NaN);
     if (length <= 0) return null;
     const durationMs = Math.max(
         1,
@@ -301,12 +301,7 @@ function activeDirectAbilityForBot(bot) {
 }
 
 function hasTriggerHitbox(abilityId) {
-    return Boolean(triggerView(abilityId)?.hitbox?.shape);
-}
-
-function phaseStat(value, stats, fallback) {
-    if (typeof value === "number") return value;
-    return Number(stats?.[value] ?? fallback);
+    return Boolean(activationView(abilityId)?.hitbox?.shape);
 }
 
 function botActivationOrigin(bot, position) {
@@ -340,7 +335,7 @@ function entityCircleRadius(entity) {
     const phase = phaseForEntity(entity);
     const hitbox = phase?.hitbox;
     if (hitbox?.shape === COLLIDER_SHAPES.CIRCLE) {
-        const radius = resolveStatValue(hitbox.radius, {}, phase);
+        const radius = resolveDataNumber(hitbox.radius, {}, NaN);
         const multiplier = Number(hitbox.radiusMultiplier ?? 1);
         if (Number.isFinite(radius) && radius >= 0 && Number.isFinite(multiplier)) {
             return radius * multiplier;
@@ -351,25 +346,13 @@ function entityCircleRadius(entity) {
 
 function entityLength(entity) {
     const phase = phaseForEntity(entity);
-    const lengthValue = phase?.hitbox?.length
-        ?? phase?.statOverrides?.hitboxLength
-        ?? null;
-    const length = resolveStatValue(lengthValue, {}, phase);
+    const length = resolveDataNumber(phase?.hitbox?.length, {}, NaN);
     return Number.isFinite(length) && length > 0 ? length : entitySize(entity);
 }
 
 function entityHitboxWidth(entity) {
     const phase = phaseForEntity(entity);
-    const widthValue = phase?.hitbox?.width
-        ?? phase?.statOverrides?.hitboxWidth
-        ?? null;
-    const width = resolveStatValue(widthValue, {}, phase);
+    const width = resolveDataNumber(phase?.hitbox?.width, {}, NaN);
     return Number.isFinite(width) && width > 0 ? width : entitySize(entity);
 }
 
-function resolveStatValue(value, stats, phase) {
-    if (value == null) return NaN;
-    if (typeof value === "number") return value;
-    if (typeof value === "string") return Number(phase?.statOverrides?.[value] ?? stats[value]);
-    return Number(value);
-}

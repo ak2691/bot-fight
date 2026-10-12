@@ -1,4 +1,4 @@
-import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
+import { abilityTiming } from "../../gameconfig/Abilities.js";
 import { abilityResourceFor, rechargeAbility } from "../../gameconfig/AbilityResourceSystem.js";
 import { ABILITY_STAGES } from "../../gameconfig/AbilityState.js";
 
@@ -62,16 +62,16 @@ function recovery(record, cooldownMs) {
 
 /** Counts a charge-bearing ability's reload down; the time the active stage used does not count. */
 function recharge(record, id, elapsed, activeBefore, skipped) {
-    const stats = ABILITY_STATS[id];
-    if (stats?.maxCharges == null) {
+    const timing = abilityTiming(id);
+    if (timing.maxCharges == null) {
         // Only charge-bearing abilities carry charges; drop anything stale.
         const { charges: _charges, reloadMs: _reloadMs, ...uncharged } = record;
         return uncharged;
     }
     const recoveryElapsed = skipped ? 0 : Math.max(0, elapsed - Math.min(elapsed, activeBefore));
     const resource = rechargeAbility({
-        ...abilityResourceFor({ abilityState: { [id]: record } }, id, stats),
-        stats,
+        ...abilityResourceFor({ abilityState: { [id]: record } }, id, timing),
+        stats: timing,
     }, recoveryElapsed);
     return { ...record, charges: resource.charges, reloadMs: resource.rechargeMs };
 }

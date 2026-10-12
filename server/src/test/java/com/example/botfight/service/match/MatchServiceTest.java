@@ -42,11 +42,11 @@ class MatchServiceTest extends MatchWorkflowFixture {
         UUID firstMatchSecondUser = UUID.randomUUID();
         UUID secondMatchFirstUser = UUID.randomUUID();
         UUID secondMatchSecondUser = UUID.randomUUID();
-        UUID firstMatchId = service.startMatch(new MatchEntrant(firstMatchFirstUser, "alpha-one", "alpha-one@example.com", null), new MatchEntrant(firstMatchSecondUser, "alpha-two", "alpha-two@example.com", null), MatchMode.ONES, true)
+        UUID firstMatchId = service.startMatch(com.example.botfight.support.TestKits.entrant(firstMatchFirstUser, "alpha-one", "alpha-one@example.com", null), com.example.botfight.support.TestKits.entrant(firstMatchSecondUser, "alpha-two", "alpha-two@example.com", null), MatchMode.ONES, true)
                 .getFirst().event().matchId();
-        UUID secondMatchId = service.startMatch(new MatchEntrant(secondMatchFirstUser, "beta-one", "beta-one@example.com", null), new MatchEntrant(secondMatchSecondUser, "beta-two", "beta-two@example.com", null), MatchMode.ONES, true)
+        UUID secondMatchId = service.startMatch(com.example.botfight.support.TestKits.entrant(secondMatchFirstUser, "beta-one", "beta-one@example.com", null), com.example.botfight.support.TestKits.entrant(secondMatchSecondUser, "beta-two", "beta-two@example.com", null), MatchMode.ONES, true)
                 .getFirst().event().matchId();
-        TestMatches.selectLoadout(service, firstMatchFirstUser, "melee");
+        clock.advance(java.time.Duration.ofSeconds(10));
 
         CountDownLatch firstMatchEnteredBlockedWork = new CountDownLatch(1);
         CountDownLatch releaseFirstMatch = new CountDownLatch(1);
@@ -68,11 +68,11 @@ class MatchServiceTest extends MatchWorkflowFixture {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             Future<List<OutboundMatchmakingEvent>> blockedFirstMatch =
-                    executor.submit(() -> TestMatches.selectLoadout(service, firstMatchSecondUser, "melee"));
+                    executor.submit(() -> timing.resolveLoadoutSelectionTimeout(firstMatchId));
             assertThat(firstMatchEnteredBlockedWork.await(2, TimeUnit.SECONDS)).isTrue();
 
             Future<List<OutboundMatchmakingEvent>> independentSecondMatch =
-                    executor.submit(() -> TestMatches.selectLoadout(service, secondMatchFirstUser, "melee"));
+                    executor.submit(() -> timing.resolveLoadoutSelectionTimeout(secondMatchId));
             assertThat(independentSecondMatch.get(1, TimeUnit.SECONDS))
                     .isNotEmpty()
                     .allSatisfy(outbound -> assertThat(outbound.event().matchId()).isEqualTo(secondMatchId));
@@ -100,7 +100,7 @@ class MatchServiceTest extends MatchWorkflowFixture {
         UUID secondUserId = UUID.randomUUID();
         UUID firstSubmissionId = UUID.randomUUID();
         UUID secondSubmissionId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -109,7 +109,7 @@ class MatchServiceTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -118,8 +118,8 @@ class MatchServiceTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
         submitMatch(firstUserId, firstSubmissionId);
@@ -151,7 +151,6 @@ class MatchServiceTest extends MatchWorkflowFixture {
                     assertThat(outbound.event().simulationPreparingDurationMs()).isEqualTo(3_000L);
                     assertThat(elapsed(outbound.event().playback())).isEmpty();
                     assertThat(outbound.event().roundBrains()).isEmpty();
-                    assertThat(outbound.event().abilityOffers()).isEmpty();
                 });
 
         assertThat(events)
@@ -219,8 +218,8 @@ class MatchServiceTest extends MatchWorkflowFixture {
                     assertThat(outbound.publishAt()).isEqualTo(outbound.event().roundReadyAt());
                     assertThat(outbound.event().loadoutSelectionEndsAt()).isNull();
                 });
-        assertThat(TestMatches.selectLoadout(service, firstUserId, "melee")).isEmpty();
-        assertThat(TestMatches.selectLoadout(service, secondUserId, "melee")).isEmpty();
+        assertThat(TestMatches.beginBuild(service, firstUserId)).isEmpty();
+        assertThat(TestMatches.beginBuild(service, secondUserId)).isEmpty();
         assertThat(service.resolveLoadoutSelectionTimeout(savedMatch.getId()))
                 .as("a stale prior-round timeout cannot advance a round whose selection is not active")
                 .isEmpty();

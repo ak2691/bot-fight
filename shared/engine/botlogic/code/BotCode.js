@@ -802,6 +802,8 @@ function normalizePairTarget(condition, definition) {
         ...(modes.includes(TARGET_MODES.ANGLE)
             ? { targetAngle: boundedNumber(condition?.targetAngle, -360, 360, 0) }
             : {}),
+        // Stored only on In View, where 360 (the whole circle) is the default.
+        ...(definition.viewArc ? { viewArc: boundedNumber(condition?.viewArc, 1, 360, 360) } : {}),
     };
 }
 

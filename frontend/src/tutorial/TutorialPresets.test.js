@@ -116,9 +116,9 @@ test("vulnerability tutorial configures its attacks and tactics", () => {
     assert.equal(first.id, "vulnerability-1");
     assert.equal(first.goal, "defeat_opponent_survive");
     assert.equal(firstPlayer.hp, 40);
-    assert.equal(firstPlayer.maxHp, 300);
+    assert.equal(firstPlayer.maxHp, 225);
     assert.equal(firstPlayer.y - firstOpponent.y, 300);
-    assert.equal(first.opponentLoadout, "sandbox:7,13");
+    assert.equal(first.opponentLoadout, "sandbox:6,3");
     assert.equal(first.solution.roots.length, 4);
     assert.equal(firstConditions.some((condition) => condition.left === "bot.selectedAbilityPreparationMs" && condition.ability === TUTORIAL_ACTIONS.RAIL_SHOT && condition.right.value === 0.2), true);
     assert.deepEqual(first.solution.roots[0].branches.map((branch) => branch.actions[0].movementDirection), [90, 180]);
@@ -140,10 +140,10 @@ test("combo and kite tutorial cycles its combo and responds to edge pressure", (
     const allActions = solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions));
 
     assert.equal(scenario.id, "combo-and-kite");
-    assert.equal(scenario.playerLoadout, "sandbox:6,7,18");
+    assert.equal(scenario.playerLoadout, "sandbox:6,8,18");
     assert.equal(scenario.opponentLoadout, "sandbox:1");
     assert.equal(player.hp, 1);
-    assert.equal(player.maxHp, 300);
+    assert.equal(player.maxHp, 225);
     assert.deepEqual(solution.customVariables, [{ id: "custom.combo-step", name: "Combo Step", valueType: "number", initialValue: 0 }]);
     assert.deepEqual(comboBranches.map((branch) => branch.actions[0].action), [TUTORIAL_ACTIONS.STUN, TUTORIAL_ACTIONS.HEAVY_SLASH]);
     assert.deepEqual(comboBranches.map((branch) => branch.conditions[1].right.value), [0, 1]);
@@ -169,7 +169,7 @@ test("tutorial priority lesson starts with Dash first and solution swaps only pr
     assert.deepEqual(solution.roots.map((root) => root.id), starting.roots.map((root) => root.id));
 });
 
-test("tutorial solutions use the relaxed bearing and context-aware dashes", () => {
+test("tutorial solutions use the In View arc and context-aware dashes", () => {
     const dodge = getTutorialScenario(7).solution;
     const dodgeAction = dodge.roots[0].branches[0].actions[0];
     const combine = getTutorialScenario(8).solution;
@@ -181,7 +181,9 @@ test("tutorial solutions use the relaxed bearing and context-aware dashes", () =
     assert.deepEqual(combineDash, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent_1_grenade" });
     assert.equal(heavySlashRoot.priority, 1);
     assert.equal(heavySlashRoot.branches[0].actions[0].action, TUTORIAL_ACTIONS.HEAVY_SLASH);
-    assert.equal(slash.right.value, 75);
+    assert.equal(slash.left, "selectable.inView");
+    assert.equal(slash.right.value, true);
+    assert.equal(slash.viewArc, 150);
 });
 
 test("new tutorial catalogue has four categories and keeps Some Theories descriptive-only", () => {
@@ -208,8 +210,8 @@ test("new tutorial catalogue has four categories and keeps Some Theories descrip
     assert.match(movementCopy, /0° toward the selected target, 90° to its right, 180° away, and 270° to its left/);
     assert.match(movementCopy, /Negative equivalents work too/);
     const bearingCopy = tutorialCopy("dont-miss");
-    assert.match(bearingCopy, /Angle To is how far the facing entity is turned away/);
-    assert.match(bearingCopy, /near zero means it is aimed at the target/);
+    assert.match(bearingCopy, /In View is true when the target is inside the view arc/);
+    assert.match(bearingCopy, /Set the arc to 20 degrees/);
 });
 
 test("tutorial introduction maps node visuals and avoids em dashes", () => {
@@ -324,8 +326,9 @@ test("new tutorial lessons resolve focused practice presets", () => {
     assert.equal(fireballs.playerLoadout, "sandbox:5");
     assert.equal(fireballs.solution.roots[0].branches[1].actions[0].action, TUTORIAL_ACTIONS.FIREBALL);
     assert.equal(dontMiss.playerLoadout, "sandbox:5");
-    assert.equal(dontMissBranch.conditions[0].left, "selectable.relativeBearing");
-    assert.equal(dontMissBranch.conditions[0].right.value, 10);
+    assert.equal(dontMissBranch.conditions[0].left, "selectable.inView");
+    assert.equal(dontMissBranch.conditions[0].right.value, true);
+    assert.equal(dontMissBranch.conditions[0].viewArc, 20);
     assert.equal(dontMissBranch.actions[0].action, TUTORIAL_ACTIONS.FIREBALL);
     assert.equal(dontMiss.solution.roots[1].branches[0].conditions[0].type, "always");
     assert.equal(dontMiss.solution.roots[1].branches[0].actions[0].action, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET);
@@ -402,7 +405,7 @@ test("new tutorial lessons resolve focused practice presets", () => {
     assert.equal(dodging.opponentCode.roots[1].branches[0].conditions[0].ability, TUTORIAL_ACTIONS.DASH);
     assert.equal(dodging.opponentCode.roots[2].branches[0].conditions[0].ability, TUTORIAL_ACTIONS.DASH);
     assert.deepEqual(dodging.opponentCode.roots.slice(1).flatMap((rootNode) => rootNode.branches[0].actions.map((action) => action.action)), [TUTORIAL_ACTIONS.GRENADE, TUTORIAL_ACTIONS.FIREBALL]);
-    assert.equal(abilityVariables.opponentLoadout, "sandbox:7");
+    assert.equal(abilityVariables.opponentLoadout, "sandbox:6");
     assert.equal(abilityVariables.playerHp, 1);
     assert.equal(edges.opponentCode.roots[1].branches[0].actions[0].action, BOT_CODE_ACTIONS.MOVE_WALK);
     assert.deepEqual(customVariables.solution.customVariables, [{ id: "custom.variable-1", name: "Variable 1", valueType: "number", initialValue: 0 }]);

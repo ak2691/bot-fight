@@ -47,6 +47,9 @@ class BotSubmissionServiceTest {
             eventPublisher,
             jsonMapper);
 
+    @org.junit.jupiter.api.BeforeEach
+    void kit() { when(matchService.kitForSubmission(any(), any())).thenReturn(com.example.botfight.support.TestKits.KIT); }
+
     @Test
     void rejectsNonMatchSubmissionWithoutCallingPersistenceOrMatchServices() throws Exception {
         AppUser user = testUser();

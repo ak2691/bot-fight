@@ -10,7 +10,7 @@
       "channel": "ability",
       "timing": { "cooldownMs": 500, "windupMs": 0, "activeMs": 300 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": {
@@ -25,7 +25,8 @@
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "meleeSlash", "visualSize": 207, "visibleMs": 400 }
         }
-      ]
+      ],
+      "weapon": true
     },
     {
       "id": 3,
@@ -34,20 +35,21 @@
       "code": "g",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 9000, "windupMs": 900, "activeMs": 200 },
+      "timing": { "cooldownMs": 8000, "windupMs": 900, "activeMs": 200 },
       "activation": {
         "capture": { "gunRayOriginX": "x", "gunRayOriginY": "y", "gunRayRotation": "rotation" }
       },
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": { "shape": "ray", "range": 1200, "width": 6, "length": 1200, "radiusMultiplier": 1 },
           "targets": ["BOT", "HP_ENTITY"],
-          "effects": [{ "type": "damage", "amount": 40, "targetKinds": ["BOT", "HP_ENTITY"] }],
+          "effects": [{ "type": "damage", "amount": 35, "targetKinds": ["BOT", "HP_ENTITY"] }],
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "gun", "visualSize": 40, "visibleMs": 300 }
         }
-      ]
+      ],
+      "tier": 1
     },
     {
       "id": 4,
@@ -56,9 +58,9 @@
       "code": "r",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 12000, "activeMs": 1 },
+      "timing": { "cooldownMs": 7000, "activeMs": 100 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "grenade" }],
+      "onActivate": [{ "do": "spawn", "entity": "grenade" }],
       "entities": {
         "grenade": {
           "runtimeType": "grenade",
@@ -99,7 +101,6 @@
               "id": "armed",
               "type": "projectile",
               "durationMs": 1000,
-              "startMs": -1,
               "movement": { "mode": "static", "unitsPerTick": 0 },
               "hitbox": { "shape": "rectangle", "width": 12, "length": 12, "radiusMultiplier": 1 },
               "visual": { "type": "grenade", "state": "static", "visualSize": 12 },
@@ -122,7 +123,6 @@
               "id": "active",
               "type": "zone",
               "durationMs": 100,
-              "startMs": -1,
               "movement": { "mode": "static", "unitsPerTick": 0 },
               "hitbox": { "shape": "circle", "radius": 70, "radiusMultiplier": 1 },
               "on": {
@@ -136,7 +136,7 @@
                       "effects": [
                         {
                           "type": "damage",
-                          "falloff": { "minAmount": 25, "maxAmount": 40, "falloffStart": 0, "falloffEnd": 64 },
+                          "falloff": { "minAmount": 18, "maxAmount": 30, "falloffStart": 0, "falloffEnd": 64 },
                           "targetKinds": ["BOT", "HP_ENTITY"]
                         }
                       ]
@@ -153,7 +153,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 1
     },
     {
       "id": 5,
@@ -164,7 +165,7 @@
       "channel": "ability",
       "timing": { "cooldownMs": 5500, "activeMs": 500, "durationMs": 1400 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "fireball" }],
+      "onActivate": [{ "do": "spawn", "entity": "fireball" }],
       "entities": {
         "fireball": {
           "runtimeType": "fireball",
@@ -212,7 +213,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 1
     },
     {
       "id": 6,
@@ -221,9 +223,9 @@
       "code": "t",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 9600, "windupMs": 200, "activeMs": 100, "durationMs": 1200 },
+      "timing": { "cooldownMs": 10000, "windupMs": 200, "activeMs": 100, "durationMs": 1200 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": {
@@ -241,43 +243,8 @@
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "stun", "visualSize": 60, "visibleMs": 100 }
         }
-      ]
-    },
-    {
-      "id": 7,
-      "name": "heavy_slash",
-      "label": "Heavy Slash",
-      "code": "h",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 4600, "windupMs": 300, "activeMs": 400 },
-      "activation": {},
-      "onTrigger": [
-        {
-          "do": "hit",
-          "hitbox": {
-            "shape": "arc",
-            "range": 115,
-            "arc": 150,
-            "radiusMultiplier": 1,
-            "includeTargetRadius": true
-          },
-          "targets": ["BOT", "HP_ENTITY"],
-          "effects": [
-            { "type": "damage", "amount": 30, "targetKinds": ["BOT", "HP_ENTITY"] },
-            {
-              "type": "status",
-              "subtype": "bleed",
-              "amount": 2,
-              "durationMs": 5000,
-              "intervalMs": 1000,
-              "targetKinds": ["BOT", "SUMMON"]
-            }
-          ],
-          "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-          "visual": { "type": "heavySlash", "visualSize": 220.8, "visibleMs": 400 }
-        }
-      ]
+      ],
+      "tier": 2
     },
     {
       "id": 8,
@@ -286,317 +253,29 @@
       "code": "u",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 10000, "activeMs": 500 },
+      "timing": { "cooldownMs": 8000, "activeMs": 500 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": { "shape": "circle", "radius": 110, "radiusMultiplier": 1, "includeTargetRadius": true },
           "targets": ["BOT", "HP_ENTITY"],
           "effects": [
-            { "type": "damage", "amount": 20, "targetKinds": ["BOT", "HP_ENTITY"] },
-            { "type": "knockback", "amount": 300, "targetKinds": ["BOT", "SUMMON"] }
-          ],
-          "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-          "visual": { "type": "repulsorBurst", "visualSize": 220, "visibleMs": 500 }
-        }
-      ]
-    },
-    {
-      "id": 9,
-      "name": "concussive_shot",
-      "label": "Concussive Shot",
-      "code": "c",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 6700, "windupMs": 1000, "activeMs": 300 },
-      "activation": {},
-      "onTrigger": [
-        {
-          "do": "hit",
-          "hitbox": { "shape": "ray", "range": 500, "width": 5, "length": 500, "radiusMultiplier": 1 },
-          "targets": ["BOT", "HP_ENTITY"],
-          "effects": [
-            { "type": "damage", "amount": 20, "targetKinds": ["BOT", "HP_ENTITY"] },
-            { "type": "status", "subtype": "slow", "durationMs": 3000, "targetKinds": ["BOT", "SUMMON"] }
-          ],
-          "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-          "visual": { "type": "concussiveShot", "visualSize": 76, "visibleMs": 300 }
-        }
-      ]
-    },
-    {
-      "id": 10,
-      "name": "basic_heal",
-      "label": "Basic Heal",
-      "code": "e",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 11700, "windupMs": 800, "activeMs": 300 },
-      "activation": {},
-      "onTrigger": [
-        {
-          "do": "applyEffects",
-          "targets": ["OWNER"],
-          "effects": [{ "type": "healing", "amount": 25, "targetKinds": ["BOT"] }],
-          "visual": { "type": "basicHeal", "visualSize": 12, "visibleMs": 300 }
-        }
-      ]
-    },
-    {
-      "id": 11,
-      "name": "proximity_mine",
-      "label": "Proximity Mine",
-      "code": "m",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 10000, "activeMs": 300, "durationMs": 20800 },
-      "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "proximity_mine" }],
-      "entities": {
-        "proximity_mine": {
-          "runtimeType": "proximityMine",
-          "category": "trap",
-          "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-          "targeting": { "owner": "owner" },
-          "lifetime": { "timerMode": "age", "duration": 20800 },
-          "phases": [
+            { "type": "damage", "amount": 18, "targetKinds": ["BOT", "HP_ENTITY"] },
             {
-              "id": "travel",
-              "type": "projectile",
-              "durationMs": 800,
-              "movement": { "mode": "straight", "unitsPerTick": 22 },
-              "hitbox": { "shape": "circle", "radius": 12, "radiusMultiplier": 1 },
-              "visual": { "type": "proximityMine", "state": "moving", "visualSize": 24 },
-              "on": {
-                "lifetimeEnd": {
-                  "targets": ["BOT"],
-                  "schedule": { "mode": "once", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [{ "do": "transition", "to": "armed" }]
-                }
-              }
-            },
-            {
-              "id": "armed",
-              "type": "zone",
-              "durationMs": 20000,
-              "startMs": -1,
-              "movement": { "mode": "static", "unitsPerTick": 0 },
-              "hitbox": { "shape": "circle", "radiusMultiplier": 1 },
-              "trigger": { "radius": 87.5, "botContact": true },
-              "visual": { "type": "proximityMine", "state": "static", "visualSize": 24 },
-              "on": {
-                "trigger": {
-                  "targets": ["BOT"],
-                  "schedule": { "mode": "once", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [{ "do": "transition", "to": "active" }]
-                },
-                "lifetimeEnd": {
-                  "targets": ["BOT"],
-                  "schedule": { "mode": "once", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [{ "do": "transition", "to": "active" }]
-                }
-              }
-            },
-            {
-              "id": "active",
-              "type": "zone",
-              "durationMs": 100,
-              "movement": { "mode": "static", "unitsPerTick": 0 },
-              "hitbox": { "shape": "circle", "radius": 87.5, "radiusMultiplier": 1 },
-              "on": {
-                "collision": {
-                  "targets": ["BOT", "HP_ENTITY"],
-                  "schedule": { "mode": "once", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [
-                    {
-                      "do": "applyEffects",
-                      "effects": [{ "type": "damage", "amount": 30, "targetKinds": ["BOT", "HP_ENTITY"] }]
-                    },
-                    { "do": "emitVisual", "visualType": "mineExplosion", "visibleMs": 300, "visualSize": 175 }
-                  ]
-                }
-              }
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": 12,
-      "name": "pistol",
-      "label": "Pistol",
-      "code": "p",
-      "type": "ability",
-      "channel": "ability",
-      "timing": {
-        "cooldownMs": 400,
-        "activeMs": 300,
-        "maxCharges": 10,
-        "resourceModel": "reload",
-        "chargeType": "ammunition",
-        "reloadMs": 3000
-      },
-      "activation": {},
-      "onTrigger": [
-        {
-          "do": "hit",
-          "hitbox": { "shape": "ray", "range": 500, "width": 5, "length": 500, "radiusMultiplier": 1 },
-          "targets": ["BOT", "HP_ENTITY"],
-          "effects": [
-            {
-              "type": "damage",
-              "falloff": { "minAmount": 4, "maxAmount": 8, "falloffStart": 0, "falloffEnd": 333.33 },
-              "targetKinds": ["BOT", "HP_ENTITY"]
-            }
-          ],
-          "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-          "visual": { "type": "pistol", "visualSize": 14, "visibleMs": 300 }
-        }
-      ]
-    },
-    {
-      "id": 13,
-      "name": "rail_shot",
-      "label": "Rail Shot",
-      "code": "R",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 10700, "windupMs": 900, "activeMs": 300 },
-      "activation": {},
-      "onTrigger": [
-        {
-          "do": "hit",
-          "hitbox": { "shape": "ray", "range": 900, "width": 5, "length": 900, "radiusMultiplier": 1 },
-          "targets": ["BOT", "HP_ENTITY"],
-          "effects": [
-            { "type": "damage", "amount": 40, "targetKinds": ["BOT", "HP_ENTITY"] },
-            {
-              "type": "status",
-              "subtype": "shock",
-              "amount": 3,
-              "durationMs": 3000,
-              "intervalMs": 1000,
-              "movementLockMs": 300,
+              "type": "displace",
+              "who": "target",
+              "from": "source",
+              "direction": "away",
+              "distance": 300,
               "targetKinds": ["BOT", "SUMMON"]
             }
           ],
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-          "visual": { "type": "railShot", "visualSize": 100, "visibleMs": 300 }
+          "visual": { "type": "repulsorBurst", "visualSize": 220, "visibleMs": 500 }
         }
-      ]
-    },
-    {
-      "id": 14,
-      "name": "gravity_grenade",
-      "label": "Gravity Grenade",
-      "code": "G",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 11000, "activeMs": 1000, "durationMs": 7000 },
-      "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "gravity_zone" }],
-      "entities": {
-        "gravity_zone": {
-          "runtimeType": "gravityZone",
-          "category": "zone",
-          "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-          "targeting": { "owner": "owner" },
-          "lifetime": { "timerMode": "remaining", "duration": 7000 },
-          "phases": [
-            {
-              "id": "travel",
-              "type": "projectile",
-              "durationMs": 1000,
-              "movement": { "mode": "straight", "unitsPerTick": 22 },
-              "hitbox": { "shape": "circle", "radius": 120, "radiusMultiplier": 1 },
-              "visual": { "type": "gravityZone", "visualSize": 240 },
-              "on": {
-                "collision": {
-                  "targets": ["BOT", "SUMMON"],
-                  "schedule": { "mode": "continuous", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [
-                    {
-                      "do": "applyEffects",
-                      "effects": [{ "type": "pull", "amount": 6, "targetKinds": ["BOT", "SUMMON"] }]
-                    }
-                  ]
-                },
-                "lifetimeEnd": {
-                  "targets": ["BOT"],
-                  "schedule": { "mode": "once", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [{ "do": "transition", "to": "fuse" }]
-                }
-              }
-            },
-            {
-              "id": "fuse",
-              "type": "zone",
-              "durationMs": 3000,
-              "movement": { "mode": "static", "unitsPerTick": 0 },
-              "hitbox": { "shape": "circle", "radius": 120, "radiusMultiplier": 1 },
-              "visual": { "type": "gravityZone", "visualSize": 240 },
-              "on": {
-                "collision": {
-                  "targets": ["BOT", "SUMMON"],
-                  "schedule": { "mode": "continuous", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [
-                    {
-                      "do": "applyEffects",
-                      "effects": [{ "type": "pull", "amount": 6, "targetKinds": ["BOT", "SUMMON"] }]
-                    }
-                  ]
-                },
-                "lifetimeEnd": {
-                  "targets": ["BOT"],
-                  "schedule": { "mode": "once", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [{ "do": "transition", "to": "active" }]
-                }
-              }
-            },
-            {
-              "id": "active",
-              "type": "zone",
-              "durationMs": 100,
-              "movement": { "mode": "static", "unitsPerTick": 0 },
-              "hitbox": { "shape": "circle", "radius": 120, "radiusMultiplier": 1 },
-              "on": {
-                "collision": {
-                  "targets": ["BOT", "HP_ENTITY"],
-                  "schedule": { "mode": "once", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [
-                    {
-                      "do": "applyEffects",
-                      "effects": [
-                        {
-                          "type": "damage",
-                          "falloff": { "minAmount": 20, "maxAmount": 35, "falloffStart": 0, "falloffEnd": 90 },
-                          "targetKinds": ["BOT", "HP_ENTITY"]
-                        }
-                      ]
-                    },
-                    {
-                      "do": "emitVisual",
-                      "visualType": "gravityExplosion",
-                      "visibleMs": 300,
-                      "visualSize": 240
-                    }
-                  ]
-                }
-              }
-            }
-          ]
-        }
-      }
+      ],
+      "tier": 1
     },
     {
       "id": 15,
@@ -607,7 +286,7 @@
       "channel": "ability",
       "timing": { "cooldownMs": 10000, "windupMs": 1000, "activeMs": 2000, "durationMs": 1200 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "silence_wave" }],
+      "onActivate": [{ "do": "spawn", "entity": "silence_wave" }],
       "entities": {
         "silence_wave": {
           "runtimeType": "silenceWave",
@@ -633,13 +312,19 @@
                     {
                       "do": "applyEffects",
                       "effects": [
+                        { "type": "damage", "amount": 10, "targetKinds": ["BOT", "SUMMON"] },
                         {
                           "type": "status",
                           "subtype": "silence",
                           "durationMs": 2000,
                           "targetKinds": ["BOT", "SUMMON"]
                         },
-                        { "type": "interrupt", "durationMs": 100, "targetKinds": ["BOT", "SUMMON"] }
+                        {
+                          "type": "status",
+                          "subtype": "stun",
+                          "durationMs": 100,
+                          "targetKinds": ["BOT", "SUMMON"]
+                        }
                       ]
                     }
                   ]
@@ -648,40 +333,8 @@
             }
           ]
         }
-      }
-    },
-    {
-      "id": 16,
-      "name": "reactive_armor",
-      "label": "Reactive Armor",
-      "code": "A",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 9000, "windupMs": 500, "activeMs": 0, "durationMs": 4000 },
-      "activation": {},
-      "onTrigger": [
-        {
-          "do": "applyEffects",
-          "targets": ["OWNER"],
-          "effects": [
-            {
-              "type": "damage_reduction",
-              "amount": 0.5,
-              "durationMs": 4000,
-              "multiplier": 0.5,
-              "targetKinds": ["BOT"]
-            },
-            {
-              "type": "damage_reflection",
-              "amount": 0.5,
-              "durationMs": 4000,
-              "multiplier": 0.5,
-              "targetKinds": ["BOT"]
-            }
-          ],
-          "visual": { "type": "reactiveArmor", "visualSize": 80, "visibleMs": 300 }
-        }
-      ]
+      },
+      "tier": 2
     },
     {
       "id": 17,
@@ -690,9 +343,9 @@
       "code": "H",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 8000, "activeMs": 300, "durationMs": 6000 },
+      "timing": { "cooldownMs": 10000, "activeMs": 300, "durationMs": 6000 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "hunter_drone" }],
+      "onActivate": [{ "do": "spawn", "entity": "hunter_drone" }],
       "entities": {
         "hunter_drone": {
           "runtimeType": "hunterDrone",
@@ -733,7 +386,7 @@
                         "radiusMultiplier": 1
                       },
                       "targets": ["BOT"],
-                      "effects": [{ "type": "damage", "amount": 5, "targetKinds": ["BOT", "HP_ENTITY"] }],
+                      "effects": [{ "type": "damage", "amount": 6, "targetKinds": ["BOT", "HP_ENTITY"] }],
                       "aim": "seekTarget",
                       "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
                       "visual": { "type": "gun", "visualSize": 16, "visibleMs": 300 }
@@ -744,7 +397,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 2
     },
     {
       "id": 18,
@@ -753,9 +407,9 @@
       "code": "T",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 7000, "windupMs": 300, "activeMs": 500, "durationMs": 500 },
+      "timing": { "cooldownMs": 6000, "windupMs": 300, "activeMs": 500, "durationMs": 500 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "windburst_projectile" }],
+      "onActivate": [{ "do": "spawn", "entity": "windburst_projectile" }],
       "entities": {
         "windburst_projectile": {
           "runtimeType": "windburstProjectile",
@@ -786,8 +440,15 @@
                     {
                       "do": "applyEffects",
                       "effects": [
-                        { "type": "damage", "amount": 20, "targetKinds": ["BOT", "HP_ENTITY"] },
-                        { "type": "knockback", "amount": 250, "targetKinds": ["BOT", "SUMMON"] }
+                        { "type": "damage", "amount": 18, "targetKinds": ["BOT", "HP_ENTITY"] },
+                        {
+                          "type": "displace",
+                          "who": "target",
+                          "from": "source",
+                          "direction": "away",
+                          "distance": 250,
+                          "targetKinds": ["BOT", "SUMMON"]
+                        }
                       ]
                     },
                     { "do": "remove" }
@@ -797,7 +458,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 1
     },
     {
       "id": 19,
@@ -809,12 +471,11 @@
       "cost": { "stamina": 30 },
       "timing": { "cooldownMs": 100, "activeMs": 200, "durationMs": 200 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "move",
           "distance": 150,
           "unitsPerTick": 75,
-          "trailMs": 300,
           "visual": { "type": "dash", "visualSize": 114, "visibleMs": 300 }
         }
       ]
@@ -826,13 +487,13 @@
       "code": "w",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 18000, "activeMs": 300, "durationMs": 3100 },
+      "timing": { "cooldownMs": 14000, "activeMs": 300, "durationMs": 3100 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "applyEffects",
           "targets": ["OWNER"],
-          "effects": [{ "type": "restore_state", "delayMs": 3000, "targetKinds": ["BOT"] }]
+          "effects": [{ "type": "status", "subtype": "rewind", "durationMs": 3000, "targetKinds": ["BOT"] }]
         },
         { "do": "spawn", "entity": "temporal_rewind_zone" }
       ],
@@ -855,7 +516,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 2
     },
     {
       "id": 22,
@@ -864,112 +526,63 @@
       "code": "o",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 18000, "windupMs": 500, "activeMs": 0, "durationMs": 1500 },
+      "timing": { "cooldownMs": 16000, "windupMs": 500, "activeMs": 0, "durationMs": 1600 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "orbital_zone" }],
+      "onActivate": [{ "do": "spawn", "entity": "orbital_zone" }],
       "entities": {
         "orbital_zone": {
           "runtimeType": "orbitalMarker",
           "category": "zone",
           "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "world" },
-          "targeting": { "owner": "owner", "position": "target", "defaultX": 500, "defaultY": 400 },
-          "lifetime": { "timerMode": "remaining", "duration": 1500, "add": 0 },
-          "initialState": { "armed": true },
-          "phases": [
-            {
-              "id": "active",
-              "type": "zone",
-              "skipOwner": true,
-              "movement": { "mode": "static", "unitsPerTick": 0 },
-              "hitbox": { "shape": "circle", "radius": 130, "radiusMultiplier": 1 },
-              "visual": { "type": "orbitalMarker", "visualSize": 260 },
-              "on": {
-                "collision": {
-                  "targets": ["BOT", "SUMMON"],
-                  "schedule": { "mode": "repeat", "intervalMs": 500, "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [
-                    {
-                      "do": "applyEffects",
-                      "effects": [{ "type": "damage", "amount": 15, "targetKinds": ["BOT", "HP_ENTITY"] }]
-                    },
-                    {
-                      "do": "emitVisual",
-                      "visualType": "orbitalExplosion",
-                      "visibleMs": 400,
-                      "visualSize": 260
-                    }
-                  ]
-                }
-              }
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": 23,
-      "name": "absolute_guard",
-      "label": "Absolute Guard",
-      "code": "a",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 15500, "windupMs": 500, "activeMs": 0, "durationMs": 1500 },
-      "activation": {},
-      "onTrigger": [
-        {
-          "do": "applyEffects",
-          "targets": ["OWNER"],
-          "effects": [{ "type": "damage_immunity", "amount": 1, "durationMs": 1500, "targetKinds": ["BOT"] }],
-          "visual": { "type": "absoluteGuard", "visualSize": 80, "visibleMs": 300 }
-        }
-      ]
-    },
-    {
-      "id": 24,
-      "name": "null_zone",
-      "label": "Null Zone",
-      "code": "n",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 13000, "windupMs": 1000, "activeMs": 300, "durationMs": 5000 },
-      "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "null_zone" }],
-      "entities": {
-        "null_zone": {
-          "runtimeType": "nullZone",
-          "category": "zone",
-          "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "world" },
           "targeting": {
             "owner": "owner",
             "position": "target",
-            "defaultX": "owner.x",
-            "defaultY": "owner.y",
-            "clampToRadius": 150
+            "defaultX": 500,
+            "defaultY": 400,
+            "clampToRadius": 400
           },
-          "lifetime": { "timerMode": "remaining", "duration": 5000 },
+          "lifetime": { "timerMode": "remaining", "duration": 1600, "add": 0 },
           "initialState": { "armed": true },
           "phases": [
             {
-              "id": "active",
+              "id": "marker",
               "type": "zone",
               "skipOwner": true,
+              "durationMs": 1200,
               "movement": { "mode": "static", "unitsPerTick": 0 },
-              "hitbox": { "shape": "circle", "radius": 150, "radiusMultiplier": 1 },
-              "visual": { "type": "nullZone", "visualSize": 300 },
+              "hitbox": { "shape": "circle", "radius": 140, "radiusMultiplier": 1 },
+              "visual": { "type": "orbitalMarker", "visualSize": 280 },
+              "on": {
+                "lifetimeEnd": {
+                  "targets": ["BOT"],
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [{ "do": "transition", "to": "blast" }]
+                }
+              }
+            },
+            {
+              "id": "blast",
+              "type": "zone",
+              "skipOwner": true,
+              "durationMs": 400,
+              "movement": { "mode": "static", "unitsPerTick": 0 },
+              "hitbox": { "shape": "circle", "radius": 140, "radiusMultiplier": 1 },
+              "visual": { "type": "orbitalBlast", "visualSize": 280 },
               "on": {
                 "collision": {
                   "targets": ["BOT", "SUMMON"],
-                  "schedule": { "mode": "continuous", "startImmediately": true },
+                  "schedule": { "mode": "once", "startImmediately": true },
                   "recheckCollisionOnTransition": true,
                   "do": [
                     {
                       "do": "applyEffects",
                       "effects": [
+                        { "type": "damage", "amount": 55, "targetKinds": ["BOT", "HP_ENTITY"] },
                         {
                           "type": "status",
-                          "subtype": "silence",
-                          "whileInside": true,
+                          "subtype": "stun",
+                          "durationMs": 500,
                           "targetKinds": ["BOT", "SUMMON"]
                         }
                       ]
@@ -980,7 +593,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 3
     },
     {
       "id": 25,
@@ -989,15 +603,16 @@
       "code": "P",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 1500, "activeMs": 300 },
+      "timing": { "cooldownMs": 7000, "activeMs": 300 },
       "activation": {
         "capture": { "hitboxOriginX": "x", "hitboxOriginY": "y", "hitboxRotation": "rotation" },
-        "phaseFacingDefault": "0",
-        "teleportOncePerActivation": true
+        "phaseFacingDefault": "0"
       },
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
+          "nearestOnly": true,
+          "targetPolicy": { "mode": "once", "scope": "activation" },
           "hitbox": {
             "shape": "rectangle",
             "width": 60,
@@ -1007,13 +622,80 @@
           },
           "targets": ["BOT", "HP_ENTITY"],
           "effects": [
-            { "type": "teleport", "distanceMode": "center_distance", "targetKinds": ["BOT"] },
+            {
+              "type": "displace",
+              "who": "owner",
+              "from": "target",
+              "direction": "mirror",
+              "targetKinds": ["BOT"]
+            },
             { "type": "damage", "amount": 15, "targetKinds": ["BOT", "HP_ENTITY"] }
           ],
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "phaseStrike", "visualSize": 100, "visibleMs": 300 }
+        },
+        { "do": "spawn", "entity": "backstab" }
+      ],
+      "tier": 2,
+      "entities": {
+        "backstab": {
+          "runtimeType": "backstab",
+          "category": "attached",
+          "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
+          "targeting": { "owner": "owner" },
+          "lifetime": { "timerMode": "stopped" },
+          "phases": [
+            {
+              "id": "wait",
+              "type": "zone",
+              "durationMs": 200,
+              "movement": { "mode": "followOwner", "unitsPerTick": 0 },
+              "on": {
+                "lifetimeEnd": {
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [{ "do": "transition", "to": "strike" }]
+                }
+              },
+              "visual": { "type": "backstab", "visualSize": 80, "visibleMs": 200 }
+            },
+            {
+              "id": "strike",
+              "type": "zone",
+              "durationMs": 100,
+              "movement": { "mode": "followOwner", "unitsPerTick": 0 },
+              "hitbox": {
+                "shape": "circle",
+                "radius": 70,
+                "radiusMultiplier": 1,
+                "includeTargetRadius": true
+              },
+              "on": {
+                "collision": {
+                  "targets": ["BOT"],
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "effects": [
+                        { "type": "damage", "amount": 10, "targetKinds": ["BOT"] },
+                        {
+                          "type": "damage",
+                          "amount": 15,
+                          "targetKinds": ["BOT"],
+                          "when": [{ "measure": "fromBehind" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "visual": { "type": "backstab", "visualSize": 80, "visibleMs": 100 }
+            }
+          ]
         }
-      ]
+      }
     },
     {
       "id": 26,
@@ -1022,9 +704,9 @@
       "code": "F",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 8700, "activeMs": 300 },
+      "timing": { "cooldownMs": 7000, "activeMs": 300 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": { "shape": "circle", "radius": 120, "radiusMultiplier": 1, "includeTargetRadius": true },
@@ -1032,12 +714,20 @@
           "effects": [
             { "type": "damage", "amount": 15, "targetKinds": ["BOT", "HP_ENTITY"] },
             { "type": "status", "subtype": "slow", "durationMs": 2000, "targetKinds": ["BOT", "SUMMON"] },
-            { "type": "knockback", "amount": 60, "targetKinds": ["BOT", "SUMMON"] }
+            {
+              "type": "displace",
+              "who": "target",
+              "from": "source",
+              "direction": "away",
+              "distance": 60,
+              "targetKinds": ["BOT", "SUMMON"]
+            }
           ],
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "frostRing", "visualSize": 320, "visibleMs": 300 }
         }
-      ]
+      ],
+      "tier": 1
     },
     {
       "id": 27,
@@ -1046,9 +736,9 @@
       "code": "Q",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 18000, "activeMs": 300, "durationMs": 1300 },
+      "timing": { "cooldownMs": 17000, "activeMs": 300, "durationMs": 1300 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "singularity_zone" }],
+      "onActivate": [{ "do": "spawn", "entity": "singularity_zone" }],
       "entities": {
         "singularity_zone": {
           "runtimeType": "singularityZone",
@@ -1074,7 +764,16 @@
                   "do": [
                     {
                       "do": "applyEffects",
-                      "effects": [{ "type": "pull", "amount": 10, "targetKinds": ["BOT", "SUMMON"] }]
+                      "effects": [
+                        {
+                          "type": "displace",
+                          "who": "target",
+                          "from": "source",
+                          "direction": "toward",
+                          "distance": 12,
+                          "targetKinds": ["BOT", "SUMMON"]
+                        }
+                      ]
                     }
                   ]
                 },
@@ -1090,7 +789,6 @@
               "id": "active",
               "type": "zone",
               "durationMs": 100,
-              "startMs": -1,
               "skipOwner": true,
               "movement": { "mode": "static", "unitsPerTick": 0 },
               "hitbox": { "shape": "circle", "radius": 140, "radiusMultiplier": 1 },
@@ -1106,8 +804,8 @@
                         {
                           "type": "damage",
                           "falloff": {
-                            "minAmount": 15,
-                            "maxAmount": 35,
+                            "minAmount": 30,
+                            "maxAmount": 60,
                             "falloffStart": 0,
                             "falloffEnd": 140
                           },
@@ -1127,7 +825,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 3
     },
     {
       "id": 28,
@@ -1136,9 +835,9 @@
       "code": "v",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 7700, "windupMs": 300, "activeMs": 300, "durationMs": 600 },
+      "timing": { "cooldownMs": 7000, "windupMs": 300, "activeMs": 300, "durationMs": 600 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "tether_bolt" }],
+      "onActivate": [{ "do": "spawn", "entity": "tether_bolt" }],
       "entities": {
         "tether_bolt": {
           "runtimeType": "tetherBolt",
@@ -1172,7 +871,7 @@
                     {
                       "do": "applyEffects",
                       "effects": [
-                        { "type": "damage", "amount": 10, "targetKinds": ["BOT", "HP_ENTITY"] },
+                        { "type": "damage", "amount": 12, "targetKinds": ["BOT", "HP_ENTITY"] },
                         {
                           "type": "status",
                           "subtype": "slow",
@@ -1208,8 +907,16 @@
                   "do": [
                     {
                       "do": "applyEffects",
-                      "effects": [{ "type": "pull", "amount": 250, "targetKinds": ["BOT", "SUMMON"] }],
-                      "pullDirection": "owner"
+                      "effects": [
+                        {
+                          "type": "displace",
+                          "who": "target",
+                          "from": "owner",
+                          "direction": "toward",
+                          "distance": 250,
+                          "targetKinds": ["BOT", "SUMMON"]
+                        }
+                      ]
                     }
                   ]
                 }
@@ -1217,7 +924,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 1
     },
     {
       "id": 29,
@@ -1228,7 +936,7 @@
       "channel": "ability",
       "timing": { "cooldownMs": 10000, "activeMs": 300, "durationMs": 16000 },
       "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "snare_bomb" }],
+      "onActivate": [{ "do": "spawn", "entity": "snare_bomb" }],
       "entities": {
         "snare_bomb": {
           "runtimeType": "snareBomb",
@@ -1245,7 +953,7 @@
               "movement": { "mode": "static", "unitsPerTick": 0 },
               "hitbox": { "shape": "circle", "radius": 12, "radiusMultiplier": 1 },
               "health": { "hp": 20, "maxHp": 20, "allowFriendlyDamage": true },
-              "trigger": { "radius": 75, "lifetimeMs": 16000, "botContact": true },
+              "trigger": { "radius": 75, "contact": ["BOT"] },
               "visual": { "type": "snareBomb", "visualSize": 24 },
               "on": {
                 "trigger": {
@@ -1263,7 +971,12 @@
                           "durationMs": 2200,
                           "targetKinds": ["BOT", "SUMMON"]
                         },
-                        { "type": "interrupt", "durationMs": 150, "targetKinds": ["BOT", "SUMMON"] }
+                        {
+                          "type": "status",
+                          "subtype": "stun",
+                          "durationMs": 200,
+                          "targetKinds": ["BOT", "SUMMON"]
+                        }
                       ]
                     },
                     { "do": "transition", "to": "triggered" },
@@ -1287,7 +1000,6 @@
               "id": "triggered",
               "type": "zone",
               "durationMs": 100,
-              "startMs": -1,
               "skipOwner": true,
               "movement": { "mode": "static", "unitsPerTick": 0 },
               "hitbox": { "shape": "circle", "radius": 75, "radiusMultiplier": 1 },
@@ -1297,7 +1009,6 @@
               "id": "destroyed",
               "type": "zone",
               "durationMs": 100,
-              "startMs": -1,
               "skipOwner": true,
               "movement": { "mode": "static", "unitsPerTick": 0 },
               "hitbox": { "shape": "circle", "radius": 120, "radiusMultiplier": 1 },
@@ -1317,7 +1028,12 @@
                           "durationMs": 3000,
                           "targetKinds": ["BOT", "SUMMON"]
                         },
-                        { "type": "interrupt", "durationMs": 150, "targetKinds": ["BOT", "SUMMON"] }
+                        {
+                          "type": "status",
+                          "subtype": "stun",
+                          "durationMs": 200,
+                          "targetKinds": ["BOT", "SUMMON"]
+                        }
                       ]
                     },
                     {
@@ -1332,7 +1048,8 @@
             }
           ]
         }
-      }
+      },
+      "tier": 1
     },
     {
       "id": 30,
@@ -1341,88 +1058,29 @@
       "code": "D",
       "type": "ability",
       "channel": "ability",
-      "timing": { "cooldownMs": 8000, "windupMs": 200, "activeMs": 300 },
+      "timing": { "cooldownMs": 9000, "windupMs": 200, "activeMs": 300 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": { "shape": "ray", "range": 600, "width": 8, "length": 600, "radiusMultiplier": 1 },
           "targets": ["BOT", "HP_ENTITY"],
           "effects": [
             { "type": "damage", "amount": 20, "targetKinds": ["BOT", "HP_ENTITY"] },
-            { "type": "interrupt", "durationMs": 250, "targetKinds": ["BOT", "SUMMON"] },
-            { "type": "status", "subtype": "slow", "durationMs": 1500, "targetKinds": ["BOT", "SUMMON"] }
+            { "type": "status", "subtype": "slow", "durationMs": 1500, "targetKinds": ["BOT", "SUMMON"] },
+            {
+              "type": "status",
+              "subtype": "stun",
+              "durationMs": 1000,
+              "targetKinds": ["BOT", "SUMMON"],
+              "when": [{ "of": "target", "measure": "windingUp" }]
+            }
           ],
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "disruptorDart", "visualSize": 8, "visibleMs": 300 }
         }
-      ]
-    },
-    {
-      "id": 31,
-      "name": "repeller_drone",
-      "label": "Repeller Drone",
-      "code": "d",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 9000, "activeMs": 300, "durationMs": 6000 },
-      "activation": {},
-      "onTrigger": [{ "do": "spawn", "entity": "repeller_drone" }],
-      "entities": {
-        "repeller_drone": {
-          "runtimeType": "hunterDrone",
-          "category": "summon",
-          "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-          "targeting": { "owner": "owner" },
-          "lifetime": { "timerMode": "age", "duration": 6000 },
-          "initialState": { "armed": true },
-          "phases": [
-            {
-              "id": "active",
-              "type": "summon",
-              "skipOwner": true,
-              "movement": { "mode": "seek", "unitsPerTick": 4.5, "turnDegrees": 8, "size": 28 },
-              "hitbox": { "shape": "circle", "radius": 14, "radiusMultiplier": 1 },
-              "health": { "hp": 50, "maxHp": 50 },
-              "visual": { "type": "hunterDrone", "visualSize": 28 },
-              "on": {
-                "killed": {
-                  "targets": ["BOT"],
-                  "schedule": { "mode": "once", "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "do": [{ "do": "remove" }]
-                },
-                "schedule": {
-                  "targets": ["BOT"],
-                  "schedule": { "mode": "repeat", "intervalMs": 1000, "startImmediately": true },
-                  "recheckCollisionOnTransition": true,
-                  "waitForHit": true,
-                  "do": [
-                    {
-                      "do": "hit",
-                      "hitbox": {
-                        "shape": "ray",
-                        "range": 200,
-                        "width": 5,
-                        "length": 200,
-                        "radiusMultiplier": 1
-                      },
-                      "targets": ["BOT"],
-                      "effects": [
-                        { "type": "damage", "amount": 3, "targetKinds": ["BOT", "HP_ENTITY"] },
-                        { "type": "knockback", "amount": 40, "targetKinds": ["BOT"] }
-                      ],
-                      "aim": "seekTarget",
-                      "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
-                      "visual": { "type": "gun", "visualSize": 16, "visibleMs": 300 }
-                    }
-                  ]
-                }
-              }
-            }
-          ]
-        }
-      }
+      ],
+      "tier": 2
     },
     {
       "id": 32,
@@ -1433,7 +1091,7 @@
       "channel": "ability",
       "timing": { "cooldownMs": 10000, "windupMs": 300, "activeMs": 300 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": { "shape": "ray", "range": 500, "width": 10, "length": 500, "radiusMultiplier": 1 },
@@ -1447,7 +1105,7 @@
             {
               "type": "healing",
               "recipient": "source",
-              "requiresConfirmedDamage": true,
+              "when": [{ "measure": "damageConfirmed" }],
               "mirrorsDamage": true,
               "targetKinds": ["BOT"]
             }
@@ -1455,34 +1113,8 @@
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "vampiricBeam", "visualSize": 10, "visibleMs": 300 }
         }
-      ]
-    },
-    {
-      "id": 33,
-      "name": "overclock",
-      "label": "Overclock",
-      "code": "O",
-      "type": "ability",
-      "channel": "ability",
-      "timing": { "cooldownMs": 12000, "windupMs": 500, "activeMs": 0, "durationMs": 4000 },
-      "activation": {},
-      "onTrigger": [
-        {
-          "do": "applyEffects",
-          "targets": ["OWNER"],
-          "effects": [
-            {
-              "type": "buff",
-              "amount": 0.5,
-              "durationMs": 4000,
-              "multiplier": 0.5,
-              "buff": "overclock",
-              "targetKinds": ["BOT"]
-            }
-          ],
-          "visual": { "type": "overclock", "visualSize": 80, "visibleMs": 300 }
-        }
-      ]
+      ],
+      "tier": 2
     },
     {
       "id": 35,
@@ -1493,7 +1125,7 @@
       "channel": "ability",
       "timing": { "cooldownMs": 700, "windupMs": 100, "activeMs": 300 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": {
@@ -1508,7 +1140,8 @@
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "thrust", "visualSize": 190, "visibleMs": 300 }
         }
-      ]
+      ],
+      "weapon": true
     },
     {
       "id": 36,
@@ -1519,7 +1152,7 @@
       "channel": "ability",
       "timing": { "cooldownMs": 700, "windupMs": 500, "activeMs": 300 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": {
@@ -1534,7 +1167,8 @@
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "cleave", "visualSize": 226, "visibleMs": 300 }
         }
-      ]
+      ],
+      "weapon": true
     },
     {
       "id": 37,
@@ -1545,7 +1179,7 @@
       "channel": "ability",
       "timing": { "cooldownMs": 700, "windupMs": 300, "activeMs": 300 },
       "activation": {},
-      "onTrigger": [
+      "onActivate": [
         {
           "do": "hit",
           "hitbox": {
@@ -1558,12 +1192,534 @@
           "targets": ["BOT", "HP_ENTITY"],
           "effects": [
             { "type": "damage", "amount": 11, "targetKinds": ["BOT", "HP_ENTITY"] },
-            { "type": "knockback", "amount": 120, "targetKinds": ["BOT", "SUMMON"] }
+            {
+              "type": "displace",
+              "who": "target",
+              "from": "source",
+              "direction": "away",
+              "distance": 120,
+              "targetKinds": ["BOT", "SUMMON"]
+            }
           ],
           "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
           "visual": { "type": "smash", "visualSize": 125, "visibleMs": 300 }
         }
+      ],
+      "weapon": true
+    },
+    {
+      "id": 38,
+      "name": "lunge",
+      "label": "Lunge",
+      "code": "l",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 1,
+      "timing": { "cooldownMs": 6000, "windupMs": 0, "activeMs": 300 },
+      "activation": {},
+      "onActivate": [
+        {
+          "do": "spawn",
+          "entity": "lunge",
+          "visual": { "type": "lunge", "visualSize": 120, "visibleMs": 300 }
+        }
+      ],
+      "entities": {
+        "lunge": {
+          "runtimeType": "lunge",
+          "category": "attached",
+          "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
+          "targeting": { "owner": "owner" },
+          "lifetime": { "timerMode": "stopped" },
+          "phases": [
+            {
+              "id": "crouch",
+              "type": "zone",
+              "durationMs": 200,
+              "movement": { "mode": "followOwner", "unitsPerTick": 0 },
+              "on": {
+                "lifetimeEnd": {
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [
+                    { "do": "move", "distance": 150, "unitsPerTick": 150 },
+                    { "do": "transition", "to": "stab" }
+                  ]
+                }
+              }
+            },
+            {
+              "id": "stab",
+              "type": "zone",
+              "durationMs": 100,
+              "movement": { "mode": "followOwner", "unitsPerTick": 0 },
+              "hitbox": {
+                "shape": "rectangle",
+                "length": 120,
+                "width": 40,
+                "radiusMultiplier": 1,
+                "includeTargetRadius": true
+              },
+              "visual": { "type": "lungeStab", "visualSize": 120 },
+              "on": {
+                "collision": {
+                  "targets": ["BOT", "HP_ENTITY"],
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "effects": [
+                        { "type": "damage", "amount": 18, "targetKinds": ["BOT", "HP_ENTITY"] },
+                        {
+                          "type": "status",
+                          "subtype": "bleed",
+                          "amount": 2,
+                          "durationMs": 4000,
+                          "targetKinds": ["BOT", "SUMMON"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 39,
+      "name": "shotgun_blast",
+      "label": "Shotgun Blast",
+      "code": "b",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 1,
+      "timing": { "cooldownMs": 6000, "windupMs": 200, "activeMs": 200 },
+      "activation": {},
+      "onActivate": [
+        {
+          "do": "spawn",
+          "entity": "pellet",
+          "pattern": { "type": "fan", "count": 7, "spreadDeg": 40 },
+          "visual": { "type": "shotgunBlast", "visualSize": 180, "visibleMs": 200 }
+        }
+      ],
+      "entities": {
+        "pellet": {
+          "runtimeType": "pellet",
+          "category": "projectile",
+          "spawn": { "offset": { "x": 0, "y": 30 }, "rotation": 0, "rotationSpace": "owner" },
+          "targeting": { "owner": "owner" },
+          "lifetime": { "timerMode": "stopped" },
+          "phases": [
+            {
+              "id": "travel",
+              "type": "projectile",
+              "durationMs": 300,
+              "movement": { "mode": "straight", "unitsPerTick": 60 },
+              "hitbox": { "shape": "circle", "radius": 6, "radiusMultiplier": 1 },
+              "visual": { "type": "pellet", "visualSize": 8 },
+              "on": {
+                "collision": {
+                  "targets": ["BOT", "HP_ENTITY"],
+                  "schedule": { "mode": "continuous", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "effects": [{ "type": "damage", "amount": 5, "targetKinds": ["BOT", "HP_ENTITY"] }]
+                    },
+                    { "do": "remove" }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 40,
+      "name": "boomerang",
+      "label": "Boomerang",
+      "code": "B",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 1,
+      "timing": { "cooldownMs": 6000, "windupMs": 0, "activeMs": 300 },
+      "activation": {},
+      "onActivate": [{ "do": "spawn", "entity": "boomerang" }],
+      "entities": {
+        "boomerang": {
+          "runtimeType": "boomerang",
+          "category": "projectile",
+          "spawn": { "offset": { "x": 0, "y": 30 }, "rotation": 0, "rotationSpace": "owner" },
+          "targeting": { "owner": "owner" },
+          "lifetime": { "timerMode": "age", "duration": 3000 },
+          "phases": [
+            {
+              "id": "out",
+              "type": "projectile",
+              "durationMs": 1000,
+              "movement": { "mode": "straight", "unitsPerTick": 45 },
+              "hitbox": { "shape": "circle", "radius": 14, "radiusMultiplier": 1 },
+              "visual": { "type": "boomerang", "visualSize": 32 },
+              "on": {
+                "collision": {
+                  "targets": ["BOT", "HP_ENTITY"],
+                  "schedule": { "mode": "continuous", "startImmediately": true },
+                  "targetPolicy": { "mode": "once", "scope": "phase" },
+                  "recheckCollisionOnTransition": true,
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "effects": [{ "type": "damage", "amount": 12, "targetKinds": ["BOT", "HP_ENTITY"] }]
+                    }
+                  ]
+                },
+                "lifetimeEnd": {
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [{ "do": "transition", "to": "back" }]
+                }
+              }
+            },
+            {
+              "id": "back",
+              "type": "projectile",
+              "movement": { "mode": "seek", "unitsPerTick": 45, "turnDegrees": 20, "target": "owner" },
+              "hitbox": { "shape": "circle", "radius": 14, "radiusMultiplier": 1 },
+              "visual": { "type": "boomerang", "visualSize": 32 },
+              "on": {
+                "collision": {
+                  "targets": ["BOT", "HP_ENTITY", "OWNER"],
+                  "schedule": { "mode": "continuous", "startImmediately": true },
+                  "targetPolicy": { "mode": "once", "scope": "phase" },
+                  "recheckCollisionOnTransition": true,
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "targets": ["BOT", "HP_ENTITY"],
+                      "effects": [{ "type": "damage", "amount": 12, "targetKinds": ["BOT", "HP_ENTITY"] }]
+                    },
+                    { "do": "remove", "targets": ["OWNER"] }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 42,
+      "name": "overdrive",
+      "label": "Overdrive",
+      "code": "O",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 2,
+      "timing": { "cooldownMs": 12000, "windupMs": 0, "activeMs": 0 },
+      "activation": {},
+      "onActivate": [
+        {
+          "do": "applyEffects",
+          "targets": ["OWNER"],
+          "effects": [
+            { "type": "status", "subtype": "overdrive", "durationMs": 2500, "targetKinds": ["BOT"] }
+          ]
+        }
       ]
+    },
+    {
+      "id": 43,
+      "name": "tar_pit",
+      "label": "Tar Pit",
+      "code": "a",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 2,
+      "timing": { "cooldownMs": 11000, "windupMs": 300, "activeMs": 300 },
+      "activation": {},
+      "onActivate": [{ "do": "spawn", "entity": "tar_pit" }],
+      "entities": {
+        "tar_pit": {
+          "runtimeType": "tarPit",
+          "category": "zone",
+          "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "world" },
+          "targeting": {
+            "owner": "owner",
+            "position": "target",
+            "defaultX": 500,
+            "defaultY": 400,
+            "clampToRadius": 300
+          },
+          "lifetime": { "timerMode": "remaining", "duration": 4300 },
+          "phases": [
+            {
+              "id": "landing",
+              "type": "zone",
+              "durationMs": 300,
+              "skipOwner": true,
+              "movement": { "mode": "static", "unitsPerTick": 0 },
+              "visual": { "type": "tarGlob", "visualSize": 36 },
+              "on": {
+                "lifetimeEnd": {
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [{ "do": "transition", "to": "pool" }]
+                }
+              }
+            },
+            {
+              "id": "pool",
+              "type": "zone",
+              "durationMs": 4000,
+              "skipOwner": true,
+              "movement": { "mode": "static", "unitsPerTick": 0 },
+              "hitbox": { "shape": "circle", "radius": 130, "radiusMultiplier": 1 },
+              "visual": { "type": "tarPit", "visualSize": 260 },
+              "on": {
+                "collision": {
+                  "targets": ["BOT", "SUMMON"],
+                  "schedule": { "mode": "continuous", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "targetPolicy": { "mode": "interval", "intervalMs": 500, "scope": "phase" },
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "effects": [
+                        { "type": "damage", "amount": 3, "targetKinds": ["BOT", "SUMMON"] },
+                        {
+                          "type": "status",
+                          "subtype": "slow",
+                          "durationMs": 600,
+                          "targetKinds": ["BOT", "SUMMON"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 45,
+      "name": "execute",
+      "label": "Execute",
+      "code": "E",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 3,
+      "timing": { "cooldownMs": 15000, "windupMs": 600, "activeMs": 300 },
+      "activation": {},
+      "onActivate": [
+        {
+          "do": "hit",
+          "hitbox": {
+            "shape": "rectangle",
+            "length": 220,
+            "width": 50,
+            "radiusMultiplier": 1,
+            "includeTargetRadius": true
+          },
+          "targets": ["BOT", "HP_ENTITY"],
+          "effects": [
+            {
+              "type": "damage",
+              "amount": 60,
+              "targetKinds": ["BOT", "HP_ENTITY"],
+              "when": [{ "of": "target", "measure": "hpRatio", "op": "<", "value": 0.3 }]
+            },
+            { "type": "damage", "amount": 25, "targetKinds": ["BOT", "HP_ENTITY"] }
+          ],
+          "origin": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
+          "visual": { "type": "execute", "visualSize": 220, "visibleMs": 400 }
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "name": "fan_of_blades",
+      "label": "Fan of Blades",
+      "code": "N",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 3,
+      "timing": { "cooldownMs": 16000, "windupMs": 300, "activeMs": 300 },
+      "activation": {},
+      "onActivate": [{ "do": "spawn", "entity": "blade", "pattern": { "type": "ring", "count": 8 } }],
+      "entities": {
+        "blade": {
+          "runtimeType": "blade",
+          "category": "projectile",
+          "spawn": { "offset": { "x": 0, "y": 30 }, "rotation": 0, "rotationSpace": "owner" },
+          "targeting": { "owner": "owner" },
+          "lifetime": { "timerMode": "age", "duration": 3000 },
+          "phases": [
+            {
+              "id": "out",
+              "type": "projectile",
+              "durationMs": 800,
+              "movement": { "mode": "straight", "unitsPerTick": 40 },
+              "hitbox": { "shape": "circle", "radius": 10, "radiusMultiplier": 1 },
+              "visual": { "type": "blade", "visualSize": 26 },
+              "on": {
+                "collision": {
+                  "targets": ["BOT", "HP_ENTITY"],
+                  "schedule": { "mode": "continuous", "startImmediately": true },
+                  "targetPolicy": { "mode": "once", "scope": "phase" },
+                  "recheckCollisionOnTransition": true,
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "effects": [{ "type": "damage", "amount": 12, "targetKinds": ["BOT", "HP_ENTITY"] }]
+                    }
+                  ]
+                },
+                "lifetimeEnd": {
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": true,
+                  "do": [{ "do": "transition", "to": "back" }]
+                }
+              }
+            },
+            {
+              "id": "back",
+              "type": "projectile",
+              "movement": { "mode": "seek", "unitsPerTick": 40, "turnDegrees": 20, "target": "owner" },
+              "hitbox": { "shape": "circle", "radius": 10, "radiusMultiplier": 1 },
+              "visual": { "type": "blade", "visualSize": 26 },
+              "on": {
+                "collision": {
+                  "targets": ["BOT", "HP_ENTITY", "OWNER"],
+                  "schedule": { "mode": "continuous", "startImmediately": true },
+                  "targetPolicy": { "mode": "once", "scope": "phase" },
+                  "recheckCollisionOnTransition": true,
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "targets": ["BOT", "HP_ENTITY"],
+                      "effects": [{ "type": "damage", "amount": 12, "targetKinds": ["BOT", "HP_ENTITY"] }]
+                    },
+                    { "do": "remove", "targets": ["OWNER"] }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 41,
+      "name": "parry",
+      "label": "Parry",
+      "code": "p",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 1,
+      "timing": { "cooldownMs": 8000, "windupMs": 0, "activeMs": 0 },
+      "activation": {},
+      "onActivate": [
+        {
+          "do": "applyEffects",
+          "targets": ["OWNER"],
+          "effects": [{ "type": "status", "subtype": "parry", "durationMs": 300, "targetKinds": ["BOT"] }]
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "name": "overcharge",
+      "label": "Overcharge",
+      "code": "G",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 3,
+      "timing": { "cooldownMs": 16000, "windupMs": 300, "activeMs": 0 },
+      "activation": {},
+      "onActivate": [
+        {
+          "do": "applyEffects",
+          "targets": ["OWNER"],
+          "effects": [
+            { "type": "status", "subtype": "overcharge", "durationMs": 8000, "targetKinds": ["BOT"] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "name": "tether_link",
+      "label": "Tether Link",
+      "code": "V",
+      "type": "ability",
+      "channel": "ability",
+      "tier": 3,
+      "timing": { "cooldownMs": 16000, "windupMs": 300, "activeMs": 300, "durationMs": 400 },
+      "activation": {},
+      "onActivate": [{ "do": "spawn", "entity": "tether_link" }],
+      "entities": {
+        "tether_link": {
+          "runtimeType": "tetherLink",
+          "category": "projectile",
+          "spawn": { "offset": { "x": 0, "y": 0 }, "rotation": 0, "rotationSpace": "owner" },
+          "targeting": { "owner": "owner" },
+          "lifetime": { "timerMode": "remaining", "duration": 400 },
+          "initialState": { "armed": true },
+          "state": {
+            "damageMultiplier": {
+              "context": "damageMultiplier",
+              "fallback": { "ownerStat": "attackDamageMultiplier", "fallback": 1 }
+            }
+          },
+          "phases": [
+            {
+              "id": "outbound",
+              "type": "projectile",
+              "durationMs": 400,
+              "movement": { "mode": "straight", "unitsPerTick": 100, "direction": "forward" },
+              "hitbox": { "shape": "rectangle", "width": 18, "length": 18, "radiusMultiplier": 1 },
+              "visual": { "type": "tetherLink", "visualSize": 18, "visibleMs": 400 },
+              "on": {
+                "collision": {
+                  "targets": ["BOT"],
+                  "schedule": { "mode": "continuous", "startImmediately": true },
+                  "targetPolicy": { "mode": "once" },
+                  "recheckCollisionOnTransition": false,
+                  "nearestOnly": true,
+                  "do": [
+                    {
+                      "do": "applyEffects",
+                      "effects": [
+                        {
+                          "type": "status",
+                          "subtype": "tethered",
+                          "durationMs": 4000,
+                          "targetKinds": ["BOT"]
+                        }
+                      ]
+                    },
+                    { "do": "remove" }
+                  ]
+                },
+                "lifetimeEnd": {
+                  "schedule": { "mode": "once", "startImmediately": true },
+                  "recheckCollisionOnTransition": false,
+                  "do": [{ "do": "remove" }]
+                }
+              }
+            }
+          ]
+        }
+      }
     }
-  ]
+  ],
+  "retiredIds": [7, 9, 10, 11, 12, 13, 14, 16, 23, 24, 31, 33]
 }

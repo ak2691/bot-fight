@@ -26,7 +26,7 @@ class MatchChatWorkflowTest extends MatchWorkflowFixture {
     void matchChatIsServerConfirmedAndRateLimitedPerSender() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -35,7 +35,7 @@ class MatchChatWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -70,7 +70,7 @@ class MatchChatWorkflowTest extends MatchWorkflowFixture {
     void matchChatRemainsOpenForThirtySecondsAfterTheMatchEnds() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -79,7 +79,7 @@ class MatchChatWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -105,7 +105,7 @@ class MatchChatWorkflowTest extends MatchWorkflowFixture {
     void closingMatchChatReturnsTheNoticeRecipientsAndRejectsLaterMessages() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -114,7 +114,7 @@ class MatchChatWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",

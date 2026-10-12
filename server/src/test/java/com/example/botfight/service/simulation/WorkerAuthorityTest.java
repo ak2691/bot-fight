@@ -18,7 +18,7 @@ class WorkerAuthorityTest {
     private String response() {
         return """
                 {"result":{"engineVersion":"test","outcome":"CONTINUES","endReason":"SEGMENT_END",
-                "winnerTeam":null,"teamHp":[{"teamNumber":1,"hp":300},{"teamNumber":2,"hp":300}],
+                "winnerTeam":null,"teamHp":[{"teamNumber":1,"hp":225},{"teamNumber":2,"hp":225}],
                 "segmentEndMs":3000,"endState":[]},"replay":{"initialState":{"shapes":[]},"batches":[
                 {"sequence":1,"endMs":1000,"terminal":false,"frames":%s},
                 {"sequence":2,"endMs":2000,"terminal":false,"frames":[{"elapsedMs":2000,"shapes":[]}]},
@@ -64,7 +64,7 @@ class WorkerAuthorityTest {
             assertThatThrownBy(() -> client.parseResponse(response().replace("CONTINUES", "ERROR")))
                     .isInstanceOf(IllegalArgumentException.class);
             var request = new SimulationRequest.DuelSimulationRequest(
-                    UUID.randomUUID(), "duel-v2", 1,
+                    UUID.randomUUID(), "duel-v3", 1,
                     new SimulationRequest.DuelArenaRequest(1200,1200,100), List.of());
             assertThatThrownBy(() -> client.simulate(request, null)).isInstanceOf(RuntimeException.class);
         }

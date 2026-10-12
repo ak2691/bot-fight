@@ -46,10 +46,10 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
         UUID secondUserId = UUID.randomUUID();
         UUID firstSubmissionId = UUID.randomUUID();
         UUID secondSubmissionId = UUID.randomUUID();
-        UUID matchId = service.startMatch(new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", null), new MatchEntrant(secondUserId, "pilot-two", "pilot-two@example.com", null), MatchMode.ONES, true)
+        UUID matchId = service.startMatch(com.example.botfight.support.TestKits.entrant(firstUserId, "pilot-one", "pilot-one@example.com", null), com.example.botfight.support.TestKits.entrant(secondUserId, "pilot-two", "pilot-two@example.com", null), MatchMode.ONES, true)
                 .getFirst().event().matchId();
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
         submitMatch(firstUserId, firstSubmissionId);
@@ -82,10 +82,10 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
         UUID secondUserId = UUID.randomUUID();
         UUID firstSubmissionId = UUID.randomUUID();
         UUID secondSubmissionId = UUID.randomUUID();
-        UUID matchId = service.startMatch(new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", null), new MatchEntrant(secondUserId, "pilot-two", "pilot-two@example.com", null), MatchMode.ONES, true)
+        UUID matchId = service.startMatch(com.example.botfight.support.TestKits.entrant(firstUserId, "pilot-one", "pilot-one@example.com", null), com.example.botfight.support.TestKits.entrant(secondUserId, "pilot-two", "pilot-two@example.com", null), MatchMode.ONES, true)
                 .getFirst().event().matchId();
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
         submitMatch(firstUserId, firstSubmissionId);
@@ -114,7 +114,7 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
         UUID secondUserId = UUID.randomUUID();
         UUID firstSubmissionId = UUID.randomUUID();
         UUID secondSubmissionId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 "pilot-one@example.com",
@@ -123,7 +123,7 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -132,8 +132,8 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
         submitMatch(firstUserId, firstSubmissionId);
@@ -168,7 +168,7 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
         UUID secondUserId = UUID.randomUUID();
         String firstPrincipal = "pilot-one@example.com";
         String secondPrincipal = "pilot-two@example.com";
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -177,7 +177,7 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 secondPrincipal,
@@ -186,8 +186,8 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         UUID firstRoundFirstSubmission = UUID.randomUUID();
         UUID firstRoundSecondSubmission = UUID.randomUUID();
         stubSubmission(firstUserId, firstRoundFirstSubmission);
@@ -202,8 +202,8 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
         clock.advance(Duration.between(clock.instant(), secondRoundReadyAt));
         roundReadyEvents.forEach(event -> service.beginNextRound(event.event().matchId(), event.event().roundNumber() - 1));
 
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         UUID secondRoundFirstSubmission = UUID.randomUUID();
         UUID secondRoundSecondSubmission = UUID.randomUUID();
         stubSubmission(firstUserId, secondRoundFirstSubmission);
@@ -255,7 +255,7 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
         var deadlines = org.mockito.ArgumentCaptor.forClass(MatchSession.class);
         verify(scheduler, times(2)).deadlinesChanged(deadlines.capture());
         assertThat(deadlines.getAllValues()).extracting(session -> session.phase().wireStatus())
-                .containsExactly("LOADOUT_SELECT", "PREP");
+                .containsExactly("KIT_REVEAL", "PREP");
         submit(first);
         verify(scheduler, never()).simulate(any(), anyInt());
         submit(second);
@@ -271,7 +271,7 @@ class MatchRoundResolutionWorkflowTest extends MatchWorkflowFixture {
         List<OutboundMatchmakingEvent> next = service.beginNextRound(savedMatch.getId(), 1);
         assertThat(next).hasSize(2).allSatisfy(event -> {
             assertThat(event.phase().wireStatus()).isEqualTo(event.event().status());
-            assertThat(event.event().loadoutSelectionEndsAt()).isEqualTo(clock.instant().plusSeconds(22));
+            assertThat(event.event().loadoutSelectionEndsAt()).isNull();
         });
         verify(scheduler, times(3)).deadlinesChanged(any());
         assertThat(service.beginNextRound(savedMatch.getId(), 1)).isEmpty();

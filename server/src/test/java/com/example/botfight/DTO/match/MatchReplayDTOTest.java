@@ -22,7 +22,7 @@ class MatchReplayDTOTest {
     }
     @Test void resultNotificationsHaveNoSimulationFrames() {
         var id = UUID.randomUUID();
-        var replay = MatchReplayDTO.from(new MatchPlaybackDTO(UUID.randomUUID(),"duel-v2","COMPLETED","RESIGNATION_WIN",id,"winner"));
+        var replay = MatchReplayDTO.from(new MatchPlaybackDTO(UUID.randomUUID(),"duel-v3","COMPLETED","RESIGNATION_WIN",id,"winner"));
         var json = new JsonMapper().readTree(new JsonMapper().writeValueAsString(replay));
         assertThat(replay.winnerUserId()).isEqualTo(id);
         assertThat(json.path("frames").isEmpty()).isTrue();

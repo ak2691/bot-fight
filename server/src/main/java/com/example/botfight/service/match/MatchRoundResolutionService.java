@@ -195,7 +195,6 @@ public final class MatchRoundResolutionService {
         matchScheduler.cancelAll(matchId);
         state.removeSession(session);
         state.roundHistoryByMatchId().remove(matchId);
-        state.initialLoadoutSelectionStartedMatchIds().remove(matchId);
         submissionService.removeAll(matchId);
         state.simulationsInProgress().remove(key);
         session.players().forEach(player -> connectionService.clear(player.userId()));
@@ -386,7 +385,7 @@ public final class MatchRoundResolutionService {
                 events.add(eventFactory.forPlayer(nextRoundSession,
                 player,
                 MatchEventType.MATCH_ROUND_READY,
-                "LOADOUT_SELECT",
+                "PREP",
                 null,
                 "Round " + nextRoundSession.roundNumber() + " loadout ready.",
                 roundReadyDelayMillis,

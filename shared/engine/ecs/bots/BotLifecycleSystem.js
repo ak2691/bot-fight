@@ -1,16 +1,17 @@
 const LIFECYCLE_COMPONENTS = Object.freeze([
     Object.freeze({ field: "matchElapsedMs", mode: "accumulate", maximum: 99_999_000 }),
     Object.freeze({ field: "hitFlashMs", mode: "countdown" }),
+    // Presentation only: the pulse the renderer shows after Rewind snaps a bot back.
+    Object.freeze({ field: "rewindPulseMs", mode: "countdown" }),
     Object.freeze({ field: "abilityVisual", mode: "nestedCountdown", timerField: "ms" }),
     Object.freeze({ field: "triggeredAbility", mode: "reset", value: null }),
     Object.freeze({ field: "abilitySpawn", mode: "reset", value: [] }),
-    Object.freeze({ field: "dueSteps", mode: "reset", value: [] }),
-    Object.freeze({ field: "entityHitIds", mode: "reset", value: [] }),
     Object.freeze({ field: "damageTakenThisTick", mode: "reset", value: 0 }),
 ]);
 
 const DEAD_COMPONENTS = Object.freeze({
     dashRemaining: 0,
+    moveAbilityId: null,
     movementVelocityX: 0,
     movementVelocityY: 0,
     velocityX: 0,

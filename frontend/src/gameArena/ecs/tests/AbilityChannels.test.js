@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MOVEMENT_TICK_MS } from "../../../../../shared/engine/gameconfig/MovementConfig.js";
 import { initialMovementState } from "../../../../../shared/engine/gameconfig/StaminaSystem.js";
-import { abilityChannel, abilityStaminaCost, channelBlockingStatuses } from "../../../../../shared/engine/gameconfig/AbilityChannels.js";
+import { abilityChannel, abilityStaminaCost, notReadyWhileBlocked } from "../../../../../shared/engine/gameconfig/AbilityChannels.js";
+import { isBlocked } from "../../../../../shared/engine/ecs/contracts/StatusContracts.js";
+import { presetEffects } from "../../../../../shared/engine/gameconfig/StatusPresets.js";
 import { channelBusy } from "../../../../../shared/engine/gameconfig/AbilityState.js";
 import { initialAbilityState } from "../../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
 import { applyBotAction } from "../../testing/pureTicks.js";
@@ -30,8 +32,15 @@ test("channels and the dash cost come from the shared data", () => {
     assert.equal(abilityChannel(SNIPER), "ability");
     assert.equal(abilityStaminaCost(DASH), 30);
     assert.equal(abilityStaminaCost(SNIPER), 0);
-    assert.deepEqual([...channelBlockingStatuses("ability")], ["stun", "silence"]);
-    assert.deepEqual([...channelBlockingStatuses("dash")], ["stun", "slow"]);
+    // What each status blocks comes from its preset: silence blocks abilities, slow blocks the dash (and sprint), stun both.
+    const withStatus = (type) => ({ statusEffects: [{ type, remainingMs: 1000, mode: "duration", effects: presetEffects(type) }] });
+    const blockedBy = (channel) => ["silence", "slow", "stun"].filter((type) => isBlocked(withStatus(type), channel));
+    assert.deepEqual(blockedBy("ability"), ["silence", "stun"]);
+    assert.deepEqual(blockedBy("dash"), ["slow", "stun"]);
+    assert.equal(isBlocked(withStatus("slow"), "sprint"), true, "slow blocks sprint");
+    // Only a block (not a stun) makes the dash read as not ready.
+    assert.equal(notReadyWhileBlocked(withStatus("slow"), DASH), true);
+    assert.equal(notReadyWhileBlocked(withStatus("stun"), DASH), false);
 });
 
 test("an ability starts, winds up and fires while a dash is active", () => {

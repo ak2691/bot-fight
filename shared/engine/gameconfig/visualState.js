@@ -1,4 +1,4 @@
-import { ABILITY_STATS } from "./Abilities.js";
+import { ABILITY_STATS, abilityTiming } from "./Abilities.js";
 import { activeRemainingMs } from "./AbilityState.js";
 
 export const COMBAT_VISUAL_MS = 300;
@@ -15,18 +15,8 @@ export const REPULSOR_BURST_VISUAL_MS = 500;
 export const REPULSOR_BURST_FRAME_COUNT = 10;
 export const REPULSOR_BURST_FRAME_MS = REPULSOR_BURST_VISUAL_MS / REPULSOR_BURST_FRAME_COUNT;
 export const REPULSOR_BURST_MAX_DIAMETER = 220;
-export const BASIC_HEAL_PARTICLE_COUNT = 6;
-export const BASIC_HEAL_PARTICLE_LIFETIME_MS = 1000;
 
 const REPULSOR_BURST_DIAMETER_SCALE = Object.freeze([0.33, 0.7, 0.93, 1, 1, 1, 1, 1, 1, 1]);
-const BASIC_HEAL_PARTICLE_SPECS = Object.freeze([
-    Object.freeze({ offsetX: -22, offsetY: -18, vx: -4, vy: -23, fontSize: 10, lifetimeMs: 900 }),
-    Object.freeze({ offsetX: -13, offsetY: -27, vx: 1, vy: -27, fontSize: 12, lifetimeMs: 950 }),
-    Object.freeze({ offsetX: -4, offsetY: -21, vx: 3, vy: -21, fontSize: 11, lifetimeMs: 1000 }),
-    Object.freeze({ offsetX: 6, offsetY: -33, vx: -2, vy: -29, fontSize: 13, lifetimeMs: 1050 }),
-    Object.freeze({ offsetX: 15, offsetY: -24, vx: 2, vy: -25, fontSize: 11, lifetimeMs: 950 }),
-    Object.freeze({ offsetX: 24, offsetY: -17, vx: 4, vy: -22, fontSize: 12, lifetimeMs: 1000 }),
-]);
 
 export function healthBarPercent(hp, maxHp) {
     const safeMaxHp = Math.max(1, Number(maxHp) || 1);
@@ -39,7 +29,7 @@ export function formatHp(hp, fallback = 0) {
 
 export function abilityActiveOpacity(shape, abilityId) {
     const activeMs = activeRemainingMs(shape, abilityId);
-    return clamp01(activeMs / Math.max(1, Number(ABILITY_STATS[abilityId]?.activeMs ?? 1)));
+    return clamp01(activeMs / Math.max(1, Number(abilityTiming(abilityId).activeMs ?? 1)));
 }
 
 export function abilityVisualOpacity(shape, ability, durationMs = COMBAT_VISUAL_MS) {
@@ -88,13 +78,6 @@ export function repulsorBurstDiameter(progress, maxDiameter = REPULSOR_BURST_MAX
     const max = Number.isFinite(Number(maxDiameter)) ? Math.max(0, Number(maxDiameter)) : REPULSOR_BURST_MAX_DIAMETER;
     const frame = Math.min(REPULSOR_BURST_DIAMETER_SCALE.length - 1, repulsorBurstFrameIndex(progress, frameCount));
     return max * REPULSOR_BURST_DIAMETER_SCALE[frame];
-}
-
-export function basicHealParticleSpec(index, visualSize = 12) {
-    const safeIndex = Math.max(0, Math.min(BASIC_HEAL_PARTICLE_SPECS.length - 1, Math.floor(Number(index) || 0)));
-    const base = BASIC_HEAL_PARTICLE_SPECS[safeIndex];
-    const scale = Math.max(0.01, Number(visualSize) || 12) / 12;
-    return scale === 1 ? base : { ...base, fontSize: base.fontSize * scale };
 }
 
 export function sweepAngle(remainingMs, durationMs, startAngle, endAngle, frameStepMs = 100) {

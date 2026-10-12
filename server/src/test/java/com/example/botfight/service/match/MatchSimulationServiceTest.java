@@ -35,8 +35,8 @@ class MatchSimulationServiceTest {
                 UUID.randomUUID(),
                 Long.MAX_VALUE,
                 List.of(
-                new MatchPlayer(first, "One", "one", 1, 1 <= 2 ? 1 : 1, true, UUID.randomUUID(), 0, "custom:s", true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null),
-                new MatchPlayer(second, "Two", "two", 2, 2 <= 2 ? 2 : 1, true, UUID.randomUUID(), 0, "custom:s", true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null)),
+                new MatchPlayer(first, "One", "one", 1, 1 <= 2 ? 1 : 1, true, UUID.randomUUID(), 0, com.example.botfight.support.TestKits.KIT, true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null),
+                new MatchPlayer(second, "Two", "two", 2, 2 <= 2 ? 2 : 1, true, UUID.randomUUID(), 0, com.example.botfight.support.TestKits.KIT, true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null)),
                 now,
                 now,
                 now,
@@ -83,8 +83,8 @@ class MatchSimulationServiceTest {
                 UUID.nameUUIDFromBytes("seg-match".getBytes()),
                 77L,
                 List.of(
-                        new MatchPlayer(firstUserId, "One", "one", 1, 1 <= 2 ? 1 : 1, true, UUID.randomUUID(), 0, "custom:s", true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null),
-                        new MatchPlayer(secondUserId, "Two", "two", 2, 2 <= 2 ? 2 : 1, true, UUID.randomUUID(), 0, "custom:s", true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null)),
+                        new MatchPlayer(firstUserId, "One", "one", 1, 1 <= 2 ? 1 : 1, true, UUID.randomUUID(), 0, com.example.botfight.support.TestKits.KIT, true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null),
+                        new MatchPlayer(secondUserId, "Two", "two", 2, 2 <= 2 ? 2 : 1, true, UUID.randomUUID(), 0, com.example.botfight.support.TestKits.KIT, true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null)),
                 Instant.now(),
                 Instant.now(),
                 Instant.now(),
@@ -110,12 +110,12 @@ class MatchSimulationServiceTest {
 
         assertThat(replay).isNotNull();
         DuelSimulationRequest request = duelSimulationService.capturedRequest;
-        assertThat(request.rulesetVersion()).isEqualTo("duel-v2");
+        assertThat(request.rulesetVersion()).isEqualTo("duel-v3");
         assertThat(request.seed()).isEqualTo(77L);
         // Only round 3's segment is recorded; the first two are re-simulated from tick 0.
-        assertThat(request.recordFromMs()).isEqualTo(40_000);
+        assertThat(request.recordFromMs()).isEqualTo(30_000);
         assertThat(request.segments()).extracting(SimulationRequest.SegmentRequest::endsAtMs)
-                .containsExactly(20_000, 40_000, 60_000, 80_000, 100_000, 120_000);
+                .containsExactly(15_000, 30_000, 45_000, 60_000, 75_000, 90_000);
         // Segment 1 is the request's own bots, from round 1.
         assertThat(request.segments().getFirst().bots()).isEmpty();
         assertThat(request.bots()).extracting(bot -> bot.brain().path("marker").asText())
@@ -127,12 +127,22 @@ class MatchSimulationServiceTest {
         assertThat(second.get(0).variableResets()).containsExactly("custom.a");
         assertThat(second.get(1).brain().path("marker").asText()).isEqualTo("two-r1");
         assertThat(second.get(1).variableResets()).isEmpty();
+        assertThat(request.bots()).extracting(SimulationRequest.DuelBotRequest::selectedLoadout).containsOnly("custom:sg");
+        assertThat(second).extracting(SimulationRequest.SegmentBotRequest::selectedLoadout).containsOnly("custom:sg");
         // Round 3 carries each player's own resets.
         var third = request.segments().get(2).bots();
         assertThat(third.get(0).brain().path("marker").asText()).isEqualTo("one-r3");
         assertThat(third.get(0).variableResets()).containsExactly("Counter", "custom.b");
         assertThat(third.get(1).brain().path("marker").asText()).isEqualTo("two-r3");
-        assertThat(third.get(0).selectedLoadout()).isEqualTo("custom:srg");
+        assertThat(third.get(0).selectedLoadout()).isEqualTo("custom:sgt");
+        service.buildDuelReplay(session.toBuilder().roundNumber(6).build(), rounds);
+        var all = duelSimulationService.capturedRequest;
+        assertThat(all.bots()).extracting(SimulationRequest.DuelBotRequest::selectedLoadout).containsOnly("custom:sg");
+        for (int round = 2; round <= 6; round++) {
+            String expected = round < 3 ? "custom:sg" : round < 5 ? "custom:sgt" : "custom:sgto";
+            assertThat(all.segments().get(round - 1).bots()).extracting(SimulationRequest.SegmentBotRequest::selectedLoadout).containsOnly(expected);
+        }
+
     }
 
     @Test
@@ -145,8 +155,8 @@ class MatchSimulationServiceTest {
                 UUID.nameUUIDFromBytes("one-match".getBytes()),
                 5L,
                 List.of(
-                        new MatchPlayer(firstUserId, "One", "one", 1, 1 <= 2 ? 1 : 1, true, UUID.randomUUID(), 0, "custom:s", true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null),
-                        new MatchPlayer(secondUserId, "Two", "two", 2, 2 <= 2 ? 2 : 1, true, UUID.randomUUID(), 0, "custom:s", true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null)),
+                        new MatchPlayer(firstUserId, "One", "one", 1, 1 <= 2 ? 1 : 1, true, UUID.randomUUID(), 0, com.example.botfight.support.TestKits.KIT, true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null),
+                        new MatchPlayer(secondUserId, "Two", "two", 2, 2 <= 2 ? 2 : 1, true, UUID.randomUUID(), 0, com.example.botfight.support.TestKits.KIT, true, MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null)),
                 Instant.now(),
                 Instant.now(),
                 Instant.now(),
@@ -168,7 +178,7 @@ class MatchSimulationServiceTest {
 
         assertThat(duelSimulationService.capturedRequest.recordFromMs()).isZero();
         assertThat(duelSimulationService.capturedRequest.segments()).hasSize(6);
-        assertThat(duelSimulationService.capturedRequest.segments().getFirst().endsAtMs()).isEqualTo(20_000);
+        assertThat(duelSimulationService.capturedRequest.segments().getFirst().endsAtMs()).isEqualTo(15_000);
     }
 
     private static final class CapturingWorker extends SimWorkerClient {

@@ -12,6 +12,9 @@ import {
 import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
 import { isWindingUp, windupRemainingMs } from "../../../gameconfig/AbilityState.js";
 import { abilitySinceHitSeconds } from "../../../gameconfig/AbilityHitRecord.js";
+import { angleDelta, normalizeAngle } from "../../../gameconfig/geometry.js";
+import { vectorToCompassDegrees } from "../../planner/arenaAngles.js";
+import { statusIsActive } from "../../../ecs/contracts/StatusContracts.js";
 import { abilityBaseRange } from "../../../loadout/abilityBaseRange.js";
 import { botFastTurning, botSprinting, botStamina } from "../../../gameconfig/StaminaSystem.js";
 import {
@@ -55,7 +58,7 @@ export function resolveStateVariable(state, condition, variableId, selectableId,
         selectable2,
         target,
         targetMode,
-        targetAngle: Number(condition?.targetAngle ?? 0),
+        viewArc: Number(condition?.viewArc ?? 360),
         normalizedSelectableId,
         normalizedSelectable2Id,
         operations,
@@ -75,7 +78,6 @@ const RUNTIME_RESOLVERS = Object.freeze({
         ? Math.max(0, Number(selectable?.hp ?? 0)) : 0,
     [STATE_VARIABLE_SOURCES.SELECTABLE_ALIVE]: ({ selectable, normalizedSelectableId }) => selectableHasUsableHealth(normalizedSelectableId, selectable)
         && Number(selectable?.hp ?? 0) > 0,
-    [STATE_VARIABLE_SOURCES.SELECTABLE_ABSOLUTE_BEARING]: ({ selectable, target }) => signedBearing(selectable, target),
     [STATE_VARIABLE_SOURCES.SELECTABLE_MOVEMENT_DIRECTION]: ({ selectable }) => movementDirection(selectable),
     [STATE_VARIABLE_SOURCES.SELECTABLE_SPEED]: ({ selectable }) => selectable
         ? Math.hypot(Number(selectable.movementVelocityX ?? selectable.velocityX ?? 0), Number(selectable.movementVelocityY ?? selectable.velocityY ?? 0))
@@ -98,11 +100,12 @@ const RUNTIME_RESOLVERS = Object.freeze({
         const bot = botForContext(context);
         return bot == null ? null : botFastTurning(bot);
     },
-    [STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING]: ({ selectable, target, targetMode, targetAngle }) => {
-        const bearing = bearingToTarget(selectable, target, targetMode, targetAngle);
-        return bearing == null ? 0 : Math.abs(signedAngleDelta(normalizeRotation(selectable.rotation), bearing));
+    // Inclusive: a bearing exactly half the arc either side of facing is in view. A missing From or To gives false.
+    [STATE_VARIABLE_SOURCES.SELECTABLE_IN_VIEW]: ({ selectable, target, viewArc }) => {
+        const bearing = bearingToTarget(selectable, target);
+        return bearing != null && Math.abs(angleDelta(normalizeAngle(Number(selectable.rotation ?? 0)), bearing)) <= viewArc / 2;
     },
-    [STATE_VARIABLE_SOURCES.SELECTABLE_FACING]: ({ selectable }) => selectable ? normalizeRotation(selectable.rotation) : 0,
+    [STATE_VARIABLE_SOURCES.SELECTABLE_FACING]: ({ selectable }) => selectable ? normalizeAngle(Number(selectable.rotation ?? 0)) : 0,
     [STATE_VARIABLE_SOURCES.SELECTABLE_COUNT]: ({ normalizedSelectableId, operations, state }) => operations.matchingSelectables(state, normalizedSelectableId).length,
     [STATE_VARIABLE_SOURCES.SELECTABLE_AGE]: ({ selectable }) => millisecondsToSeconds(selectable?.ageMs ?? 0),
     [STATE_VARIABLE_SOURCES.SELECTABLE_EDGE_DISTANCE]: ({ selectable }) => selectable ? edgeDistance(selectable) : 0,
@@ -130,7 +133,7 @@ const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_BASE_RANGE]: (context) => abilityBaseRange(selectedAbilityId(context)),
     [STATE_VARIABLE_SOURCES.SELECTED_STATUS_EFFECT_ACTIVE]: (context) => {
         const bot = botForContext(context);
-        return statusEffectActive(bot, context.condition.statusEffect);
+        return statusIsActive(bot ?? {}, context.condition.statusEffect);
     },
     [STATE_VARIABLE_SOURCES.SELECTED_STATUS_EFFECT_DURATION_MS]: (context) => millisecondsToSeconds(
         statusEffectDurationMs(botForContext(context), context.condition.statusEffect)),
@@ -200,11 +203,6 @@ function statusEffectId(status) {
     return String(status?.type ?? "").toLowerCase();
 }
 
-function statusEffectActive(bot, effect) {
-    const normalizedEffect = String(effect ?? "").toLowerCase();
-    return (bot?.statusEffects ?? []).some((status) => statusEffectId(status) === normalizedEffect
-        && (status?.mode === "presence" || Number(status?.remainingMs ?? 0) > 0));
-}
 function millisecondsToSeconds(value) { const number = Number(value); return Number.isFinite(number) ? number / 1000 : 0; }
 function distanceBetween(a, b) { return !a || !b ? Number.POSITIVE_INFINITY : Math.hypot(b.x - a.x, b.y - a.y); }
 function selectableDamageTaken(selectableId, selectable) {
@@ -217,16 +215,10 @@ function selectableHpNetChange(selectableId, selectable) {
         ? Number(selectable?.hpNetChangeLastTick ?? selectable?.health?.netChangeLastTick ?? 0)
         : 0;
 }
-function compassBearing(a, b) { return ((Math.atan2(b.x - a.x, a.y - b.y) * 180 / Math.PI) % 360 + 360) % 360; }
-function bearingToTarget(selectable, target, targetMode, targetAngle) {
-    if (!selectable) return null;
-    if (targetMode === TARGET_MODES.ANGLE) {
-        const angle = Number(targetAngle);
-        return normalizeRotation(Number.isFinite(angle) ? angle : 0);
-    }
-    return target ? compassBearing(selectable, target) : null;
+function bearingToTarget(selectable, target) {
+    return selectable && target ? vectorToCompassDegrees(target.x - selectable.x, target.y - selectable.y) : null;
 }
-function signedBearing(a, b) { if (!a || !b) return 0; const value = compassBearing(a, b); return value > 180 ? value - 360 : value; }
+function signedBearing(a, b) { if (!a || !b) return 0; const value = vectorToCompassDegrees(b.x - a.x, b.y - a.y); return value > 180 ? value - 360 : value; }
 const MOVEMENT_EPSILON = 0.001;
 /**
  * Last-tick displacement: the position change since the start of the previous
@@ -257,8 +249,6 @@ function movementDirection(selectable) {
     const movement = lastTickDisplacement(selectable);
     return movement.moved ? signedBearing({ x: 0, y: 0 }, { x: movement.dx, y: movement.dy }) : Number.NaN;
 }
-function normalizeRotation(value) { return ((Number(value ?? 0) % 360) + 360) % 360; }
-function signedAngleDelta(from, to) { return ((to - from + 540) % 360) - 180; }
 function edgeDistance(entity) {
     if (!entity) return 0;
     return Math.max(0, Math.min(

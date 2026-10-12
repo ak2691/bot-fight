@@ -1,4 +1,24 @@
-import { entityContractForAbility, phaseEffects } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { activationView, entityContractForAbility, phaseEffects } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { positiveStatusEffects, presetInterrupts } from "../../../../shared/engine/gameconfig/StatusPresets.js";
+
+// Defence presets read as damage reduction, reflection and immunity chips, not as status rows.
+const DEFENCE_KINDS = new Set(["damage_reduction", "damage_reflection", "damage_immunity"]);
+const DEFENCE_CHIP_NAMES = Object.freeze({
+    damage_reduction: "Damage Reduction",
+    damage_reflection: "Damage Reflection",
+    damage_immunity: "Damage Immunity",
+});
+
+/** A status that reads as a status row or duration: not a defence and not an interrupt. */
+function isStatusRowSubtype(subtype) {
+    return !presetInterrupts(subtype) && !positiveStatusEffects(subtype).some(({ kind }) => DEFENCE_KINDS.has(kind));
+}
+
+/** An ability effect that reads as a status row: a status with no player-facing numbers and no interrupt. */
+function isStatusRowEffect(effect) {
+    return effect.type === "status" && Boolean(effect.subtype)
+        && positiveStatusEffects(effect.subtype).length === 0 && !presetInterrupts(effect.subtype);
+}
 
 const STATUS_STAT_KEYS = Object.freeze({
     burn: { damage: "burnDamage", interval: "burnTickMs", duration: "burnDurationMs" },
@@ -44,7 +64,8 @@ function damageRows(stats) {
 
 function statusRows(ability, stats) {
     return (ability.effects ?? []).flatMap((effect) => {
-        if (effect.type !== "status" || !effect.subtype) return [];
+        // Buff-like presets (defences) and interrupts are shown as chips and stat rows instead.
+        if (!isStatusRowEffect(effect)) return [];
         const keys = STATUS_STAT_KEYS[effect.subtype] ?? {};
         const duration = stats[keys.duration] ?? effect.durationMs;
         const statusName = effect.subtype.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -69,10 +90,15 @@ function appendUniqueRows(rows, additions) {
     })];
 }
 
+/** A displace reads as the effect it replaced: away is a knockback, toward a pull, and mirror a teleport. */
+const isKnockbackEffect = (effect) => effect.type === "displace" && effect.direction === "away";
+const isPullEffect = (effect) => effect.type === "displace" && effect.direction === "toward";
+const isTeleportEffect = (effect) => effect.type === "displace" && effect.direction === "mirror";
+
 function pullRows(ability, stats) {
     return (ability.effects ?? [])
-        .filter((effect) => effect.type === "pull")
-        .map((effect) => effect.perTick ?? effect.amount ?? stats.pullPerTick ?? stats.pull)
+        .filter(isPullEffect)
+        .map((effect) => effect.distance ?? stats.pullPerTick)
         .filter((strength) => Number.isFinite(Number(strength)))
         .map((strength) => ({ label: "Pull strength", value: `${number(strength)} units per tick` }));
 }
@@ -81,25 +107,35 @@ function pullRows(ability, stats) {
  * The phases of the entity an ability spawns, as display sections read from shared/gameplay/abilities.json:
  * hitbox, speed, damage and pull per phase. Abilities that spawn nothing (or one phase) have none.
  */
+/** Rows for one hitbox, movement and effect list (an entity phase's, or an activation hit's). */
+function phaseRows(hitbox, movement, effects) {
+    const rows = [];
+    if (hitbox?.width != null && hitbox?.length != null) {
+        rows.push({ label: "Hitbox width", value: `${number(hitbox.width)} units` }, { label: "Hitbox length", value: `${number(hitbox.length)} units` });
+    } else if (hitbox?.radius != null) rows.push({ label: "Radius", value: `${number(hitbox.radius)} units` });
+    if (movement?.unitsPerTick != null) rows.push({ label: "Speed", value: `${number(movement.unitsPerTick)} units per tick` });
+    for (const effect of effects) {
+        if (effect.type === "damage" && effect.falloff) {
+            rows.push({ label: "Min damage", value: number(effect.falloff.minAmount) }, { label: "Max damage", value: number(effect.falloff.maxAmount) },
+                { label: "Falloff ends", value: `${number(effect.falloff.falloffEnd)} units` });
+        } else if (effect.type === "damage") rows.push({ label: "Damage", value: number(effect.amount) });
+        else if (isPullEffect(effect)) rows.push({ label: "Pull strength", value: `${number(effect.distance)} units per tick` });
+    }
+    return rows;
+}
+
 function phaseSections(abilityId) {
     const phases = entityContractForAbility(abilityId)?.phases ?? [];
     if (phases.length < 2) return [];
-    return phases.map((phase) => {
-        const rows = [];
-        const { hitbox, movement } = phase;
-        if (hitbox?.width != null && hitbox?.length != null) {
-            rows.push({ label: "Hitbox width", value: `${number(hitbox.width)} units` }, { label: "Hitbox length", value: `${number(hitbox.length)} units` });
-        } else if (hitbox?.radius != null) rows.push({ label: "Radius", value: `${number(hitbox.radius)} units` });
-        if (movement?.unitsPerTick != null) rows.push({ label: "Speed", value: `${number(movement.unitsPerTick)} units per tick` });
-        for (const effect of phaseEffects(phase)) {
-            if (effect.type === "damage" && effect.falloff) {
-                rows.push({ label: "Min damage", value: number(effect.falloff.minAmount) }, { label: "Max damage", value: number(effect.falloff.maxAmount) },
-                    { label: "Falloff ends", value: `${number(effect.falloff.falloffEnd)} units` });
-            } else if (effect.type === "damage") rows.push({ label: "Damage", value: number(effect.amount) });
-            else if (effect.type === "pull") rows.push({ label: "Pull strength", value: `${number(effect.perTick ?? effect.amount)} units per tick` });
-        }
-        return { section: `${titleCaseId(phase.id)} phase`, rows };
-    });
+    // An activation hit that comes with entities (Phase Strike's blink box) is shown first, as its own section.
+    const activation = activationView(abilityId);
+    const activationSections = activation?.hitbox
+        ? [{ section: "Activation", rows: phaseRows(activation.hitbox, null, activation.effects ?? []) }]
+        : [];
+    return [...activationSections, ...phases.map((phase) => ({
+        section: `${titleCaseId(phase.id)} phase`,
+        rows: phaseRows(phase.hitbox, phase.movement, phaseEffects(phase)),
+    }))];
 }
 
 function phaseDisplayRows(abilityId) {
@@ -117,7 +153,7 @@ export function abilityStatsForDisplay(ability) {
         }
         if (stats.windupMs != null) rows.push({ label: "Preparation time", value: seconds(stats.windupMs) });
         const duration = stats.durationMs ?? null;
-        const durationIsStatus = (ability.effects ?? []).some((effect) => effect.type === "status" && effect.durationMs === duration);
+        const durationIsStatus = (ability.effects ?? []).some((effect) => isStatusRowEffect(effect) && effect.durationMs === duration);
         if (duration != null && !durationIsStatus) rows.push({ label: "Duration", value: seconds(duration) });
         if (stats.maxCharges != null) rows.push({ label: "Charges", value: String(stats.maxCharges) });
         const resourceDurationMs = stats.reloadMs ?? stats.rechargeMs;
@@ -150,7 +186,7 @@ export function abilityStatsForDisplay(ability) {
         });
     }
     const duration = stats.durationMs ?? null;
-    const durationIsStatus = (ability.effects ?? []).some((effect) => effect.type === "status" && effect.durationMs === duration);
+    const durationIsStatus = (ability.effects ?? []).some((effect) => isStatusRowEffect(effect) && effect.durationMs === duration);
     if (duration != null && !durationIsStatus) rows.push({ label: "Duration", value: seconds(duration) });
     rows.push(...statusRows(ability, stats));
     if (stats.healing != null) rows.push({ label: "Effect", value: `Restore ${stats.healing} HP` });
@@ -182,10 +218,12 @@ function secondsValue(milliseconds) {
 
 function statusDefinitions(ability) {
     const stats = ability.stats ?? {};
-    const fromStats = Object.entries(stats.statuses ?? {}).map(([id, status]) => ({ id, ...status }));
+    const fromStats = Object.entries(stats.statuses ?? {})
+        .filter(([id]) => isStatusRowSubtype(id))
+        .map(([id, status]) => ({ id, ...status }));
     if (fromStats.length) return fromStats;
     return (ability.effects ?? [])
-        .filter((effect) => effect.type === "status" && effect.subtype)
+        .filter((effect) => effect.type === "status" && effect.subtype && isStatusRowSubtype(effect.subtype))
         .map((effect) => ({ id: effect.subtype, amount: effect.amount, durationMs: effect.durationMs, intervalMs: effect.intervalMs }));
 }
 
@@ -324,22 +362,29 @@ export function abilityPhaseSteps(ability) {
 const EFFECT_MODAL_IDS = Object.freeze({
     damage: "damage",
     healing: "healing",
-    knockback: "knockback",
-    pull: "pull",
-    interrupt: "interrupt",
-    damage_reduction: "damage_reduction",
-    damage_reflection: "damage_reflection",
-    damage_immunity: "damage_immunity",
-    teleport: "teleport",
     restore_state: "restore_state",
 });
+
+/**
+ * One chip per distinct effect: an ability with several hits that apply the same effect (Phase Strike's two damage
+ * hits) shows it once, as the activation's effect list does.
+ */
+function distinctEffects(effects) {
+    const seen = new Set();
+    return effects.filter((effect) => {
+        const key = JSON.stringify(effect);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
 
 /** One chip per effect: { key, label, tone: "status" | "combat" | "positive", guideId }. */
 export function abilityEffectChips(ability) {
     const stats = ability?.stats ?? {};
     const chips = [];
     const add = (key, label, tone, guideId) => chips.push({ key, label, tone, guideId });
-    (ability?.effects ?? []).forEach((effect, index) => {
+    distinctEffects(ability?.effects ?? []).forEach((effect, index) => {
         const key = `${effect.type}-${effect.subtype ?? ""}-${index}`;
         switch (effect.type) {
             case "damage": {
@@ -351,6 +396,23 @@ export function abilityEffectChips(ability) {
                 break;
             }
             case "status": {
+                if (presetInterrupts(effect.subtype)) {
+                    add(key, effect.durationMs != null ? `Interrupt · ${number(effect.durationMs)} ms` : "Interrupt", "combat", "interrupt");
+                    break;
+                }
+                const positives = positiveStatusEffects(effect.subtype);
+                if (positives.length > 0) {
+                    positives.forEach(({ kind, value }, position) => {
+                        const positiveKey = `${key}-${position}`;
+                        if (kind === "cooldown_recovery") {
+                            const duration = effect.durationMs != null ? ` · ${secondsValue(effect.durationMs)} s` : "";
+                            add(positiveKey, `${titleCaseId(effect.subtype)}${duration}`, "positive", effect.subtype);
+                        } else {
+                            add(positiveKey, `${DEFENCE_CHIP_NAMES[kind]} · ${number(Math.round(value * 100))}%`, "positive", kind);
+                        }
+                    });
+                    break;
+                }
                 const name = titleCaseId(effect.subtype);
                 const perSecond = damageOverTime(effect);
                 const duration = effect.durationMs != null ? `${secondsValue(effect.durationMs)} s` : null;
@@ -363,29 +425,11 @@ export function abilityEffectChips(ability) {
             case "healing":
                 add(key, effect.mirrorsDamage ? "Healing · damage dealt" : `Healing · ${number(effect.amount ?? stats.healing ?? 0)} HP`, "combat", "healing");
                 break;
-            case "knockback":
-                add(key, `Knockback · ${number(effect.amount ?? stats.knockback ?? 0)} u`, "combat", "knockback");
-                break;
-            case "pull":
-                add(key, `Pull · ${number(effect.perTick ?? effect.amount ?? stats.pullPerTick ?? 0)} u/tick`, "combat", "pull");
-                break;
-            case "interrupt":
-                add(key, effect.durationMs != null ? `Interrupt · ${number(effect.durationMs)} ms` : "Interrupt", "combat", "interrupt");
-                break;
-            case "damage_reduction":
-            case "damage_reflection":
-            case "damage_immunity": {
-                const percentValue = effect.type === "damage_reduction"
-                    ? 1 - Number(effect.multiplier ?? effect.amount ?? 0)
-                    : Number(effect.multiplier ?? effect.amount ?? 0);
-                add(key, `${titleCaseId(effect.type)} · ${number(Math.round(percentValue * 100))}%`, "positive", EFFECT_MODAL_IDS[effect.type]);
-                break;
-            }
-            case "buff":
-                add(key, `${titleCaseId(effect.buff)}${effect.durationMs != null ? ` · ${secondsValue(effect.durationMs)} s` : ""}`, "positive", effect.buff);
-                break;
-            case "teleport":
-                add(key, "Teleport", "combat", "teleport");
+            case "displace":
+                if (isKnockbackEffect(effect)) add(key, `Knockback · ${number(effect.distance ?? stats.knockback ?? 0)} u`, "combat", "knockback");
+                else if (isPullEffect(effect)) add(key, `Pull · ${number(effect.distance ?? stats.pullPerTick ?? 0)} u/tick`, "combat", "pull");
+                else if (isTeleportEffect(effect)) add(key, "Teleport", "combat", "teleport");
+                else add(key, "Displace", "combat", null);
                 break;
             case "restore_state":
                 add(key, effect.delayMs != null ? `Restore · after ${secondsValue(effect.delayMs)} s` : "Restore", "combat", "restore_state");

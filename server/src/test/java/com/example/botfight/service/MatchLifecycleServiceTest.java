@@ -170,9 +170,9 @@ class MatchLifecycleServiceTest {
         }).when(eventFactory).forPlayer(any(MatchSession.class),
                 any(MatchPlayer.class),
                 eq(MatchEventType.MATCH_STARTED),
-                eq("LOADOUT_SELECT"),
+                eq("KIT_REVEAL"),
                 isNull(),
-                eq("Match accepted. Pick your weapon and first ability."),
+                eq("Match accepted. Both fixed kits are revealed."),
                 eq(0L),
                 isNull(),
                 isNull(),
@@ -229,7 +229,7 @@ class MatchLifecycleServiceTest {
             String username,
             String principalName,
             String socketSessionId) {
-        return new MatchEntrant(userId, username, principalName, socketSessionId);
+        return com.example.botfight.support.TestKits.entrant(userId, username, principalName, socketSessionId);
     }
 
     private static Match matchWithSeed(int seed) {

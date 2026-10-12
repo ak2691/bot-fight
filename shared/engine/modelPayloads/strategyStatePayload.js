@@ -7,7 +7,7 @@ import { cloneAbilityState } from "../gameconfig/AbilityState.js";
 import { isClosingZone } from "../ecs/entities/ClosingZoneSystem.js";
 import { truncateToNumberPrecision } from "../botlogic/code/configuration/constants.js";
 import { normalizeStatusEffect, statusEffectsFor } from "../ecs/contracts/StatusContracts.js";
-import { phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+import { isAttachedEntity, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
 import { BOT_SELECTABLE_IDENTITIES, selectableIdentitiesForAbilityEntity } from "./selectableIdentities.js";
 
 let freezePayloads = false;
@@ -43,7 +43,8 @@ export function createStatePayloadFactory(currentShapes) {
     const coreByShape = new Map();
     const ownerBotsByShape = new Map();
     for (const shape of currentShapes) {
-        if (shape.visibility === "renderer-only") continue;
+        // An attached entity is part of its owner's attack: no brain lists or selects it.
+        if (shape.visibility === "renderer-only" || isAttachedEntity(shape)) continue;
         if (botShapeSet.has(shape)) {
             coreByShape.set(shape, freeze(botCore(shape)));
         } else {
@@ -88,7 +89,7 @@ export function createStatePayloadFactory(currentShapes) {
             const objects = [];
 
             for (const shape of currentShapes) {
-                if (shape.id === actorId || shape.visibility === "renderer-only") continue;
+                if (shape.id === actorId || shape.visibility === "renderer-only" || isAttachedEntity(shape)) continue;
                 const core = coreByShape.get(shape);
                 if (botShapeSet.has(shape)) {
                     const role = roles.get(shape);

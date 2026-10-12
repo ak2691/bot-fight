@@ -3,16 +3,16 @@ import { abilityChannel } from "./AbilityChannels.js";
 /**
  * The per-bot ability record: `abilityState[abilityId] = { stage, remainingMs, charges, reloadMs, target }`.
  *
- *   stage        "windup" | "active" | "cooldown" | "ready"
- *   remainingMs  time left in the current stage (0 when ready)
- *   cooldownMs   only while active: the cooldown that starts when the active stage ends
- *   charges      only for charge-bearing abilities; absent means full
- *   reloadMs     only for charge-bearing abilities: the reload time left once empty
- *   target       only while winding up: the activation target { x, y } the wind-up was started with
- *   steps        only while active, for an ability with delayed trigger verbs: the timeline of the activation
- *                { next, activeMs, serial, targetX, targetY, pose, hit }: `next` is the index of the next
- *                pending verb, `activeMs` the active time the activation was given, `pose` the captured pose
- *                (or null), `hit` the slots its activation-scoped hits already touched
+ *   stage            "windup" | "active" | "cooldown" | "ready"
+ *   remainingMs      time left in the current stage (0 when ready)
+ *   cooldownMs       only while active: the cooldown that starts when the active stage ends
+ *   charges          only for charge-bearing abilities; absent means full
+ *   reloadMs         only for charge-bearing abilities: the reload time left once empty
+ *   target           only while winding up: the activation target { x, y } the wind-up was started with
+ *   activationLedger the "already hit" memory of the latest activation: { serial, hit }. `serial` is the activation
+ *                    serial the cast was given; `hit` maps each target key that a `targetPolicy` with scope
+ *                    "activation" has reached to the time it was reached. Kept after the ability ends, so
+ *                    entities the cast made can still read it; replaced (never edited) when the ability activates again
  *
  * A missing record is a ready ability. The old loose fields (preparingAbility, abilityActiveMs, ...) no
  * longer exist on a bot; `abilityStateFromLegacy` reads them back from a replay frame.
@@ -30,6 +30,25 @@ function positive(value) {
 
 export function abilityRecord(shape, abilityId) {
     return shape?.abilityState?.[abilityId] ?? null;
+}
+
+/**
+ * Stamps each ability's latest cast as interrupted, under that cast's serial (`interruptedSerial`). An attached entity
+ * compares its own activation serial with it, so it learns its cast was stopped even after the ability's active time
+ * ended. Runs only for an interrupt (a stun), so a cast that ended normally is never stamped.
+ */
+export function markCastsInterrupted(shape) {
+    for (const [id, record] of Object.entries(shape?.abilityState ?? {})) {
+        const serial = record?.activationLedger?.serial;
+        if (serial == null || record.interruptedSerial === serial) continue;
+        patchAbilityRecord(shape, Number(id), { interruptedSerial: serial });
+    }
+    return shape;
+}
+
+/** Starts a new activation memory for an ability that activated this tick: nothing has been hit yet. */
+export function startActivationLedger(shape, abilityId, serial) {
+    return patchAbilityRecord(shape, abilityId, { activationLedger: { serial, hit: {} } });
 }
 
 function remainingIn(shape, abilityId, stage) {
@@ -119,7 +138,7 @@ export function patchAbilityRecord(shape, abilityId, changes) {
 /** Puts an ability back to ready, keeping its charges and reload. */
 export function readyAbilityRecord(shape, abilityId) {
     return patchAbilityRecord(shape, abilityId, {
-        stage: ABILITY_STAGES.READY, remainingMs: 0, cooldownMs: undefined, target: undefined, steps: undefined,
+        stage: ABILITY_STAGES.READY, remainingMs: 0, cooldownMs: undefined, target: undefined,
     });
 }
 
@@ -132,7 +151,6 @@ export function endActiveStage(shape, abilityId) {
         stage: cooldown > 0 ? ABILITY_STAGES.COOLDOWN : ABILITY_STAGES.READY,
         remainingMs: cooldown,
         cooldownMs: undefined,
-        steps: undefined,
     });
 }
 

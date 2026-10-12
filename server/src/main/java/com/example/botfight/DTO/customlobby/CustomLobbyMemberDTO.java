@@ -8,5 +8,5 @@ public record CustomLobbyMemberDTO(
         String username,
         int teamNumber,
         boolean owner,
-        boolean online) {
+        boolean online, boolean ready) {
 }

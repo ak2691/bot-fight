@@ -40,7 +40,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         UUID secondSubmissionId = UUID.randomUUID();
         String firstPrincipal = "pilot-one@example.com";
 
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -49,7 +49,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -58,8 +58,8 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
         submitMatch(firstUserId, firstSubmissionId);
@@ -77,8 +77,8 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 .filter(event -> MatchEventType.MATCH_ROUND_READY.equals(event.event().type()))
                 .forEach(event -> service.beginNextRound(event.event().matchId(), event.event().roundNumber() - 1));
 
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        List<OutboundMatchmakingEvent> buildingEvents = TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        List<OutboundMatchmakingEvent> buildingEvents = TestMatches.beginBuild(service, secondUserId);
         assertThat(buildingEvents).allSatisfy(event ->
                 assertThat(event.event().roundNumber()).isEqualTo(2));
 
@@ -110,7 +110,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         String firstPrincipal = "pilot-one@example.com";
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -119,7 +119,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -129,15 +129,15 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 QueuePool.REGISTERED));
 
-        TestMatches.selectLoadout(service, firstUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
         List<OutboundMatchmakingEvent> disconnectEvents = reconnect.markDisconnected(firstPrincipal, null);
         assertThat(disconnectEvents).hasSize(2).allSatisfy(event -> {
             assertThat(event.event().type()).isEqualTo(MatchEventType.PLAYER_DISCONNECTED);
-            assertThat(event.event().status()).isEqualTo("LOADOUT_SELECT");
+            assertThat(event.event().status()).isEqualTo("PREP");
             assertThat(service.isCurrentEvent(event)).isTrue();
         });
 
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, secondUserId);
 
         assertThat(disconnectEvents).allSatisfy(event ->
                 assertThat(service.isCurrentEvent(event)).isTrue());
@@ -148,7 +148,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         String firstPrincipal = "pilot-one@example.com";
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -157,7 +157,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -166,8 +166,8 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         UUID firstSubmissionId = UUID.randomUUID();
         UUID secondSubmissionId = UUID.randomUUID();
         stubSubmission(firstUserId, firstSubmissionId);
@@ -205,10 +205,10 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 .hasSize(2)
                 .allSatisfy(event -> assertThat(service.isCurrentEvent(event)).isTrue());
 
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        List<OutboundMatchmakingEvent> buildingEvents = TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        List<OutboundMatchmakingEvent> buildingEvents = TestMatches.beginBuild(service, secondUserId);
         assertThat(buildingEvents)
-                .filteredOn(event -> MatchEventType.BOT_BUILDING_SESSION_READY.equals(event.event().type()))
+                .filteredOn(event -> MatchEventType.MATCH_FOUND.equals(event.event().type()))
                 .hasSize(2);
 
         List<OutboundMatchmakingEvent> buildingDisconnectEvents = reconnect.markDisconnected(firstPrincipal, null);
@@ -224,7 +224,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         String firstPrincipal = "pilot-one@example.com";
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -233,7 +233,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -242,8 +242,8 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         UUID firstSubmissionId = UUID.randomUUID();
         UUID secondSubmissionId = UUID.randomUUID();
         stubSubmission(firstUserId, firstSubmissionId);
@@ -303,7 +303,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         String secondPrincipal = "pilot-two@example.com";
         UUID firstSubmissionId = UUID.randomUUID();
         UUID secondSubmissionId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -312,7 +312,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 secondPrincipal,
@@ -321,8 +321,8 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
         submitMatch(firstUserId, firstSubmissionId);
@@ -375,7 +375,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         String secondPrincipal = "pilot-two@example.com";
         UUID firstSubmissionId = UUID.randomUUID();
         UUID secondSubmissionId = UUID.randomUUID();
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -384,7 +384,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 secondPrincipal,
@@ -393,8 +393,8 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        TestMatches.selectLoadout(service, firstUserId, "melee");
-        TestMatches.selectLoadout(service, secondUserId, "melee");
+        TestMatches.beginBuild(service, firstUserId);
+        TestMatches.beginBuild(service, secondUserId);
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
         submitMatch(firstUserId, firstSubmissionId);
@@ -439,7 +439,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         String firstPrincipal = "pilot-one@example.com";
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -448,7 +448,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -475,7 +475,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         String firstPrincipal = "pilot-one@example.com";
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -484,7 +484,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -516,7 +516,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         String firstPrincipal = "pilot-one@example.com";
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 firstUserId,
                 "pilot-one",
                 firstPrincipal,
@@ -525,7 +525,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
                 null,
                 null,
                 QueuePool.REGISTERED));
-        matchmakingService.joinQueue(new QueueJoinRequest(
+        matchmakingService.joinQueue(com.example.botfight.support.TestKits.queue(
                 secondUserId,
                 "pilot-two",
                 "pilot-two@example.com",
@@ -567,10 +567,10 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
             assertThat(event.status()).isEqualTo("PREP");
             // Mid-build the clock is not a countdown the server restarts: the deadline is unchanged.
             assertThat(playerOf(event, first).buildEndsAt()).isEqualTo(playerOf(started, first).buildEndsAt());
-            assertThat(playerOf(event, first).clockRemainingMs()).isEqualTo(330_000L);
+            assertThat(playerOf(event, first).clockRemainingMs()).isEqualTo(225_000L);
             // The player who already submitted keeps what they saved.
             assertThat(playerOf(event, second).finished()).isTrue();
-            assertThat(playerOf(event, second).clockRemainingMs()).isEqualTo(280_000L);
+            assertThat(playerOf(event, second).clockRemainingMs()).isEqualTo(175_000L);
             assertThat(event.buildingEndsAt()).isEqualTo(playerOf(started, first).buildEndsAt().plusSeconds(2));
             assertThat(service.isCurrentEvent(outbound)).isTrue();
         });
@@ -589,15 +589,14 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         clock.advance(Duration.between(clock.instant(), replay.resultRevealsAt().plusMillis(1)));
         MatchmakingEventDTO hold = lastEventFor(reconnect.resumeMatch(first, "pilot-one", "pilot-one@example.com", "hold"), first);
         assertThat(hold.roundReadyAt()).isEqualTo(replay.roundReadyAt());
-        assertThat(playerOf(hold, first).clockRemainingMs()).isEqualTo(270_000L);
-        assertThat(playerOf(hold, second).clockRemainingMs()).isEqualTo(240_000L);
+        assertThat(playerOf(hold, first).clockRemainingMs()).isEqualTo(165_000L);
+        assertThat(playerOf(hold, second).clockRemainingMs()).isEqualTo(135_000L);
         clock.advance(Duration.between(clock.instant(), replay.roundReadyAt()));
         MatchmakingEventDTO next = lastEventFor(service.beginNextRound(savedMatch.getId(), 1), first);
         MatchmakingEventDTO resumedPick = lastEventFor(reconnect.resumeMatch(first, "pilot-one", "pilot-one@example.com", "pick"), first);
         assertThat(resumedPick.loadoutSelectionEndsAt()).isEqualTo(next.loadoutSelectionEndsAt());
         assertThat(resumedPick.players()).isEqualTo(next.players());
-        assertThat(resumedPick.abilityOffers()).isEqualTo(next.abilityOffers());
-        assertThat(resumedPick.players()).allSatisfy(player -> assertThat(player.loadoutSelected()).isFalse());
+        assertThat(resumedPick.players()).allSatisfy(player -> assertThat(player.loadoutSelected()).isTrue());
         pick(first);
         MatchmakingEventDTO build = pick(second).getFirst().event();
         clock.advance(Duration.ofSeconds(10));
@@ -605,7 +604,7 @@ class MatchReconnectionWorkflowTest extends MatchWorkflowFixture {
         assertThat(resumedBuild.status()).isEqualTo("PREP");
         assertThat(resumedBuild.buildingEndsAt()).isEqualTo(build.buildingEndsAt());
         assertThat(resumedBuild.players()).isEqualTo(build.players());
-        assertThat(playerOf(resumedBuild, first).clockRemainingMs()).isEqualTo(300_000L);
-        assertThat(playerOf(resumedBuild, second).clockRemainingMs()).isEqualTo(270_000L);
+        assertThat(playerOf(resumedBuild, first).clockRemainingMs()).isEqualTo(195_000L);
+        assertThat(playerOf(resumedBuild, second).clockRemainingMs()).isEqualTo(165_000L);
     }
 }

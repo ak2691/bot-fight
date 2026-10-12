@@ -31,6 +31,10 @@ const compareBoolean = (left, value) => ({
 const comparePair = (left, comparator, value, selectable1 = BOT_CODE_SELECTABLES.MY, selectable2 = BOT_CODE_SELECTABLES.OPPONENT) => ({
     type: "expression", left, comparator, right: { type: "number", value }, selectable1, selectable2,
 });
+// In View reads From's facing and To within a full view arc in degrees. An Angle To test of X maps to arc 2X.
+const inView = (arc, value, selectable1 = BOT_CODE_SELECTABLES.MY, selectable2 = BOT_CODE_SELECTABLES.OPPONENT) => ({
+    type: "expression", left: "selectable.inView", comparator: "eq", right: { type: "boolean", value }, selectable1, selectable2, viewArc: arc,
+});
 const move = (direction, selectable = BOT_CODE_SELECTABLES.OPPONENT) => ({ action: BOT_CODE_ACTIONS.MOVE_WALK, movementMode: "target", movementDirection: direction, selectable });
 const moveAbsolute = (direction) => ({ action: BOT_CODE_ACTIONS.MOVE_WALK, movementMode: "absolute", movementDirection: direction });
 const face = (selectable = BOT_CODE_SELECTABLES.OPPONENT) => ({ action: BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET, selectable });
@@ -41,9 +45,9 @@ export const TUTORIAL_ACTIONS = Object.freeze({
     SLASH: abilityIdFromName("slash"),
     STUN: abilityIdFromName("stun"),
     FIREBALL: abilityIdFromName("fireball"),
-    RAIL_SHOT: abilityIdFromName("rail_shot"),
+    RAIL_SHOT: abilityIdFromName("gun"),
     GRENADE: abilityIdFromName("grenade"),
-    HEAVY_SLASH: abilityIdFromName("heavy_slash"),
+    HEAVY_SLASH: abilityIdFromName("stun"),
     WIND_BURST: abilityIdFromName("wind_burst"),
     DASH: abilityIdFromName("dash"),
 });
@@ -93,7 +97,7 @@ function stepThreeRotationSolution() {
         ]),
         root(3, [branch("lesson-3-slash-if", [
             comparePair("selectable.distance", "lte", 115),
-            comparePair("selectable.relativeBearing", "lte", 75),
+            inView(150, true),
         ], [ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
     ]);
 }
@@ -106,7 +110,7 @@ function stepFourSolution() {
         ]),
         root(3, [branch("lesson-4-slash-if", [
             comparePair("selectable.distance", "lte", 115),
-            comparePair("selectable.relativeBearing", "lte", 75),
+            inView(150, true),
         ], [ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
     ]);
 }
@@ -169,7 +173,7 @@ function fireballsLessonSolution() {
 
 function fireballAimLessonSolution() {
     return code([
-        root(1, [branch("tutorial-dont-miss-fireball-if", [comparePair("selectable.relativeBearing", "lte", 10)], [ability(TUTORIAL_ACTIONS.FIREBALL)])]),
+        root(1, [branch("tutorial-dont-miss-fireball-if", [inView(20, true)], [ability(TUTORIAL_ACTIONS.FIREBALL)])]),
         root(2, [branch("tutorial-dont-miss-aim-if", [always()], [face()])]),
     ]);
 }
@@ -237,7 +241,7 @@ function stepSevenSolution() {
     return code([
         root(1, [branch("lesson-7-slash-if", [
             comparePair("selectable.distance", "lte", 115),
-            comparePair("selectable.relativeBearing", "lte", 75),
+            inView(150, true),
         ], [ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
         root(2, [branch("lesson-7-dodge-if", [always()], [
             ability(TUTORIAL_ACTIONS.DASH, "opponent_1_grenade", { movementMode: "target", movementDirection: 90 }),
@@ -274,7 +278,7 @@ function priorityLessonSolution() {
 function orbitingSolution() {
     return code([
         root(1, [branch("lesson-9-lock-on-if", [
-            comparePair("selectable.relativeBearing", "gte", 90),
+            inView(180, false),
         ], [fastFace()])]),
         root(2, [branch("lesson-9-dash-if", [
             comparePair("selectable.distance", "lte", 60),
@@ -384,7 +388,7 @@ function vulnerabilityTwoSolution() {
             selectedAbilityTime("bot.selectedAbilityCooldownMs", "gt", 0.5, TUTORIAL_ACTIONS.HEAVY_SLASH),
         ], [ability(TUTORIAL_ACTIONS.SLASH)])]),
         root(5, [branch("lesson-11-lock-on", [
-            comparePair("selectable.relativeBearing", "gt", 90),
+            inView(180, false),
         ], [fastFace()])]),
     ]);
 }
@@ -451,7 +455,7 @@ function vulnerabilityTwoOpponent() {
     return code([
         root(1, [branch("opponent-vulnerability-lock-on", [
             comparePair("selectable.distance", "lte", 100),
-            comparePair("selectable.relativeBearing", "gt", 45),
+            inView(90, false),
         ], [fastFace()])]),
         root(2, [branch("opponent-vulnerability-stun", [comparePair("selectable.distance", "lte", 100)], [ability(TUTORIAL_ACTIONS.STUN)])]),
         root(3, [branch("opponent-vulnerability-heavy-slash", [comparePair("selectable.distance", "lte", 100)], [ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
@@ -461,7 +465,7 @@ function vulnerabilityTwoOpponent() {
 
 function comboAndKiteOpponent() {
     return code([
-        root(1, [branch("opponent-combo-lock-on", [comparePair("selectable.distance", "lte", 184), comparePair("selectable.relativeBearing", "gt", 60)], [fastFace()])]),
+        root(1, [branch("opponent-combo-lock-on", [comparePair("selectable.distance", "lte", 184), inView(120, false)], [fastFace()])]),
         root(2, [branch("opponent-combo-slash", [always()], [ability(TUTORIAL_ACTIONS.SLASH)])]),
         root(3, [branch("opponent-combo-pursue", [always()], [move(0)])]),
         root(4, [branch("opponent-combo-face", [always()], [face()])]),
@@ -503,14 +507,14 @@ const SCENARIO_DEFINITIONS = [
     { id: "movement", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepOneSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-140), playerRotation: 0, opponentRotation: 180 } },
     { id: "distance", playerLoadout: loadout(), opponentLoadout: loadout(1), solution: stepTwoSolution, opponentCode: meleeOpponent, spawn: { playerY: tutorialY(60), opponentY: tutorialY(-80), playerRotation: 0, opponentRotation: 180 } },
     { id: "basic-strike", playerLoadout: loadout(1), opponentLoadout: loadout(), solution: stepSixSlashSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "slash", spawn: { playerY: tutorialY(60), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
-    { id: "rotate", playerLoadout: loadout(7), opponentLoadout: loadout(), solution: stepThreeRotationSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "heavy_slash", spawn: { playerY: tutorialY(60), opponentY: tutorialY(-60), playerRotation: 180, opponentRotation: 180 } },
-    { id: "lock-on", playerLoadout: loadout(7), opponentLoadout: loadout(), solution: stepFourSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "heavy_slash", spawn: { playerY: tutorialY(60), opponentY: tutorialY(-60), playerRotation: 180, opponentRotation: 180 } },
+    { id: "rotate", playerLoadout: loadout(6), opponentLoadout: loadout(), solution: stepThreeRotationSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "stun", spawn: { playerY: tutorialY(60), opponentY: tutorialY(-60), playerRotation: 180, opponentRotation: 180 } },
+    { id: "lock-on", playerLoadout: loadout(6), opponentLoadout: loadout(), solution: stepFourSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "stun", spawn: { playerY: tutorialY(60), opponentY: tutorialY(-60), playerRotation: 180, opponentRotation: 180 } },
     { id: "dodge", playerLoadout: loadout(), opponentLoadout: loadout(4), solution: stepFiveSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "dodge_grenade", spawn: { playerY: tutorialY(70), opponentY: tutorialY(-80), playerRotation: 0, opponentRotation: 180 } },
-    { id: "combine", playerLoadout: loadout(7), opponentLoadout: loadout(4), solution: stepSevenSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "combo", spawn: { playerY: tutorialY(70), opponentY: tutorialY(-80), playerRotation: 180, opponentRotation: 180 } },
+    { id: "combine", playerLoadout: loadout(6), opponentLoadout: loadout(4), solution: stepSevenSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "combo", spawn: { playerY: tutorialY(70), opponentY: tutorialY(-80), playerRotation: 180, opponentRotation: 180 } },
     { id: "orbiting", playerLoadout: loadout(1), opponentLoadout: loadout(1), solution: orbitingSolution, opponentCode: orbitingOpponent, durationMs: 30000, goal: "defeat_opponent", spawn: { playerY: tutorialY(120), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
-    { id: "vulnerability-1", playerLoadout: loadout(1), opponentLoadout: loadout(7, 13), solution: vulnerabilityOneSolution, opponentCode: vulnerabilityOneOpponent, durationMs: 30000, goal: "defeat_opponent_survive", playerHp: 40, spawn: { playerY: tutorialY(300), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
-    { id: "vulnerability-2", playerLoadout: loadout(1), opponentLoadout: loadout(6, 7), solution: vulnerabilityTwoSolution, opponentCode: vulnerabilityTwoOpponent, durationMs: 30000, goal: "defeat_opponent_survive", playerHp: 40, spawn: { playerY: tutorialY(140), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
-    { id: "combo-and-kite", playerLoadout: loadout(6, 7, 18), opponentLoadout: loadout(1), solution: comboAndKiteSolution, opponentCode: comboAndKiteOpponent, durationMs: 30000, goal: "defeat_opponent_survive", playerHp: 1, spawn: { playerY: tutorialY(184), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
+    { id: "vulnerability-1", playerLoadout: loadout(1), opponentLoadout: loadout(6, 3), solution: vulnerabilityOneSolution, opponentCode: vulnerabilityOneOpponent, durationMs: 30000, goal: "defeat_opponent_survive", playerHp: 40, spawn: { playerY: tutorialY(300), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
+    { id: "vulnerability-2", playerLoadout: loadout(1), opponentLoadout: loadout(6, 8), solution: vulnerabilityTwoSolution, opponentCode: vulnerabilityTwoOpponent, durationMs: 30000, goal: "defeat_opponent_survive", playerHp: 40, spawn: { playerY: tutorialY(140), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
+    { id: "combo-and-kite", playerLoadout: loadout(6, 8, 18), opponentLoadout: loadout(1), solution: comboAndKiteSolution, opponentCode: comboAndKiteOpponent, durationMs: 30000, goal: "defeat_opponent_survive", playerHp: 1, spawn: { playerY: tutorialY(184), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
     { id: "custom-variable", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepEightCustomVariableSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "custom_variable", spawn: { playerY: tutorialY(150), opponentY: tutorialY(-100), playerRotation: 0, opponentRotation: 180 } },
     { id: "priority", playerLoadout: loadout(), opponentLoadout: loadout(), solution: priorityLessonSolution, emptyCode: priorityLessonStartingCode, opponentCode: passiveOpponent, durationMs: 2200, goal: "priority", spawn: { playerY: tutorialY(150), opponentY: tutorialY(-100), playerRotation: 0, opponentRotation: 180 } },
     { id: "game-overview", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-100), playerRotation: 0, opponentRotation: 180 } },
@@ -528,7 +532,7 @@ const SCENARIO_DEFINITIONS = [
     { id: "fireballs-in-range", playerLoadout: loadout(5), opponentLoadout: loadout(), solution: fireballsLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(300), opponentY: tutorialY(-300), playerRotation: 0, opponentRotation: 180 } },
     { id: "dont-miss", playerLoadout: loadout(5), opponentLoadout: loadout(), solution: fireballAimLessonSolution, opponentCode: passiveOpponent, goal: "fireball_hit", spawn: { playerY: tutorialY(150), opponentY: tutorialY(-150), playerRotation: 180, opponentRotation: 180 } },
     { id: "dodging", playerLoadout: loadout(), opponentLoadout: loadout(4, 5), solution: dodgingLessonSolution, opponentCode: fireballAndGrenadeOpponent, playerHp: 1, spawn: { playerY: tutorialY(70), opponentY: tutorialY(-80), playerRotation: 0, opponentRotation: 180 } },
-    { id: "bot-ability-variables", playerLoadout: loadout(1), opponentLoadout: loadout(7), solution: abilityVariablesLessonSolution, opponentCode: heavySlashOpponent, playerHp: 1, spawn: { playerY: tutorialY(95), opponentY: tutorialY(-20), playerRotation: 0, opponentRotation: 180 } },
+    { id: "bot-ability-variables", playerLoadout: loadout(1), opponentLoadout: loadout(6), solution: abilityVariablesLessonSolution, opponentCode: heavySlashOpponent, playerHp: 1, spawn: { playerY: tutorialY(95), opponentY: tutorialY(-20), playerRotation: 0, opponentRotation: 180 } },
     { id: "keep-running", playerLoadout: loadout(), opponentLoadout: loadout(), solution: keepRunningLessonSolution, opponentCode: chasingOpponent, spawn: { playerY: tutorialY(400), opponentY: tutorialY(-120), playerRotation: 0, opponentRotation: 180 } },
     { id: "custom-variable-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: customVariableBasicsSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-100), playerRotation: 0, opponentRotation: 180 } },
 ];

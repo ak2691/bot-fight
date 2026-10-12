@@ -3,23 +3,27 @@
   "statuses": {
     "burn": {
       "presenceWhenInside": false,
-      "tickIntervalDefaultMs": 1000,
       "carriesSourceSlot": true,
       "clearsVelocity": false,
-      "effects": [
-        { "type": "damage", "mode": "tick", "amount": "$amount", "multiplier": "$damageMultiplier" }
-      ]
+      "on": {
+        "schedule": {
+          "intervalMs": 1000,
+          "effects": [{ "type": "damage", "amount": "$amount", "multiplier": "$damageMultiplier" }]
+        }
+      },
+      "effects": []
     },
     "silence": {
       "presenceWhenInside": true,
       "carriesSourceSlot": false,
       "clearsVelocity": false,
-      "effects": [{ "type": "silence", "mode": "constant" }]
+      "effects": [{ "type": "block", "mode": "constant", "actions": ["ability"] }]
     },
     "stun": {
       "presenceWhenInside": false,
       "carriesSourceSlot": false,
       "clearsVelocity": true,
+      "interrupts": true,
       "effects": [{ "type": "stun", "mode": "constant" }]
     },
     "slow": {
@@ -27,39 +31,113 @@
       "carriesSourceSlot": false,
       "clearsVelocity": false,
       "effects": [
-        {
-          "type": "movement_modifier",
-          "mode": "constant",
-          "movementMultiplier": 0.5,
-          "rotationMultiplier": 0.5
-        }
+        { "type": "modifier", "mode": "constant", "stat": "moveSpeed", "multiply": 0.5 },
+        { "type": "modifier", "mode": "constant", "stat": "turnSpeed", "multiply": 0.5 },
+        { "type": "block", "mode": "constant", "actions": ["dash", "sprint"] }
       ]
     },
     "shock": {
       "presenceWhenInside": false,
-      "tickIntervalDefaultMs": 1000,
       "carriesSourceSlot": true,
       "clearsVelocity": false,
-      "effects": [
-        { "type": "damage", "mode": "tick", "amount": "$amount" },
-        { "type": "movement_lock", "mode": "tick", "durationMs": "$movementLockMs" }
-      ]
+      "on": {
+        "schedule": {
+          "intervalMs": 1000,
+          "effects": [
+            { "type": "damage", "amount": "$amount" },
+            { "type": "status", "subtype": "movement-lock", "durationMs": "$movementLockMs" }
+          ]
+        }
+      },
+      "effects": []
     },
     "bleed": {
       "presenceWhenInside": false,
-      "tickIntervalDefaultMs": 1000,
       "carriesSourceSlot": true,
       "clearsVelocity": false,
+      "on": { "schedule": { "intervalMs": 1000, "effects": [{ "type": "damage", "amount": "$amount" }] } },
       "effects": [
-        { "type": "damage", "mode": "tick", "amount": "$amount" },
         {
-          "type": "incoming_damage_modifier",
+          "type": "modifier",
           "mode": "constant",
-          "damageModifier": 0.25,
+          "stat": "incomingDamage",
+          "multiply": 1.25,
           "rounding": "truncate_tenths",
           "excludedDamageSourceTypes": ["bleed"]
         }
       ]
+    },
+    "hit-stagger": {
+      "presenceWhenInside": false,
+      "carriesSourceSlot": false,
+      "clearsVelocity": false,
+      "effects": [
+        { "type": "modifier", "mode": "constant", "stat": "moveSpeed", "multiply": 0.85 },
+        { "type": "modifier", "mode": "constant", "stat": "turnSpeed", "multiply": 0.85 }
+      ]
+    },
+    "movement-lock": {
+      "presenceWhenInside": false,
+      "carriesSourceSlot": false,
+      "clearsVelocity": false,
+      "effects": [{ "type": "block", "mode": "constant", "actions": ["move", "sprint"] }]
+    },
+    "rewind": {
+      "presenceWhenInside": false,
+      "carriesSourceSlot": false,
+      "clearsVelocity": false,
+      "captures": ["x", "y", "hp"],
+      "effects": [],
+      "on": { "lifetimeEnd": { "effects": [{ "type": "restore_state" }] } }
+    },
+    "overdrive": {
+      "presenceWhenInside": false,
+      "carriesSourceSlot": false,
+      "clearsVelocity": false,
+      "effects": [{ "type": "modifier", "mode": "constant", "stat": "staminaCost", "multiply": 0 }]
+    },
+    "parry": {
+      "presenceWhenInside": false,
+      "carriesSourceSlot": false,
+      "clearsVelocity": false,
+      "charges": 1,
+      "effects": [{ "type": "damage_immunity", "mode": "constant", "amount": 1 }],
+      "on": {
+        "hit": {
+          "target": "attacker",
+          "consume": 1,
+          "effects": [{ "type": "status", "subtype": "stun", "durationMs": 800 }]
+        }
+      }
+    },
+    "overcharge": {
+      "presenceWhenInside": false,
+      "carriesSourceSlot": false,
+      "clearsVelocity": false,
+      "charges": 4,
+      "effects": [{ "type": "modifier", "mode": "constant", "stat": "outgoingDamage", "multiply": 2 }],
+      "on": { "hitDealt": { "from": ["weapon"], "consume": 1, "effects": [] } }
+    },
+    "tethered": {
+      "presenceWhenInside": false,
+      "carriesSourceSlot": true,
+      "clearsVelocity": false,
+      "effects": [{ "type": "modifier", "mode": "constant", "stat": "incomingDamage", "multiply": 1.2 }],
+      "on": {
+        "schedule": {
+          "intervalMs": 100,
+          "effects": [
+            {
+              "type": "displace",
+              "who": "target",
+              "from": "source",
+              "direction": "toward",
+              "distance": 30,
+              "when": [{ "measure": "distance", "op": ">", "value": 200 }]
+            }
+          ]
+        }
+      }
     }
   }
 }

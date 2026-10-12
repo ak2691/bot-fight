@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { ABILITY_STATS } from "../../../../shared/engine/gameconfig/Abilities.js";
-import { sweepAngle } from "../../../../shared/engine/gameconfig/visualState.js";
 import { animationFrameAt, FIREBALL_FRAME_INTERVAL_MS, FIREBALL_FRAME_NAMES, orderedAnimationFrames } from "./abilityAnimationFrames.js";
 import { HEAVY_SLASH_ART_ROTATION_OFFSET, heavySlashRotation } from "./pixiVisualState.js";
 import { visualRayLength } from "./rayPresentationGeometry.js";
@@ -27,16 +26,6 @@ test("Heavy Slash presentation alignment preserves all four cardinal facings", (
     // The reported regression case: west must use the corrected west-facing
     // reference rotation instead of the old south-facing result.
     closeTo(heavySlashRotation(270), Math.PI * 3 / 2);
-});
-
-test("Heavy Slash alignment preserves the existing 150-degree sweep and bot state", () => {
-    const bot = { rotation: 270, x: 400, y: 500 };
-    const startSweep = sweepAngle(ABILITY_STATS[7].visualMs, ABILITY_STATS[7].visualMs, -75, 75);
-    const endSweep = sweepAngle(100, ABILITY_STATS[7].visualMs, -75, 75);
-    const start = heavySlashRotation(bot.rotation, startSweep);
-    const end = heavySlashRotation(bot.rotation, endSweep);
-    closeTo(end - start, Math.PI * 150 / 180);
-    assert.deepEqual(bot, { rotation: 270, x: 400, y: 500 });
 });
 
 test("Fireball explicitly loads five ordered frames and loops frame five to frame one", () => {

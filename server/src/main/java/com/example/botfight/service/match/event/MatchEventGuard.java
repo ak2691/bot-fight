@@ -78,17 +78,13 @@ public final class MatchEventGuard {
         if (eventPhase != current.phase() && !eventPhase.wireStatus().equals(current.phase().wireStatus())) {
             return "event phase " + eventPhase + " does not match active phase " + current.phase();
         }
-        if (eventPhase == MatchPhase.LOADOUT_SELECT
+        if (eventPhase == MatchPhase.KIT_REVEAL
                 && current.selectionDeadline() != null
                 && event.loadoutSelectionEndsAt() != null
                 && !current.selectionDeadline().equals(event.loadoutSelectionEndsAt())) {
             return "selection deadline does not match active deadline"
                     + " (event=" + event.loadoutSelectionEndsAt()
                     + ", active=" + current.selectionDeadline() + ")";
-        }
-        if (MatchEventType.MATCH_STARTED.equals(event.type())
-                && state.initialLoadoutSelectionStartedMatchIds().contains(event.matchId())) {
-            return "initial loadout selection already started for match";
         }
         return null;
     }
@@ -105,10 +101,10 @@ public final class MatchEventGuard {
         if (!activeSession.isReplay()) {
             CurrentPhase current = currentPhaseFor(event.matchId(), outbound.principalName());
             if (current != null
-                    && current.phase() == MatchPhase.LOADOUT_SELECT
+                    && current.phase() == MatchPhase.BUILDING
                     && event.roundNumber() != null
                     && event.roundNumber() == current.roundNumber()
-                    && "LOADOUT_SELECT".equals(event.status())) {
+                    && "PREP".equals(event.status())) {
                 return null;
             }
             return "active session is not in replay phase";

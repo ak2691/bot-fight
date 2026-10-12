@@ -207,7 +207,8 @@ public final class MatchReconnectionService {
 
     public List<OutboundMatchmakingEvent> promotePendingDisconnect(String principalName) {
         MatchSession session = findSessionForPrincipal(principalName);
-        if (session == null || session.loadoutSelectionEndsAt() == null) return List.of();
+        if (session == null || (session.phase() != com.example.botfight.service.match.state.MatchPhase.KIT_REVEAL
+                && session.phase() != com.example.botfight.service.match.state.MatchPhase.BUILDING)) return List.of();
 
         MatchPlayer disconnectedPlayer = findPlayerForPrincipal(session, principalName);
         if (disconnectedPlayer == null) return List.of();

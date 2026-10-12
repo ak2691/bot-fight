@@ -80,10 +80,10 @@ test("the simulator schemas compile with ajv next to the brain schema, as the wo
     const validateResponse = ajv.compile(read("simulation-response.schema.json"));
     const brain = fixtures("valid").find((fixture) => fixture.name === "walk-and-loadout.json").brain;
     const request = {
-        matchId: "6b8f4f4e-3c1e-4c8e-9a43-0f7b1f7a2d11", rulesetVersion: "duel-v2", seed: 42,
-        arena: { width: 1200, height: 1200, durationMs: 120000 },
+        matchId: "6b8f4f4e-3c1e-4c8e-9a43-0f7b1f7a2d11", rulesetVersion: "duel-v3", seed: 42,
+        arena: { width: 1200, height: 1200, durationMs: 90000 },
         bots: [{ userId: "6b8f4f4e-3c1e-4c8e-9a43-0f7b1f7a2d12", username: "a", slot: 1, x: 300, y: 600, rotation: 90, size: 60, selectedLoadout: "melee", brain, initialHp: null, teamNumber: 1 }],
-        segments: [{ endsAtMs: 20000, bots: [] }], recordFromMs: null,
+        segments: [{ endsAtMs: 15000, bots: [] }], recordFromMs: null,
     };
     assert.equal(validateRequest(request), true, JSON.stringify(validateRequest.errors));
     assert.equal(validateRequest({ ...request, bots: [{ ...request.bots[0], brain: { ...brain, extra: 1 } }] }), false);

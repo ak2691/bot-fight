@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import { GAMEPLAY_DATA } from "../../../../shared/engine/gameconfig/gameplayData.js";
 import { combatLogActive } from "../../../../shared/engine/ecs/combatLog.js";
 import {
     BROWSER_GOLDEN_FILE,
@@ -33,10 +34,10 @@ test("every ability triggers in at least one scenario", () => {
     const triggered = new Set();
     for (const scenario of file.scenarios) {
         for (const entry of runScenario(scenario).log) {
-            if (entry.kind === "trigger") triggered.add(entry.abilityId);
+            if (entry.kind === "activate") triggered.add(entry.abilityId);
         }
     }
-    const expected = [...Array(37).keys()].map((index) => index + 1).filter((id) => ![2, 20, 34].includes(id));
+    const expected = GAMEPLAY_DATA.abilities.abilities.map(({ id }) => id);
     assert.deepEqual(expected.filter((id) => !triggered.has(id)), []);
 });
 
@@ -51,7 +52,7 @@ test("the combat log is off unless requested and never changes the result", () =
 });
 
 test("log entries use the shared vocabulary", () => {
-    const kinds = new Set(["trigger", "effect", "status", "spawn", "phase", "removal", "stamina"]);
+    const kinds = new Set(["activate", "effect", "status", "spawn", "phase", "removal", "stamina"]);
     const stages = new Set(["decide", "act", "resolveHits", "spawn", "entities", "hazards", "settle"]);
     for (const scenario of file.scenarios) {
         for (const entry of runScenario(scenario).log) {

@@ -9,7 +9,7 @@ import {
     findAbilityTestingPreset } from "./AbilityTestingPresets.js";
 
 test("ability testing presets preserve their starting transforms in practice reset config", () => {
-    const preset = findAbilityTestingPreset(24);
+    const preset = findAbilityTestingPreset(15);
     const config = buildAbilityTestingPracticeConfig(preset);
     const playerStart = internalPointToPublic(preset.playerPosition);
     const opponentStart = internalPointToPublic(preset.opponentPosition);
@@ -33,16 +33,16 @@ test("ability testing presets use the current 1200 unit arena coordinates", () =
     const presets = [
         findAbilityTestingPreset(3),
         findAbilityTestingPreset(15),
-        findAbilityTestingPreset(24),
-        findAbilityTestingPreset(11),
+        findAbilityTestingPreset(15),
+        findAbilityTestingPreset(29),
     ];
 
     assert.ok(presets.every((preset) => preset.playerPosition.x === ARENA_WIDTH_UNITS / 2));
     assert.deepEqual(presets.map((preset) => [preset.playerPosition.y, preset.opponentPosition.y]), [
         [420, 780],
         [510, 690],
-        [480, 660],
-        [540, 840],
+        [510, 690],
+        [420, 780],
     ]);
     assert.ok(presets.every((preset) => (
         preset.playerPosition.y >= 0
@@ -53,7 +53,7 @@ test("ability testing presets use the current 1200 unit arena coordinates", () =
 });
 
 test("new ability testing presets use the centered-coordinate brain version", () => {
-    const presets = [findAbilityTestingPreset(3), findAbilityTestingPreset(15), findAbilityTestingPreset(24), findAbilityTestingPreset(29)];
+    const presets = [findAbilityTestingPreset(3), findAbilityTestingPreset(15), findAbilityTestingPreset(15), findAbilityTestingPreset(29)];
     assert.ok(presets.every((preset) => preset.playerCode.version === "bot-logic-tree-v2"));
     assert.ok(presets.every((preset) => preset.opponentCode.version === "bot-logic-tree-v2"));
 });

@@ -29,7 +29,7 @@ function brainOf(bot) {
 }
 function requestFor(scenario = scenarios.scenarios[0]) {
     return {
-        matchId: uuid(99), rulesetVersion: 'duel-v2', seed: 1,
+        matchId: uuid(99), rulesetVersion: 'duel-v3', seed: 1,
         arena: { ...scenarios.arena, durationMs: scenario.ticks * 100 },
         bots: scenario.bots.map((bot) => ({
             userId: uuid(bot.slot), username: `bot${bot.slot}`, slot: bot.slot,
@@ -184,6 +184,25 @@ test('segmented replay is deterministic and preserves version and segment-relati
     assert.deepEqual((await service.call(request)).json, first.json);
 });
 
+test('duel-v3 runs six fifteen-second segments with the final zone and full base HP', async (t) => {
+    const service = await start(t);
+    const request = requestFor();
+    request.bots = request.bots.slice(0, 2).map((bot, index) => ({
+        ...bot, x: 600, y: 560 + index * 80, initialHp: null,
+        brain: { ...bot.brain, loadout: { abilities: [] }, roots: [], chains: [] },
+    }));
+    request.segments = Array.from({ length: 6 }, (_, index) => ({ endsAtMs: (index + 1) * 15_000, bots: [] }));
+    request.recordFromMs = 75_000;
+    const { status, json } = await service.call(request);
+    assert.equal(status, 200, JSON.stringify(json));
+    assert.equal(json.result.segmentEndMs, 90_000);
+    assert.equal(json.result.endReason, 'HP_DECISION');
+    assert.deepEqual(json.result.teamHp.map((team) => team.hp), [225, 225]);
+    const frames = json.replay.batches.flatMap((batch) => batch.frames);
+    assert.equal(frames.length, 150);
+    assert.equal(frames.at(-1).shapes.find((shape) => shape.type === 'closingZone').size, 600);
+});
+
 test('bounded diagnostics preserve deterministic hashes and accept exact long seeds', async (t) => {
     const service = await start(t);
     const request = requestFor();
@@ -242,4 +261,38 @@ test('validate runs the brain schema and brain rules on every shared fixture', a
     const rules = { version: 'bot-logic-tree-v2', customVariables: [], roots: [{ kind: 'win', branches: [{ conditions: [{ type: 'always' }], children: [] }] }] };
     assert.deepEqual(await check({ brain: rules, puzzleRules: true }), []);
     assert.ok((await check({ brain: rules })).length > 0, 'a puzzle root kind is not part of a brain');
+});
+
+
+test('full kit validates while segment loadout gates locked abilities over authenticated HTTP', async (t) => {
+    const service = await start(t);
+    const request = requestFor();
+    const armorBrain = {
+        ...normalizeAbilityStrategyConfiguration({ version: 'bot-logic-tree-v2', roots: [{ priority: 1, branches: [{
+            branchType: 'if', priority: 1, conditions: [{ type: 'always' }], actions: [{ action: 27 }], children: [],
+        }] }] }), loadout: { abilities: [1, 3, 6, 27] },
+    };
+    const validation = await fetch(`${service.base}/validate`, { method: 'POST', headers: {
+        'content-type': 'application/json', 'x-sim-worker-secret': secret,
+    }, body: JSON.stringify({ brain: armorBrain }) });
+    assert.deepEqual((await validation.json()).errors, []);
+    request.bots = request.bots.map((bot, index) => ({ ...bot, x: 300 + index * 600, y: 600,
+        initialHp: null, selectedLoadout: index === 0 ? 'custom:sg' : 'custom:',
+        brain: index === 0 ? armorBrain : { ...armorBrain, loadout: { abilities: [] }, roots: [] },
+    }));
+    request.segments = Array.from({ length: 6 }, (_, index) => ({ endsAtMs: (index + 1) * 15_000,
+        bots: index === 0 ? [] : [{ slot: 1, selectedLoadout: index < 2 ? 'custom:sg' : index < 4 ? 'custom:sgt' : 'custom:sgtQ',
+            brain: armorBrain, variableResets: [] }],
+    }));
+    request.recordFromMs = 45_000;
+    const locked = await service.call(request);
+    assert.equal(locked.status, 200, JSON.stringify(locked.json));
+    const lockedBot = locked.json.replay.initialState.shapes.find(shape => shape.slot === 1);
+    assert.equal(lockedBot.abilities.includes(27), false);
+    request.recordFromMs = 60_000;
+    const unlocked = await service.call(request);
+    assert.equal(unlocked.status, 200, JSON.stringify(unlocked.json));
+    const unlockedBot = unlocked.json.replay.initialState.shapes.find(shape => shape.slot === 1);
+    assert.equal(unlockedBot.abilities.includes(27), true);
+    assert.equal(unlockedBot.abilityState[27].stage, 'ready');
 });

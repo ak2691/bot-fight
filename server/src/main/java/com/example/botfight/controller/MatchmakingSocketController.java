@@ -2,7 +2,6 @@ package com.example.botfight.controller;
 
 import com.example.botfight.DTO.match.MatchEventType;
 
-import com.example.botfight.DTO.match.MatchLoadoutSelectionDTO;
 import com.example.botfight.DTO.match.MatchTimeoutFallbackDTO;
 import com.example.botfight.DTO.match.MatchCodeViewRequestDTO;
 import com.example.botfight.DTO.match.MatchCodeViewResponseDTO;
@@ -137,21 +136,12 @@ public class MatchmakingSocketController {
                         .players(List.of())
                         .serverNow(Instant.now())
                         .message(message)
-                        .roundBrains(List.of())
-                        .abilityOffers(List.of()).build());
+                        .roundBrains(List.of()).build());
     }
 
-    @MessageMapping("/matchmaking.selectLoadout")
-    public void selectLoadout(@Payload MatchLoadoutSelectionDTO payload, Principal principal) {
-        AppUser user = requireUser(principal);
-        List<OutboundMatchmakingEvent> events = payload == null
-                ? List.of()
-                : matchService.selectLoadout(
-                        user.getId(),
-                        payload.matchId(),
-                        payload.roundNumber(),
-                        payload.selectedLoadout());
-        publisher.publish(events);
+    @MessageMapping("/matchmaking.kit")
+    public void prepareKit(@Payload com.example.botfight.DTO.match.MatchKitDTO kit, Principal principal, SimpMessageHeaderAccessor headers) {
+        actions.prepareKit(kit, principal, headers);
     }
 
     @MessageMapping("/matchmaking.timeoutFallback")

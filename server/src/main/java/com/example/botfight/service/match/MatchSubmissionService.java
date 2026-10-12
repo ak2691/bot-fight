@@ -130,18 +130,6 @@ public final class MatchSubmissionService {
         }
 
         bindSubmissionToAuthoritativeLoadout(submission, submittingPlayer.selectedLoadout());
-        String submissionLoadout = loadoutService.normalize(submission.getSelectedLoadout());
-        String submittedLoadout = loadoutService.submissionLoadoutId(submission);
-        if (submittedLoadout != null && !submittedLoadout.equals(submittingPlayer.selectedLoadout())) {
-            return MatchSubmissionResult.rejected("bot submission does not match the selected bot loadout");
-        }
-        if (submittedLoadout == null
-                && !"custom:bds".equals(submissionLoadout)
-                && !"custom".equals(submissionLoadout)
-                && !submissionLoadout.equals(submittingPlayer.selectedLoadout())) {
-            return MatchSubmissionResult.rejected("bot submission does not match the selected bot loadout");
-        }
-
         if (submission.getId() == null) submission.setId(UUID.randomUUID());
         submissionsByKey.put(key, submission);
         // The time spent building comes off this player's clock.

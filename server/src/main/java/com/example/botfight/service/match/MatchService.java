@@ -155,16 +155,7 @@ public class MatchService {
     }
 
     @Transactional
-    public List<OutboundMatchmakingEvent> selectLoadout(
-            UUID userId,
-            UUID expectedMatchId,
-            Integer expectedRoundNumber,
-            String selectedLoadout) {
-        return matchTimingService.selectLoadout(
-                userId, expectedMatchId, expectedRoundNumber, selectedLoadout);
-    }
 
-    @Transactional
     public List<OutboundMatchmakingEvent> resolveLoadoutSelectionTimeout(UUID matchId) {
         return matchTimingService.resolveLoadoutSelectionTimeout(matchId);
     }
@@ -186,9 +177,6 @@ public class MatchService {
         return matchTimingService.resolveExpiredBuildingSessions();
     }
 
-    public List<OutboundMatchmakingEvent> beginInitialLoadoutSelection(UUID matchId) {
-        return matchTimingService.beginInitialLoadoutSelection(matchId);
-    }
 
     public List<OutboundMatchmakingEvent> markDisconnected(String principalName) {
         return markDisconnected(principalName, null);
@@ -238,6 +226,13 @@ public class MatchService {
      * The authoritative acceptance method repeats this check while holding
      * the match lock because validation itself can run after this snapshot.
      */
+    public String kitForSubmission(UUID userId, UUID matchId) {
+        MatchSession session = runtimeState.activeSessionForUser(userId);
+        if (session == null || !session.matchId().equals(matchId)) return null;
+        return session.players().stream().filter(player -> player.userId().equals(userId))
+                .map(com.example.botfight.service.match.model.MatchPlayer::selectedLoadout).findFirst().orElse(null);
+    }
+
     public boolean isCurrentMatchSubmission(
             UUID userId,
             UUID expectedMatchId,

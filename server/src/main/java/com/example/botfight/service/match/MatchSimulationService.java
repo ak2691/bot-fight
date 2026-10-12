@@ -29,13 +29,13 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class MatchSimulationService {
 
-    public static final String DUEL_RULESET_VERSION = "duel-v2";
+    public static final String DUEL_RULESET_VERSION = "duel-v3";
     private static final int ARENA_WIDTH_UNITS = ArenaUnits.WIDTH;
     private static final int ARENA_HEIGHT_UNITS = ArenaUnits.HEIGHT;
     private static final int BOT_SIZE = 60;
-    // A timed-rounds match is six 20 second segments of one continuous fight.
+    // A timed-rounds match is six 15 second segments of one continuous fight.
     public static final int SEGMENT_DURATION_MS = MatchTimingPolicy.SEGMENT_SECONDS * 1_000;
-    public static final int SIMULATION_DURATION_MS = ClosingZoneConfig.timedRoundsV2().simulationDurationMs();
+    public static final int SIMULATION_DURATION_MS = ClosingZoneConfig.timedRounds().simulationDurationMs();
     private static final double TEAM_ONE_Y = ArenaUnits.SPAWN_EDGE_MARGIN;
     private static final double TEAM_TWO_Y = ARENA_HEIGHT_UNITS - ArenaUnits.SPAWN_EDGE_MARGIN;
     private final JsonMapper jsonMapper;
@@ -47,7 +47,7 @@ public class MatchSimulationService {
     }
 
     /**
-     * Simulates the current round's 20 second segment. The server re-runs the whole match from tick 0
+     * Simulates the current round's 15 second segment. The server re-runs the whole match from tick 0
      * with the original seed, swapping each player's brain, loadout and variable resets in at the start
      * of each round's segment, and records only the segment of {@code session.roundNumber()}. Nothing is
      * snapshotted: a finished match re-simulates exactly from the seed and the stored rounds.
@@ -90,13 +90,12 @@ public class MatchSimulationService {
             for (MatchPlayer player : session.players()) {
                 // A round with no stored brain keeps the player's last one, so replays stay deterministic.
                 BotSubmission submission = thisRound.getOrDefault(player.userId(), latest.get(player.userId()));
-                if (submission == null) continue;
-                latest.put(player.userId(), submission);
+                if (submission != null) latest.put(player.userId(), submission);
                 updates.add(new SegmentBotRequest(
                         player.slot(),
-                        submission.getSelectedLoadout(),
+                        MatchLoadoutService.unlockedLoadout(player.selectedLoadout(), round),
                         readBrain(player, submission),
-                        thisRound.containsKey(player.userId()) ? submission.getVariableResets() : List.of()));
+                        submission != null && thisRound.containsKey(player.userId()) ? submission.getVariableResets() : List.of()));
             }
             segments.add(new SegmentRequest(round * SEGMENT_DURATION_MS, updates));
         }
@@ -125,9 +124,7 @@ public class MatchSimulationService {
                 position.y(),
                 position.rotation(),
                 BOT_SIZE,
-                hasText(submission != null ? submission.getSelectedLoadout() : null)
-                        ? submission.getSelectedLoadout()
-                        : hasText(player.selectedLoadout()) ? player.selectedLoadout() : "melee",
+                MatchLoadoutService.unlockedLoadout(player.selectedLoadout(), 1),
                 readBrain(player, submission),
                 null,
                 player.teamNumber());

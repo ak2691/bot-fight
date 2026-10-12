@@ -216,7 +216,6 @@ public final class MatchEventFactory {
                         .roundBrains(replayPhaseEvent
                                 ? List.of()
                                 : historyService.roundBrainsForPlayer(session.matchId(), player.userId()))
-                        .abilityOffers(replayPhaseEvent ? List.of() : loadoutService.abilityOffersForPlayer(session, player.userId()))
                         .disconnectedUserId(disconnectedUserId)
                         .disconnectEndsAt(disconnectEndsAt)
                         .simulationPreparingDurationMs(simulationPreparingEvent ? simulationPreparingDurationMs : null)
@@ -235,12 +234,12 @@ public final class MatchEventFactory {
     }
 
     /**
-     * The timed-rounds block every snapshot carries: the match's clock and round count, the weapon
-     * offers while they are open, where the zone appears, and the frozen end of the last segment.
+     * The timed-rounds block carries the current increment and automatic unlock, the reveal hold,
+     * zone schedule, and frozen end of the last segment.
      * The zone ring shown in a round is the size it will contract to at the next step, if any.
      */
     private MatchmakingEventDTO.TimedRoundsDTO timedRounds(MatchSession session) {
-        ClosingZoneConfig zone = ClosingZoneConfig.timedRoundsV2();
+        ClosingZoneConfig zone = ClosingZoneConfig.timedRounds();
         int segmentMs = MatchTimingPolicy.SEGMENT_SECONDS * 1_000;
         double warning = zone.warningDiameterAt((Math.max(1, session.roundNumber()) - 1) * segmentMs);
         HpDecision hpDecision = session.ended()
@@ -250,10 +249,10 @@ public final class MatchEventFactory {
         return new MatchmakingEventDTO.TimedRoundsDTO(
                 MatchTimingPolicy.MAX_ROUNDS,
                 session.baseClockSeconds(),
-                session.incrementSeconds(),
-                MatchTimingPolicy.pickSeconds(session.roundNumber()),
+                MatchTimingPolicy.roundIncrementSeconds(session.incrementSeconds(), session.roundNumber()),
+                session.roundNumber() == 1 ? MatchTimingPolicy.KIT_REVEAL_SECONDS : 0,
                 MatchTimingPolicy.SEGMENT_SECONDS,
-                session.roundNumber() <= 1 ? MatchLoadoutService.WEAPON_IDS : List.of(),
+                MatchLoadoutService.unlockedTier(session.roundNumber()),
                 zone.startDelayMs() / segmentMs + 1,
                 Double.isNaN(warning) ? null : warning,
                 session.segmentEndState().isEmpty() ? null : session.segmentEndState(),
@@ -315,7 +314,6 @@ public final class MatchEventFactory {
                         .roundNumber(session.roundNumber())
                         .message(message)
                         .roundBrains(historyService.roundBrainsForPlayer(session.matchId(), recipient.userId()))
-                        .abilityOffers(loadoutService.abilityOffersForPlayer(session, recipient.userId()))
                         .disconnectedUserId(activeDisconnectedUserId)
                         .disconnectEndsAt(activeDisconnectEndsAt)
                         .matchChatEndsAt(chatService.closeAt(session.matchId()))
@@ -414,7 +412,6 @@ public final class MatchEventFactory {
                         .rulesetVersion(MatchSimulationService.DUEL_RULESET_VERSION)
                         .message("No active match was found.")
                         .roundBrains(List.of())
-                        .abilityOffers(List.of())
                         .viewerUserId(viewer == null ? null : viewer.userId()).build(),
                 0,
                 null,

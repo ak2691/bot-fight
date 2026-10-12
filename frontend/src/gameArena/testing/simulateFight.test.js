@@ -24,7 +24,7 @@ function brainOf(spec) {
 function requestFor(scenario) {
     return {
         matchId: MATCH_ID,
-        rulesetVersion: "duel-v2",
+        rulesetVersion: "duel-v3",
         seed: 1,
         arena: { width: scenarioFile.arena.width, height: scenarioFile.arena.height, durationMs: scenario.ticks * 100 },
         bots: scenario.bots.map((spec) => ({
@@ -77,7 +77,7 @@ const bot = (slot, x, y, botBrain, initialHp = null) => ({
 const first = (endsAtMs) => ({ endsAtMs, bots: [] });
 const swap = (endsAtMs, slot, botBrain, ...variableResets) => ({ endsAtMs, bots: [{ slot, selectedLoadout: "custom", brain: botBrain, variableResets }] });
 const segmented = (bots, segments, recordFromMs = null) => ({
-    matchId: MATCH_ID, rulesetVersion: "duel-v2", seed: 11, arena: { width: 1200, height: 1200, durationMs: 1 },
+    matchId: MATCH_ID, rulesetVersion: "duel-v3", seed: 11, arena: { width: 1200, height: 1200, durationMs: 1 },
     bots, segments, recordFromMs,
 });
 
@@ -106,11 +106,11 @@ test("a segment is identical whether produced alone or re-simulated after the la
     const armed = brain([1], always(...SLASH));
     const sprinting = brain([1], always(SPRINT_EAST));
     const bots = [bot(1, 300, 600, idle), bot(2, 800, 600, idle)];
-    const all = [first(20_000), swap(40_000, 1, approach), swap(60_000, 1, armed), swap(80_000, 1, sprinting),
-        swap(100_000, 1, armed), swap(120_000, 1, sprinting)];
+    const all = [first(15_000), swap(30_000, 1, approach), swap(45_000, 1, armed), swap(60_000, 1, sprinting),
+        swap(75_000, 1, armed), swap(90_000, 1, sprinting)];
 
-    const atRoundSix = simulateFight(segmented(bots, all, 60_000));
-    const alone = simulateFight(segmented(bots, all.slice(0, 4), 60_000));
+    const atRoundSix = simulateFight(segmented(bots, all, 45_000));
+    const alone = simulateFight(segmented(bots, all.slice(0, 4), 45_000));
     const whole = simulateFight(segmented(bots, all));
 
     const framesOf = (run) => run.replay.batches.flatMap((batch) => batch.frames);
@@ -119,14 +119,14 @@ test("a segment is identical whether produced alone or re-simulated after the la
     assert.deepEqual(framesOf(atRoundSix), framesOf(alone));
     // The recorded window is the same slice of the uninterrupted run, with frames relative to its start.
     const wholeFrames = framesOf(whole);
-    const ticksBefore = 600;
+    const ticksBefore = 450;
     framesOf(atRoundSix).forEach((windowed, index) => {
         assert.equal(windowed.elapsedMs, (index + 1) * 100);
         assert.deepEqual(windowed.shapes, wholeFrames[ticksBefore + index].shapes);
     });
-    assert.ok(framesOf(atRoundSix).length <= 200);
+    assert.ok(framesOf(atRoundSix).length <= 150);
     assert.equal(atRoundSix.result.outcome, "CONTINUES");
-    assert.equal(atRoundSix.result.segmentEndMs, 80_000);
+    assert.equal(atRoundSix.result.segmentEndMs, 60_000);
 });
 
 test("a brain swap takes effect exactly at the boundary tick", () => {
@@ -236,7 +236,7 @@ test("a knockout mid-segment ends the run", () => {
     const slashing = brain([1], always(...SLASH));
     // The defender starts wounded so the knockout lands inside the second segment.
     const bots = [bot(1, 600, 600, idle), bot(2, 600, 680, idle, 50)];
-    const segments = [first(20_000), swap(40_000, 1, slashing), swap(60_000, 1, slashing)];
+    const segments = [first(15_000), swap(30_000, 1, slashing), swap(45_000, 1, slashing)];
 
     const run = simulateFight(segmented(bots, segments));
     assert.equal(run.result.outcome, "BOT_WIN");
@@ -244,12 +244,12 @@ test("a knockout mid-segment ends the run", () => {
     assert.equal(run.result.winnerTeam, 1);
     assert.deepEqual(run.result.teamHp.find((entry) => entry.teamNumber === 2), { teamNumber: 2, hp: 0 });
     const lastElapsed = run.replay.batches.at(-1).frames.at(-1).elapsedMs;
-    assert.ok(lastElapsed > 20_000 && lastElapsed < 40_000);
+    assert.ok(lastElapsed > 15_000 && lastElapsed < 30_000);
     assert.equal(run.result.segmentEndMs, lastElapsed);
     assert.ok(run.replay.batches.at(-1).terminal);
 
     // Asking for a later segment after the fight is already over leaves nothing to replay.
-    const afterwards = simulateFight(segmented(bots, segments, 40_000));
+    const afterwards = simulateFight(segmented(bots, segments, 30_000));
     assert.equal(afterwards.result.outcome, "BOT_WIN");
     assert.deepEqual(afterwards.replay.batches, []);
     assert.ok(afterwards.replay.initialState.shapes.length > 0);
@@ -257,17 +257,17 @@ test("a knockout mid-segment ends the run", () => {
 
 test("a segment that ends without a knockout says the fight continues; the last one decides on HP", () => {
     const bots = [bot(1, 300, 600, idle), bot(2, 900, 600, idle)];
-    const segments = [first(20_000), swap(40_000, 1, idle)];
+    const segments = [first(15_000), swap(30_000, 1, idle)];
 
     const firstSegment = simulateFight(segmented(bots, segments, 0));
-    assert.equal(firstSegment.replay.batches.flatMap((batch) => batch.frames).length, 200);
+    assert.equal(firstSegment.replay.batches.flatMap((batch) => batch.frames).length, 150);
     assert.equal(firstSegment.result.outcome, "CONTINUES");
     assert.equal(firstSegment.result.endReason, "SEGMENT_END");
     assert.equal(firstSegment.result.winnerTeam, null);
 
     // The last segment with every team alive and equal HP is a draw by HP decision.
-    const lastSegment = simulateFight(segmented(bots, segments, 20_000));
-    assert.equal(lastSegment.replay.batches.flatMap((batch) => batch.frames).length, 200);
+    const lastSegment = simulateFight(segmented(bots, segments, 15_000));
+    assert.equal(lastSegment.replay.batches.flatMap((batch) => batch.frames).length, 150);
     assert.equal(lastSegment.result.outcome, "DRAW");
     assert.equal(lastSegment.result.endReason, "HP_DECISION");
     assert.equal(simulateFight(segmented(bots, segments)).result.outcome, "DRAW");
@@ -275,7 +275,7 @@ test("a segment that ends without a knockout says the fight continues; the last 
 
 test("the HP decision goes to the team with more total HP", () => {
     const bots = [bot(1, 300, 600, idle, 120), bot(2, 900, 600, idle, 90)];
-    const run = simulateFight(segmented(bots, [first(20_000)]));
+    const run = simulateFight(segmented(bots, [first(15_000)]));
     assert.equal(run.result.endReason, "HP_DECISION");
     assert.equal(run.result.outcome, "BOT_WIN");
     assert.equal(run.result.winnerTeam, 1);
@@ -293,32 +293,32 @@ test("a team of two counts both bots' HP and survives one death", () => {
 });
 
 test("the closing zone only appears in rounds five and six", () => {
-    const segments = [first(20_000), ...[40_000, 60_000, 80_000, 100_000, 120_000].map((end) => swap(end, 1, idle))];
+    const segments = [first(15_000), ...[30_000, 45_000, 60_000, 75_000, 90_000].map((end) => swap(end, 1, idle))];
     const run = simulateFight(segmented([bot(1, 600, 560, idle), bot(2, 600, 640, idle)], segments));
 
     const frames = run.replay.batches.flatMap((batch) => batch.frames);
-    assert.equal(frames.length, 1_200);
+    assert.equal(frames.length, 900);
     const zoneOf = (frame) => frame.shapes.find((shape) => shape.type === "closingZone");
     const withZone = frames.filter((frame) => zoneOf(frame));
-    assert.equal(withZone[0].elapsedMs, 80_000);
+    assert.equal(withZone[0].elapsedMs, 60_000);
     const zoneSize = (elapsedMs) => zoneOf(frames.find((frame) => frame.elapsedMs === elapsedMs)).size;
-    assert.equal(zoneSize(80_000), 1_200);
-    assert.equal(zoneSize(85_000), 900);
-    assert.equal(zoneSize(100_000), 900);
-    assert.equal(zoneSize(105_000), 600);
-    assert.equal(zoneSize(120_000), 600);
+    assert.equal(zoneSize(60_000), 1_200);
+    assert.equal(zoneSize(65_000), 900);
+    assert.equal(zoneSize(75_000), 900);
+    assert.equal(zoneSize(80_000), 600);
+    assert.equal(zoneSize(90_000), 600);
 });
 
 test("the single-segment path keeps its zone and ninety second cap", () => {
     const request = (durationMs) => ({
-        matchId: MATCH_ID, rulesetVersion: "duel-v2", seed: 1, arena: { width: 1200, height: 1200, durationMs },
+        matchId: MATCH_ID, rulesetVersion: "duel-v3", seed: 1, arena: { width: 1200, height: 1200, durationMs },
         bots: [bot(1, 600, 560, idle), bot(2, 600, 640, idle)],
     });
     assert.throws(() => simulateFight(request(95_000)), /90 second/);
 
     const plain = simulateFight(request(16_000));
     const frames = plain.replay.batches.flatMap((batch) => batch.frames);
-    // duel-v1 starts its zone at 15 s, not the timed-rounds 80 s.
+    // duel-v1 starts its zone at 15 s, not the timed-rounds 60 s.
     assert.ok(frames.find((frame) => frame.elapsedMs === 15_000).shapes.some((shape) => shape.type === "closingZone"));
 });
 
@@ -326,15 +326,15 @@ test("hostile segment schedules are rejected", () => {
     const bots = [bot(1, 300, 600, idle), bot(2, 900, 600, idle)];
     const run = (segments, recordFromMs = null) => simulateFight(segmented(bots, segments, recordFromMs));
 
-    assert.throws(() => run([first(20_000), first(20_000)]));
-    assert.throws(() => run([first(20_000), first(40_000), first(60_000), first(80_000), first(100_000), first(120_000), first(140_000)]));
-    assert.throws(() => run([first(20_050)]));
-    assert.throws(() => run([first(20_000), first(60_000)]));
-    assert.throws(() => run([first(20_000), swap(40_000, 9, idle)]));
-    assert.throws(() => run([swap(20_000, 1, idle)]));
-    assert.throws(() => run([first(20_000), swap(40_000, 1, idle, ...Array(101).fill("x"))]));
+    assert.throws(() => run([first(15_000), first(15_000)]));
+    assert.throws(() => run([first(15_000), first(30_000), first(45_000), first(60_000), first(75_000), first(90_000), first(105_000)]));
+    assert.throws(() => run([first(15_050)]));
+    assert.throws(() => run([first(15_000), first(45_000)]));
+    assert.throws(() => run([first(15_000), swap(30_000, 9, idle)]));
+    assert.throws(() => run([swap(15_000, 1, idle)]));
+    assert.throws(() => run([first(15_000), swap(30_000, 1, idle, ...Array(101).fill("x"))]));
     assert.throws(() => run([1, 2, 3, 4, 5, 6, 7].map((index) => first(index * 1_000))));
-    assert.throws(() => run([first(20_000), first(40_000)], 5_000));
+    assert.throws(() => run([first(15_000), first(30_000)], 5_000));
     assert.throws(() => simulateFight({ ...segmented(bots, [first(1_000)]), rulesetVersion: "duel-v1" }));
     assert.throws(() => simulateFight({ ...segmented(bots, [first(1_000)]), seed: 1.5 }));
     assert.throws(() => simulateFight(segmented([bots[0]], [first(1_000)])));
@@ -398,10 +398,38 @@ test("puzzle rules see the initial match time", () => {
 
 test("live first-round authority request keeps a six-round horizon despite an HP lead", () => {
     const request = segmented([bot(1, 300, 600, idle, 120), bot(2, 900, 600, idle, 90)],
-        Array.from({ length: 6 }, (_, index) => first((index + 1) * 20000)), 0);
+        Array.from({ length: 6 }, (_, index) => first((index + 1) * 15000)), 0);
     const run = simulateFight(request);
     assert.equal(run.result.outcome, "CONTINUES");
     assert.equal(run.result.endReason, "SEGMENT_END");
     assert.equal(run.result.winnerTeam, null);
-    assert.equal(run.result.segmentEndMs, 20000);
+    assert.equal(run.result.segmentEndMs, 15000);
+});
+
+
+test("a brain may reference a locked kit ability but it cannot act until the round unlock", async () => {
+    const { brainRuleErrors } = await import("../../../../shared/engine/botlogic/code/configuration/brainRules.js");
+    const { encodeBotLoadout } = await import("../../../../shared/engine/loadout/BotLoadout.js");
+    const kitBrain = brain([1, 3, 6, 27], always({ action: 27 }));
+    assert.deepEqual(brainRuleErrors(kitBrain), []);
+    const request = segmented([bot(1, 300, 300, kitBrain), bot(2, 900, 900, idle)],
+        Array.from({ length: 6 }, (_, i) => ({ endsAtMs: (i + 1) * 15_000, bots: i === 0 ? [] : [{
+            slot: 1, selectedLoadout: encodeBotLoadout({ abilities: i < 2 ? [1,3] : i < 4 ? [1,3,6] : [1,3,6,27] }),
+            brain: kitBrain, variableResets: [],
+        }] })), 60_000);
+    request.bots[0].selectedLoadout = encodeBotLoadout({ abilities: [1,3] });
+    const seen = [];
+    simulateFight(request, { onTick(fight, elapsedMs) {
+        const subject = fight.bots[0];
+        if (elapsedMs < 60_000) {
+            assert.equal(subject.abilities.includes(27), false);
+            assert.notEqual(subject.triggeredAbility, 27);
+        } else if (elapsedMs === 60_100) {
+            assert.equal(subject.abilities.includes(27), true);
+            seen.push(subject.abilityState[27].stage);
+        }
+    } });
+    assert.equal(seen.length, 1);
+    assert.notEqual(seen[0], "ready");
+    assert.ok(brainRuleErrors({ ...kitBrain, loadout: { abilities: [1,3,6,21] } }).some(error => error.includes("not equipped")));
 });

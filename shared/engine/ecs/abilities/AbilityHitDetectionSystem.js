@@ -2,13 +2,13 @@ import { ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import { abilityContract, hitVerbs } from "../contracts/AbilityContracts.js";
 import { abilityPose } from "../../gameconfig/hitboxGeometry.js";
 import { isEntityShape } from "../entities/EntityCombat.js";
-import { hitsTarget, TARGET_KIND_BOT, TARGET_KIND_ENTITY } from "./findTargets.js";
+import { findTargets, hitsTarget, TARGET_KIND_BOT, TARGET_KIND_ENTITY } from "./findTargets.js";
 
 /**
- * The trigger-time pose of a `hit` verb: the verb's origin on the owner, or the pose the ability captured
- * when it triggered (so a later move or teleport cannot shift the hitbox).
+ * The activation pose of a `hit` verb: the verb's origin on the owner, or the pose the ability captured
+ * when it activated (so a later move or teleport cannot shift the hitbox).
  */
-export function triggerPose(bot, verb, activation) {
+export function activationPose(bot, verb, activation) {
     return abilityPose(bot, verb?.origin, activation?.capture);
 }
 
@@ -31,16 +31,39 @@ export function verbHitbox(hitbox, attacker) {
     };
 }
 
-/** True when one `hit` verb, fired from the attacker's trigger pose, touches the target. */
+/** The key a targetPolicy's memory records a target under: a bot's slot, an entity's id. */
+export function hitKey(target) {
+    return isEntityShape(target) ? `entity:${target.id}` : String(target.slot ?? target.id);
+}
+
+/**
+ * The targets a hit shape, fired from `pose`, touches among `candidates` (bots and entities), nearest first. Every
+ * shape goes through findTargets, so a ray has its hitbox width. Targets already in `once` (a scope's hit set) are
+ * left out, and `nearestOnly` keeps just the nearest. Returns [{ target, distance }].
+ */
+export function collectHitTargets(pose, hitbox, candidates, { nearestOnly = false, once = null, stepMs } = {}) {
+    const open = candidates.filter((target) => !once?.has(hitKey(target)));
+    const found = findTargets(pose, hitbox, {
+        world: {
+            bots: open.filter((target) => !isEntityShape(target)),
+            entities: open.filter((target) => isEntityShape(target)),
+            stepMs,
+        },
+        kinds: [TARGET_KIND_BOT, TARGET_KIND_ENTITY],
+    });
+    return nearestOnly ? found.slice(0, 1) : found;
+}
+
+/** True when one `hit` verb, fired from the attacker's activation pose, touches the target. */
 export function verbHitsTarget(attacker, verb, target, activation) {
     const hitbox = verbHitbox(verb.hitbox ?? {}, attacker);
     if (!hitbox) return false;
-    return hitsTarget(triggerPose(attacker, verb, activation), hitbox, target, {
+    return hitsTarget(activationPose(attacker, verb, activation), hitbox, target, {
         kinds: [isEntityShape(target) ? TARGET_KIND_ENTITY : TARGET_KIND_BOT],
     });
 }
 
-/** Resolves trigger `hit` geometry (through findTargets) without applying the resulting effects. */
+/** Resolves activation `hit` geometry (through findTargets) without applying the resulting effects. */
 export function abilityHitsTarget(
     attacker,
     target,

@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 class SimWorkerClientTest {
     private final JsonMapper mapper=new JsonMapper();
-    private final DuelSimulationRequest request=new DuelSimulationRequest(UUID.randomUUID(),"duel-v2",Long.MAX_VALUE,
+    private final DuelSimulationRequest request=new DuelSimulationRequest(UUID.randomUUID(),"duel-v3",Long.MAX_VALUE,
             new DuelArenaRequest(1200,1200,200),List.of());
     private String response() { return """
         {"result":{"engineVersion":"test","outcome":"DRAW","endReason":"KO","winnerTeam":null,

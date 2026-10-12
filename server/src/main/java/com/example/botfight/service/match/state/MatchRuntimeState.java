@@ -37,14 +37,11 @@ public final class MatchRuntimeState {
     /** Players reserved while a match roster is being persisted. */
     private final Map<UUID, UUID> startReservationsByUserId = new HashMap<>();
     private final Map<UUID, Set<UUID>> startReservationsById = new HashMap<>();
-    private final Set<UUID> initialLoadoutSelectionStartedMatchIds = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<UUID, List<RoundSubmissionRecord>> roundHistoryByMatchId = new ConcurrentHashMap<>();
     private final ConcurrentMap<MatchSubmissionKey, BotSubmission> matchSubmissionsByKey = new ConcurrentHashMap<>();
     private final Set<SimulationKey> simulationsInProgress = ConcurrentHashMap.newKeySet();
 
-    public Set<UUID> initialLoadoutSelectionStartedMatchIds() {
-        return initialLoadoutSelectionStartedMatchIds;
-    }
+
 
     public ConcurrentMap<UUID, List<RoundSubmissionRecord>> roundHistoryByMatchId() {
         return roundHistoryByMatchId;
@@ -165,7 +162,7 @@ public final class MatchRuntimeState {
         MatchSession session = activeSessionForMatch(matchId);
         if (session == null || session.phase() != phase || session.roundNumber() != round) return false;
         return switch (phase) {
-            case LOADOUT_SELECT -> deadline.equals(session.loadoutSelectionEndsAt());
+            case KIT_REVEAL -> deadline.equals(session.loadoutSelectionEndsAt());
             case BUILDING -> session.players().stream().anyMatch(player -> !player.finished() && deadline.equals(player.buildExpiresAt()));
             case REPLAY -> deadline.equals(session.roundReadyAt()) || deadline.equals(session.resultRevealsAt());
             default -> false;
