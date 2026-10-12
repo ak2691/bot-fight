@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ENTITY_VISUAL_RENDERERS } from "./entityRenderers.js";
 import { ENTITY_VISUAL_SETTINGS } from "../botAbilityPresentationDefinitions.js";
 
-// Roster batch R3 renderers (docs/visuals/ability-visuals.html): the Boomerang and Fan of Blades entity visuals. They are
+// Roster batch R3 renderers: the Boomerang and Fan of Blades entity visuals. They are
 // phase visuals, so the checks cover registration, their settings, and that each one draws for an entity it is given.
 
 function recorder() {

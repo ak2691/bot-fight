@@ -7,7 +7,7 @@ import { GAMEPLAY_DATA } from "../../../../../shared/engine/gameconfig/gameplayD
 import { advanceShapes } from "../../testing/fightTick.js";
 import { buildInitialArenaShapes } from "../../modelPayloads/arenaShapes.js";
 
-// One collision dispatch (docs/ABILITY_ENGINE_FIT.md, G1). An entity's collision event runs once per touched target, bots
+// One collision dispatch (engine gap G1). An entity's collision event runs once per touched target, bots
 // and entities alike, from the source's side: the source's geometry decides whether a target is touched, and the source's
 // effects reach an HP entity as a queued impact. Each test reads a real fight tick by tick, as AttachedEntities does.
 // The main bot faces +x at x 300; the opponent stands at x 360 unless a test places it elsewhere.

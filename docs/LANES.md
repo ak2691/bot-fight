@@ -1,4 +1,8 @@
-# 04 Programming model
+# Lanes programming model
+
+Starting point for the lanes visual programming style. It was written on 2026-10-10 as part 04 of the real-time
+"Hotfix" exploration, which was removed on 2026-10-12 (`git log -- docs/realtime-mode` has it). Crews, roles,
+nodes, Surge, deploys and the opponent dossier belong to that exploration, not to lanes; read them as examples.
 
 What the brain looks like when you have to change it during a live match.
 
@@ -170,7 +174,7 @@ Desktop: the arena on the left (about 60% of the width), the brain on the right,
 - **Try it on the last 20 s:** pick a moment in the replay buffer and re-run it with your draft against the
   opponent's recorded movement. The opponent doesn't react, so it's only a rough check, but it answers "would
   this have dodged that?". It runs in your browser and never counts for anything.
-- **Dossier tab:** the opponent's revealed cards ([05](05-reading-the-opponent.md)).
+- **Dossier tab:** the opponent's revealed cards (Hotfix part 05, in git history).
 
 Phones: editing during a live match on a small screen is hard. Options are tabs (Arena / Brain / Dossier) with
 the deploy bar always visible, or phones only in a slower casual queue. Decide after the desktop version plays

@@ -13,7 +13,7 @@ writing. **Spend tokens only on things Haiku can't work out by itself.**
 
 1. **Goal, in one or two lines,** including whether gameplay may change.
 2. **A pointer to the design doc** (for example "rows S2, S3 and S7 of
-   docs/ABILITY_ENGINE_AUDIT.md"). The doc holds the detail once; don't restate it.
+   docs/ROSTER_DESIGN.md"). The doc holds the detail once; don't restate it.
 3. **The decisions:** the design calls Haiku must not improvise. Examples: new field names
    and shapes, stacking rules, which edge cases must survive, intended behavior changes.
    This is the valuable part.
@@ -58,7 +58,7 @@ where a stronger model's tokens pay off.
 
 ```text
 Task: every status becomes a preset; code checks what a status does, not its name. Only intended gameplay change: slow also blocks sprint.
-Spec: docs/ABILITY_ENGINE_AUDIT.md rows S1, S2, S3, S7, S10.
+Spec: rows S1, S2, S3, S7, S10 of the engine audit doc.
 Decisions:
 - New status effect `block { actions: [ability|dash|move|sprint|fastTurn] }`. silence = block[ability]; slow = movement modifier + block[dash, sprint]; movement-lock = block[move, sprint]; stun stays its own effect.
 - channels.json drops blockedByStatuses; adds notReadyWhileBlocked (dash true, ability false).

@@ -43,7 +43,7 @@ const settingsByType = {
         windup: { color: 0xf59e0b, alphaStart: 0.25, alphaEnd: 0.6, outlineWidth: 3 },
         sizingHitboxAbilityId: 36, hitboxSizeScale: 1.92, tint: 0xfde68a,
     },
-    // Smash (approved "cracks" preview, docs/visual-previews/smash-thrust.html). Lengths are arena
+    // Smash (approved "cracks" preview). Lengths are arena
     // units (preview units / 1.25); `impactFraction` places the impact point along the hitbox.
     smash: {
         visualPriority: 22,
@@ -69,7 +69,7 @@ const settingsByType = {
             dust: { color: 0x94a3b8, count: 4, alpha: 0.3, spacing: 14, offsetAcross: 10, riseUnitsPerMs: 0.008, radiusStart: 9, radiusGrowPerMs: 0.012 },
         },
     },
-    // Sprint trail (approved option C, docs/visual-previews/sprint-trail.html). Preview units were
+    // Sprint trail (approved option C). Preview units were
     // arena units x 0.42, so the sizes here are the preview sizes / 0.42; offsets are in bot radii.
     sprintTrail: {
         spawnIntervalMs: 50, maxCatchUp: 3, seed: 4129,
@@ -84,7 +84,7 @@ const settingsByType = {
         },
     },
     dash: { smokeMs: 500, smokeFrameMs: 100 },
-    // Lunge (approved card, docs/visuals/ability-visuals.html): the crouch rings and chevrons, then the leap's afterimages.
+    // Lunge (approved card): the crouch rings and chevrons, then the leap's afterimages.
     // The stab is the attached entity's phase visual (ENTITY_VISUAL_SETTINGS.lungeStab). crouchMs matches the crouch phase.
     lunge: {
         visualPriority: 23, crouchMs: 200, leapMs: 100, leapUnits: 150,
@@ -97,7 +97,7 @@ const settingsByType = {
         visualPriority: 24, color: 0xfbbf24, flash: 0xfff7d6, range: 180, arc: 40, muzzle: 34,
     },
     // Execute (approved card): the strike blade. Its length and width come from the activation hitbox. The below-30%
-    // bonus flourish is not drawn: the renderer cannot read the resolved hit (see docs/visuals/ability-visuals.html).
+    // bonus flourish is not drawn: the renderer cannot read the resolved hit.
     execute: {
         visualPriority: 25, color: 0xdc2626, light: 0xfca5a5,
     },
@@ -132,7 +132,7 @@ const settingsByType = {
 /**
  * Settings for the procedural entity renderers (renderers/entityRenderers.js), keyed by a phase visual type. These are
  * phase visuals, not bot visuals, so they stay out of the bot precedence list. Orbital Strike: a ground marker, then one
- * blast (approved card, docs/visuals/ability-visuals.html).
+ * blast (approved card).
  */
 export const ENTITY_VISUAL_SETTINGS = Object.freeze({
     orbitalMarker: freezeDefinition({ color: 0x93c5fd, core: 0xffffff, warn: 0x60a5fa, radius: 140, brackets: 4 }),

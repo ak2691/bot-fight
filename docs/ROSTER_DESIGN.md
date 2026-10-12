@@ -1,26 +1,23 @@
 # Roster design
 
-Draft, 2026-10-12. This is the concrete roster: what stays, what's cut, what moves tier, and the new
-abilities, with their behaviour and starting numbers. It builds on:
-- [`ABILITY_ROSTER.md`](ABILITY_ROSTER.md): the ability rules (impact, a readable tell, missing costs
-  something, one job each, tier bands);
-- [`ABILITY_ENGINE_FIT.md`](ABILITY_ENGINE_FIT.md): what the engine can express, and the gaps G1–G5;
-- [`FIXED_KIT_FORMAT.md`](FIXED_KIT_FORMAT.md): a kit is a weapon plus one ability per tier, revealed
-  before round 1. The weapon and Tier 1 unlock in round 1, Tier 2 in round 3, Tier 3 in round 5.
+Built 2026-10-12 (batches R1–R5; section 7 lists where the build differs). This is the roster: what stayed,
+what was cut, what moved tier, and the new abilities, with their behaviour and starting numbers. The ability
+rules behind it: every ability has impact, a readable tell, a cost for missing, one job, and a tier band. It
+assumes [`FIXED_KIT_FORMAT.md`](FIXED_KIT_FORMAT.md): a kit is a weapon plus one ability per tier, revealed
+before round 1. The weapon and Tier 1 unlock in round 1, Tier 2 in round 3, Tier 3 in round 5.
 
-It describes **behaviour and numbers, not code**. Implementation is left to Haiku prompts, written
-when each batch is ready (section 7). Every number is a starting point for playtests and golden
-scenarios, not a final value.
+It describes **behaviour and numbers, not code**; `shared/gameplay/abilities.json` holds the live values.
+Every number is a starting point for playtests, not a final value.
 
-Engine tags used below:
+The Engine column records which engine work each ability needed; all of it is built:
 
 | Tag | Meaning |
 | --- | --- |
-| **data** | writable today with existing vocabulary |
-| **G2** | needs conditions (`when`), prompt 7 |
-| **G3** | needs status reactions and charges, prompt 8 |
-| **G4** | needs status sources with a position, prompt 8 |
-| **G5** | needs `seek` to the owner, prompt 9 |
+| **data** | existing vocabulary |
+| **G2** | conditions (`when`) |
+| **G3** | status reactions and charges |
+| **G4** | status sources with a position |
+| **G5** | `seek` to the owner |
 
 ---
 
@@ -162,8 +159,7 @@ weapon-only rule), worth roughly another 15–30. Cleave is the strongest pairin
 makes each of those hits readable. Watch the total in playtests; shorten the 8 s window first if it's
 too strong.
 
-**Fan of Blades** can ship one-way first (data) with 16 damage per blade. When G5 lands it becomes
-the returning version above.
+**Fan of Blades** shipped as the returning version (no one-way stage).
 
 ---
 
@@ -195,27 +191,16 @@ The kit limits a bot to one ability per tier, so these are the strongest chains 
 
 ---
 
-## 7. Implementation batches (for later Haiku prompts)
+## 7. As built
 
-Each batch is one prompt, written when its engine work is in. Prompts 6–10 come first.
-
-| Batch | Contents | Needs | Golden impact |
-| --- | --- | --- | --- |
-| **R1: cuts, moves, retunes** (done 2026-10-12: 12 IDs retired, `retiredIds` in abilities.json; procedural entity renderers for `orbitalMarker` and `orbitalBlast`; golden scenarios changed or removed as listed in the R1 report) | cut 9 abilities (data, catalogue, server pools; IDs retired); move Wind Burst and Repelling Blast to Tier 1 and Rewind to Tier 2; apply every "retune" number above; Orbital Strike's marker-then-blast phases | nothing | large: cut abilities leave scenarios and numbers change. Regenerate and review |
-| **R2: new data abilities** (done 2026-10-12: Lunge `l`, Shotgun Blast `b`, Overdrive `O`, Tar Pit `a`; preset `overdrive`; visuals `lunge`, `shotgunBlast`, `pellet`, `lungeStab`, `tarGlob`, `tarPit`, the `overdrive` status aura. Catalogue icons are a separate art stage, exempted in `abilityCatalogueIcons.test.js`. The one-way Fan of Blades was not built: the run plan ships the returning version with Boomerang, see R5) | Lunge, Shotgun Blast, Overdrive, Tar Pit; new presets `overdrive`; new visual types | nothing | new scenarios only (4 abilities plus the Lunge vs Repelling Blast counter; no existing golden changed) |
-| **R3: conditional abilities** (done 2026-10-13: Execute `E` (tier 3, bonus check before the base hit so the 30% threshold reads pre-hit HP); Phase Strike's second activation hit replaced by the attached `backstab` follow-up (10, +15 from behind); Disruptive Beam's plain stun removed, a 1 s stun when the target is winding up; Vampiric Beam already heals only on `damageConfirmed`, no change). Visual `execute` (the strike, with its bonus X when the finisher lands; the X reads `abilityVisual.bonus`, set by the hit). The `backstab` and `counterHit` visuals were added in the R4 run. Golden: 5 new scenarios; Phase Strike and Disruptive Beam scenarios changed as intended (`ranged-sniper-pistol-rail`, `concussive-silence-beam`, `rewind-phase`) | Execute, Phase Strike Backstab, Disruptive Beam counter-hit, Vampiric Beam onto `damageConfirmed` | prompt 7 (G2) | Phase Strike and Disruptive Beam scenarios change (intended) |
-| **R4: reaction abilities** (done 2026-10-12: Parry `p`, Overcharge `G`, Tether Link `V`; presets `parry`, `overcharge`, `tethered`; visuals `parry`, `overcharge`, `counterHit` and `tetherChain` (status-driven), `tetherLink` (bolt), `backstab` and Execute's bonus X from the hit (`onConditionalHit`). The tether's distance check has no `of`: the validator rejects it on `distance`. Golden: five new scenarios, no existing golden changed. The run plan's Part 1 (Execute, Backstab, counter-hit) was already built as R3; this run closed its visual gaps and kept the circular Backstab hitbox, see the notes) | Parry, Overcharge, Tether Link; presets | prompt 8 (G3, G4) | new scenarios only (plus the R3 Execute finisher description fix) |
-| **R5: homing abilities** (done 2026-10-12, labelled R3 in the run plan: Boomerang `B` and Fan of Blades `N` (returning, 8 blades in a ring, 800 ms out so the phase lands on the 100 ms tick, 40 per tick, 20° turn). Visuals `boomerang` and `blade` are shared by both phases. Golden: three new scenarios, including the Boomerang counter; no existing golden changed) | Boomerang; Fan of Blades becomes returning | prompt 9 (G5) | new scenarios only (the one-way Fan of Blades had no scenario) |
-
-**Every batch also covers:**
-- **Tells:** each new status (`parry`, `overdrive`, `overcharge`, `tethered`) appears in the brain's
-  "Has Status" list and in the status catalogue.
-- **Visuals:** a renderer per new visual type. The designs, with live previews and copyable
-  PixiJS code (procedural, no sprites), are in [`visuals/ability-visuals.html`](visuals/ability-visuals.html).
-- **Catalogue text** without hard-coded numbers (fit doc, D2).
-- **Server pools** follow `tier` in the data; nothing to edit by hand beyond the cuts.
-- **Golden scenarios** for each new ability, including one "counter" scenario (for example, Parry
-  against Stun).
+All five batches (R1–R5) are in. Where the build differs from the rows above:
+- **Backstab** hits a 70-unit circle around the caster, not an 80 × 50 rectangle: the blink doesn't turn the
+  caster, so a forward box would miss. The from-behind check still decides the +15.
+- **Fan of Blades** flies out for 800 ms (320 units), not 750, so the phase ends on a 100 ms tick.
+- **Execute** checks the +60 before the 25, so the 30% threshold reads health before the hit.
+- **Parry** blocks every hit that lands in the same tick as the one that spends its charge (a whole point-blank
+  Shotgun Blast), and stuns the attacker once.
+- Catalogue icons for IDs 38–47 are a separate art stage (exempted in `abilityCatalogueIcons.test.js`).
 
 ---
 

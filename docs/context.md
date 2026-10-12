@@ -9,37 +9,30 @@ document is stale.
   contracts and phases, effects and statuses, entities, the tick order, the
   combat log and golden scenarios, visuals, and how to add or tune an ability in
   the shared engine and Spring validation.
-- [`ABILITY_ROSTER.md`](ABILITY_ROSTER.md): 2026-10-10 proposal: ability design
-  rules, the keep/rework/cut roster pass per tier, and the engine building blocks
-  (conditions, status events, one damage pipeline). Not built.
-- [`ABILITY_ENGINE_AUDIT.md`](ABILITY_ENGINE_AUDIT.md): 2026-10-10 DRY audit of the
-  ability engine (duplicate status, effect, hit and data paths) and the cleanup order
-  that comes before the roster work.
+- [`ENGINE_PRIMER.md`](ENGINE_PRIMER.md): how the engine works, step by step (the tick,
+  hits, entities, statuses and reactions), with worked ability examples.
+- [`ROSTER_DESIGN.md`](ROSTER_DESIGN.md): the ability roster (built 2026-10-12): per-tier
+  balance frame, each ability's job and numbers, the combo and counter check, and open questions.
 - [`SOLVED_MATCHUPS.md`](SOLVED_MATCHUPS.md): 2026-10-11 summary of the
   solved-matchup problem, the agreed criteria and direction, and the rejected
   ideas. Read before proposing match-design changes.
-- [`OBSTACLES.md`](OBSTACLES.md): shelved 2026-10-11 arena-obstacle design.
-  Only its `In View` sensor (replacing Angle To / Direction To) is still wanted.
 - [`ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md`](ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md):
   recurring visual, timer and same-tick combat failures. Use for any ability,
   entity, replay field or bot-state change, and for reviews.
 - [`PLAYER_COORDINATES.md`](PLAYER_COORDINATES.md): public centered/Y-up
   coordinates versus internal ones.
 - [`CODE_WORKSPACE_REDESIGN.md`](CODE_WORKSPACE_REDESIGN.md): how the brain and
-  chain editors work (execution order, nodes, panels, chains, toolbar).
+  chain editors work today (execution order, nodes, panels, chains, toolbar).
+- [`LANES.md`](LANES.md): the lanes programming model, the starting point for the
+  next visual programming style (ordered cards per lane, modes, defaults). Not built.
 
 ## Match format and timing
 
-- [`design/README.md`](design/README.md): the planned MVP design (nothing built yet):
-  programmable BattleBots-style bots built from parts, a physics engine, the modes-and-rules
-  brain, weekly cups and daily gauntlets. Start at its README; one doc per area.
-- [`GAMEPLAY_OVERHAUL_MIGRATION.md`](GAMEPLAY_OVERHAUL_MIGRATION.md): what each
-  current area keeps, replaces or removes for that design, and the phase order.
 - [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md): the six-round
   format design and its rationale.
 - [`FIXED_KIT_FORMAT.md`](FIXED_KIT_FORMAT.md): 2026-10-10 proposal amending
   it: fixed kits (weapon + one ability per tier), alternating unlock and gap
-  rounds, saved brains and snippets. Not built.
+  rounds, saved brains and snippets. Server and engine parts built; client UI not.
 - [`MATCH_TIMING.md`](MATCH_TIMING.md): server deadlines, client clock
   conversion, and the round-transition checklist.
 
@@ -47,15 +40,6 @@ document is stale.
 
 - [`CHAT_MODERATION.md`](CHAT_MODERATION.md): chat evidence, report
   authorization, retention and the admin review contract.
-- [`SPRING_CLEANUP_PROMPTS.md`](SPRING_CLEANUP_PROMPTS.md): the 2026-10-09
-  server audit and the queued Sonnet cleanup runs (A, B, C). Read it before
-  refactoring match, matchmaking, party or puzzle services.
-
-## Explorations
-
-- [`realtime-mode/`](realtime-mode/README.md): 2026-10-10 exploration of a
-  real-time mode ("Hotfix") in which players patch their crew's brain during
-  the match. Nothing decided or built.
 
 ## Maintaining docs
 

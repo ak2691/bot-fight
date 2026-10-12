@@ -4,7 +4,7 @@ import { BOT_ABILITY_RENDERERS } from "./index.js";
 import { ENTITY_VISUAL_RENDERERS } from "./entityRenderers.js";
 import { BOT_ABILITY_VISUAL_SETTINGS, ENTITY_VISUAL_SETTINGS, botAbilityPresentationForType } from "../botAbilityPresentationDefinitions.js";
 
-// Roster batch R2, part 1 renderers (docs/visuals/ability-visuals.html). The renderers draw through a recorder, so the
+// Roster batch R2, part 1 renderers. The renderers draw through a recorder, so the
 // checks are about which phase draws and which stays quiet, not about pixels.
 
 function recorder() {

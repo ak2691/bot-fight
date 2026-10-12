@@ -5,8 +5,8 @@ ground up, with real examples from `shared/gameplay/abilities.json` and `statuse
 [`ABILITIES.md`](ABILITIES.md) is the full reference. When the two disagree, the reference and the
 code are right.
 
-> **This primer describes the engine as of 2026-10-12**, after every prompt in
-> [`ENGINE_REFACTOR_PROMPTS.md`](ENGINE_REFACTOR_PROMPTS.md) (1–10). For readers who knew the old engine:
+> **This primer describes the engine as of 2026-10-12**, after engine refactor prompts 1–10 (the
+> prompt doc is in git history). For readers who knew the old engine:
 >
 > | Old | Now | Prompt |
 > | --- | --- | --- |

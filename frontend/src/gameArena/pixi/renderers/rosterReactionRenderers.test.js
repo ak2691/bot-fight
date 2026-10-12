@@ -4,7 +4,7 @@ import { BOT_ABILITY_RENDERERS } from "./index.js";
 import { ENTITY_VISUAL_RENDERERS } from "./entityRenderers.js";
 import { BOT_ABILITY_VISUAL_SETTINGS, ENTITY_VISUAL_SETTINGS, botAbilityPresentationForType } from "../botAbilityPresentationDefinitions.js";
 
-// Roster batch R4 renderers (docs/visuals/ability-visuals.html): Execute's bonus X, Backstab (entity), the Disruptive Beam
+// Roster batch R4 renderers: Execute's bonus X, Backstab (entity), the Disruptive Beam
 // counter-hit, Parry, Overcharge, Tether Link's bolt (entity) and its chain. The renderers draw through a recorder, so the
 // checks are about which pass draws and which stays quiet, not about pixels.
 

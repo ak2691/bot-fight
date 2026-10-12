@@ -113,7 +113,7 @@ viable meta.
 | Random ability values | Abilities lose identity; it can't be balanced fairly for both players |
 | Random bot stats (speed, HP, stamina) | Changes how abilities work: ranged is weak when fast, mobility pointless when walking is fast |
 | Seeded start positions and facing | Barely matters; reactive brains settle back into the same rhythm |
-| Obstacles and map layouts (`OBSTACLES.md`) | A decision about the map, not about combat: how to get past a wall, not wasting abilities on it |
+| Obstacles and map layouts (shelved design, in git history) | A decision about the map, not about combat: how to get past a wall, not wasting abilities on it |
 | Tight brain budget or edit limits | Restrictive, more headache than fun |
 | Per-match ability charges | Less fun |
 | Player-chosen chance (`Chance %` conditions) | Luck |
