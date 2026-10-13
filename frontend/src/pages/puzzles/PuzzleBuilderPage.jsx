@@ -31,6 +31,8 @@ import {
     PRACTICE_PLAYER_PUBLIC_START,
 } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { countActions, selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
+import { isLanesBrain } from "../../gameArena/coding/lanes/laneEdits.js";
+import { countLaneEntries } from "../../../../shared/engine/botlogic/code/configuration/configurationMetrics.js";
 import { fetchAdminPuzzle, savePuzzle, updatePuzzle } from "../../puzzles/puzzleApi.js";
 import PuzzleLogicWorkspace, {
     createDefaultPuzzleLogic,
@@ -792,7 +794,11 @@ export default function PuzzleBuilderPage() {
     const rootKinds = (draft.puzzleLogic?.roots ?? []).map((root) => root?.kind);
     const winRules = rootKinds.filter((kind) => kind === "win").length;
     const loseRules = rootKinds.filter((kind) => kind === "lose").length;
-    const opponentActions = countActions(draft.opponentBot?.brain);
+    // A lanes enemy counts its cards and switches (the editor's budget); a tree enemy counts its actions.
+    const opponentBrain = draft.opponentBot?.brain;
+    const opponentActions = isLanesBrain(opponentBrain)
+        ? countLaneEntries(opponentBrain).cards + countLaneEntries(opponentBrain).switches
+        : countActions(opponentBrain);
     const completion = { arena: true, rules: winRules > 0, opponent: opponentActions > 0, limits: true, test: false };
     const nextStepId = ["arena", "rules", "opponent", "limits", "test"].find((id) => !completion[id]);
     const stepState = (id) => (completion[id] ? "done" : id === nextStepId ? "next" : "todo");
@@ -808,7 +814,7 @@ export default function PuzzleBuilderPage() {
         {
             id: "opponent",
             title: "Opponent bot",
-            summary: opponentActions > 0 ? `${opponentActions} ${opponentActions === 1 ? "action" : "actions"}` : "No code yet",
+            summary: opponentActions > 0 ? `${opponentActions} ${isLanesBrain(opponentBrain) ? "cards and switches" : opponentActions === 1 ? "action" : "actions"}` : "No code yet",
             warn: opponentActions === 0,
             state: stepState("opponent"),
         },

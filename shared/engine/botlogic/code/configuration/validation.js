@@ -6,7 +6,6 @@ export function validateConfiguration(configuration, {
     normalizeConfiguration,
     countVariableSlots,
     countConditionSlots,
-    validateChains = () => [],
     validateSchema = () => [],
 }) {
     const normalized = normalizeConfiguration(configuration);
@@ -52,7 +51,6 @@ export function validateConfiguration(configuration, {
     });
     const orphanCount = countOrphanNodes(configuration);
     if (orphanCount) warnings.push(`${orphanCount} ${orphanCount === 1 ? "node isn't" : "nodes aren't"} connected and won't run`);
-    errors.push(...validateChains(configuration));
     // The shared brain schema is the server's structural check too; the normalized brain is what would be submitted.
     errors.push(...validateSchema(normalized));
     const names = new Set();

@@ -2655,7 +2655,6 @@ body.has-ability-modal .app-navbar--hidden {
   .code-workspace:not([data-stage]) .code-tb-spacer { order: 5; }
   .code-workspace:not([data-stage]) .code-tb-search, .code-tb-btn { order: 6; }
   .code-workspace:not([data-stage]) .code-tb-search, .code-tb-btn, .code-tb-close { width: 34px; min-width: 34px; height: 34px; justify-content: center; padding: 0; }
-  .code-workspace:not([data-stage]) .code-tb-btn.code-tb-chain { order: 1; flex: 0 0 auto; width: auto; padding: 0 8px; }
   .code-workspace:not([data-stage]) .code-tb-search-text, .code-tb-label, .code-tb-search .code-tb-kbd, .code-tb-btn .code-tb-kbd { display: none; }
   .code-workspace:not([data-stage]) .code-tb-toggle-wide { display: none; }
   .code-workspace:not([data-stage]) .code-tb-toggle-phone { display: inline-flex; }
@@ -2711,13 +2710,11 @@ body.has-ability-modal .app-navbar--hidden {
 .code-workspace[data-stage="phone"] .code-zoom-cluster button:last-child { order: -1; }
 .code-workspace[data-stage="phone"] .code-wire-banner { top: auto; bottom: 66px; }
 
-/* The bar floats over the canvas bottom (the side-panel sheet and picker sheets sit above it), and fades out
-   while a chain block is carried so the bottom of the canvas is a drop and auto-scroll area. */
+/* The bar floats over the canvas bottom (the side-panel sheet and picker sheets sit above it). */
 .code-phone-bar {
   position: absolute; z-index: 15; left: 0; right: 0; bottom: 0; display: flex; height: 56px; align-items: stretch; justify-content: space-around;
   border-top: 1px solid rgba(255, 255, 255, .1); background: #12161a; transition: opacity .12s;
 }
-.code-phone-bar.is-faded { opacity: 0; pointer-events: none; }
 .code-pb-slot {
   display: flex; min-width: 0; min-height: 44px; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   border: 0; background: transparent; color: #cbd5e1; cursor: pointer;
@@ -2744,7 +2741,6 @@ div.code-sheet-row { cursor: default; }
 .code-sheet-tag { width: 56px; flex: none; font: 600 10px/1 "Cousine", ui-monospace, monospace; color: #94a3b8; }
 .code-sheet-tag.is-if { color: #7dd3fc; }
 .code-sheet-tag.is-action { color: #facc15; }
-.code-sheet-tag.is-chain { color: #c4b5fd; }
 .code-sheet-label { flex: 1; min-width: 0; }
 .code-sheet-value { color: #94a3b8; font: 500 14px "Cousine", ui-monospace, monospace; }
 
@@ -3748,7 +3744,7 @@ div.code-sheet-row { cursor: default; }
 .code-inspector .code-info-hint-text { max-width: min(220px, calc(100vw - 48px)); }
 .code-inspector .code-inspector-field > .code-info-hint .code-info-hint-text { right: 0; left: auto; }
 
-/* Action node anatomy (main brain and chains): 1 yellow label + x, 2 name on a darker green, 3 settings (only if any). */
+/* Action node anatomy: 1 yellow label + x, 2 name on a darker green, 3 settings (only if any). */
 .code-bt-task-core.code-an { padding: 0; overflow: hidden; background: #31583a; border-color: #72b65d; }
 .code-an-r1 { position: relative; display: flex; align-items: center; gap: 8px; min-height: 24px; padding: 0 28px 0 10px; }
 .code-an-r1 .code-bt-channel { color: #facc15; font-size: 11px; font-weight: 700; letter-spacing: .03em; }

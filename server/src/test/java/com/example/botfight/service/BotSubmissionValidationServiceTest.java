@@ -54,12 +54,31 @@ class BotSubmissionValidationServiceTest {
 
     @Test
     void workerRuleErrorsRejectTheSubmission() throws Exception {
-        when(worker.validateBrain(any(JsonNode.class), anyBoolean())).thenReturn(List.of("Chains cannot call each other in a cycle."));
+        when(worker.validateBrain(any(JsonNode.class), anyBoolean())).thenReturn(List.of("Conditions nest deeper than 40 levels."));
 
         var result = service.validate(validPayload());
 
         assertThat(result.isAccepted()).isFalse();
-        assertThat(result.getErrors()).containsExactly("Chains cannot call each other in a cycle.");
+        assertThat(result.getErrors()).containsExactly("Conditions nest deeper than 40 levels.");
+    }
+
+    @Test
+    void acceptsALanesBrainThatPassesTheSchemaAndSendsItToTheWorker() throws Exception {
+        // Spring does not read lanes: it checks the schema, then hands the brain to the worker's brain rules.
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-lanes-v1","shared":{},
+                 "modes":[{"id":"neutral","name":"Neutral","switches":[{"id":"to-punish","to":"punish","conditions":[{"type":"always"}]}],
+                   "movement":[{"id":"walk","conditions":[{"type":"always"}],
+                     "action":{"action":"move_walk","movementMode":"target","movementDirection":0,"selectable":"opponent_1"}}]},
+                  {"id":"punish","name":"Punish"}]}
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.getErrors()).isEmpty();
+        assertThat(result.getStatus()).isEqualTo("ACCEPTED");
+        verify(worker).validateBrain(any(JsonNode.class), eq(false));
     }
 
     @Test
@@ -82,6 +101,25 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(service.validatePuzzleBrainForSimulation(brain, 0, 1, 2, true))
                 .containsExactly("Puzzle action budget exceeded.");
+        verify(worker).validateBrain(brain, false, constraints);
+    }
+
+    @Test
+    void puzzleLanesBrainsPassTheSchemaAndGoToTheWorkerWithTheirBudgets() throws Exception {
+        // A lanes puzzle brain (the player's or an enemy's) takes the same path as a tree brain; the worker counts its lanes.
+        JsonNode brain = jsonMapper.readTree("""
+                {"version":"bot-logic-lanes-v1","shared":{},
+                 "modes":[{"id":"neutral","name":"Neutral",
+                   "variables":[{"id":"count","conditions":[],
+                     "action":{"action":"variable","variableId":"custom.ticks","value":1}}]}],
+                 "customVariables":[{"id":"custom.ticks","name":"Ticks","valueType":"number","initialValue":0}]}
+                """);
+        var constraints = java.util.Map.<String, Object>of(
+                "maxActionNodes", 1, "maxConditionNodes", 0, "maxCustomVariables", 2,
+                "maxLoadoutAbilities", 6, "reservePuzzleNamespace", true);
+        when(worker.validateBrain(brain, false, constraints)).thenReturn(List.of());
+
+        assertThat(service.validatePuzzleBrainForSimulation(brain, 1, 0, 2, true)).isEmpty();
         verify(worker).validateBrain(brain, false, constraints);
     }
 

@@ -1,0 +1,118 @@
+{
+  "description": "A three-deep combo: Slash (walks in and faces while it winds up), Dash away, Slash with an attached walk-away and face, then Dash out.",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [
+      {
+        "id": "neutral",
+        "name": "Neutral",
+        "actions": [
+          {
+            "id": "slash-combo",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": 1,
+              "selectable": "opponent_1"
+            },
+            "followUps": [
+              {
+                "id": "dash-away",
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "action": {
+                  "action": 19,
+                  "selectable": "opponent_1",
+                  "movementMode": "target",
+                  "movementDirection": 180,
+                  "targetMode": "target",
+                  "targetX": 0,
+                  "targetY": 0
+                },
+                "followUps": [
+                  {
+                    "id": "slash-again",
+                    "conditions": [
+                      {
+                        "type": "always"
+                      }
+                    ],
+                    "action": {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    },
+                    "followUps": [
+                      {
+                        "id": "dash-out",
+                        "conditions": [
+                          {
+                            "type": "always"
+                          }
+                        ],
+                        "action": {
+                          "action": 19,
+                          "selectable": "opponent_1",
+                          "movementMode": "target",
+                          "movementDirection": 180,
+                          "targetMode": "target",
+                          "targetX": 0,
+                          "targetY": 0
+                        }
+                      }
+                    ],
+                    "move": {
+                      "action": "move_walk",
+                      "selectable": "opponent_1",
+                      "movementMode": "target",
+                      "movementDirection": 180,
+                      "targetMode": "target",
+                      "targetX": 0,
+                      "targetY": 0
+                    },
+                    "face": {
+                      "action": "rotate_toward_enemy",
+                      "selectable": "opponent_1",
+                      "targetOffsetX": 0,
+                      "targetOffsetY": 0,
+                      "targetMode": "target",
+                      "targetX": 0,
+                      "targetY": 0,
+                      "targetAngle": 0
+                    }
+                  }
+                ]
+              }
+            ],
+            "move": {
+              "action": "move_walk",
+              "selectable": "opponent_1",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "targetMode": "target",
+              "targetX": 0,
+              "targetY": 0
+            },
+            "face": {
+              "action": "rotate_toward_enemy",
+              "selectable": "opponent_1",
+              "targetOffsetX": 0,
+              "targetOffsetY": 0,
+              "targetMode": "target",
+              "targetX": 0,
+              "targetY": 0,
+              "targetAngle": 0
+            }
+          }
+        ]
+      }
+    ],
+    "shared": {},
+    "customVariables": []
+  }
+}

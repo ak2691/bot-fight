@@ -1,0 +1,61 @@
+{
+  "description": "A cancel card in Actions, and a cancel follow-up after a slash (a cancel holds no follow-ups).",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [
+      {
+        "id": "neutral",
+        "name": "Neutral",
+        "actions": [
+          {
+            "id": "cancel-slash",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.anyAbilityPreparing",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                },
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "action": {
+              "action": "cancel_windup",
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "slash-then-cancel",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": 1,
+              "selectable": "opponent_1"
+            },
+            "followUps": [
+              {
+                "id": "cancel-follow",
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "action": {
+                  "action": "cancel_windup",
+                  "selectable": "opponent_1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "shared": {},
+    "customVariables": []
+  }
+}

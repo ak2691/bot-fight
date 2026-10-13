@@ -21,9 +21,12 @@ const responseValid = new Ajv2020({ strict: false }).compile(read('../../shared/
 const secret = 'test-only-sim-worker-secret';
 const uuid = (slot) => `00000000-0000-4000-8000-${String(slot).padStart(12, '0')}`;
 function brainOf(bot) {
-    // The engine normalizer returns the tree; loadout is a separate contract field.
+    // The engine normalizer returns the tree (or the lanes brain, when the scenario has one); loadout is a separate contract field.
+    const brain = bot.lanes
+        ? normalizeAbilityStrategyConfiguration(bot.lanes)
+        : normalizeAbilityStrategyConfiguration({ version: 'bot-logic-tree-v2', roots: bot.roots });
     return {
-        ...normalizeAbilityStrategyConfiguration({ version: 'bot-logic-tree-v2', roots: bot.roots }),
+        ...brain,
         loadout: { abilities: bot.abilities.filter((id) => !STANDARD_ABILITY_IDS.includes(id)) },
     };
 }
@@ -189,7 +192,7 @@ test('duel-v3 runs six fifteen-second segments with the final zone and full base
     const request = requestFor();
     request.bots = request.bots.slice(0, 2).map((bot, index) => ({
         ...bot, x: 600, y: 560 + index * 80, initialHp: null,
-        brain: { ...bot.brain, loadout: { abilities: [] }, roots: [], chains: [] },
+        brain: { ...bot.brain, loadout: { abilities: [] }, roots: [] },
     }));
     request.segments = Array.from({ length: 6 }, (_, index) => ({ endsAtMs: (index + 1) * 15_000, bots: [] }));
     request.recordFromMs = 75_000;
@@ -261,6 +264,22 @@ test('validate runs the brain schema and brain rules on every shared fixture', a
     const rules = { version: 'bot-logic-tree-v2', customVariables: [], roots: [{ kind: 'win', branches: [{ conditions: [{ type: 'always' }], children: [] }] }] };
     assert.deepEqual(await check({ brain: rules, puzzleRules: true }), []);
     assert.ok((await check({ brain: rules })).length > 0, 'a puzzle root kind is not part of a brain');
+});
+
+test('a lanes brain validates over HTTP, and a card in another lane is refused by the rules', async (t) => {
+    const service = await start(t);
+    const check = async (brain) => {
+        const response = await fetch(`${service.base}/validate`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-sim-worker-secret': secret }, body: JSON.stringify({ brain }) });
+        return (await response.json()).errors;
+    };
+    const lanes = normalizeAbilityStrategyConfiguration(scenarios.scenarios.find((scenario) => scenario.id === 'lanes-neutral-punish-escape').bots[0].lanes);
+    const brain = { ...lanes, loadout: { abilities: [1] } };
+    assert.deepEqual(await check(brain), []);
+    const misplaced = structuredClone(brain);
+    misplaced.modes[0].movement[0].action = { action: 1, selectable: 'opponent_1' };
+    const errors = await check(misplaced);
+    assert.equal(errors.length, 1, JSON.stringify(errors));
+    assert.match(errors[0], /movement section/);
 });
 
 

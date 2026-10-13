@@ -72,7 +72,6 @@ export const ACTION_HEAD_TONES = Object.freeze({
     cancel: "red",
     dash: "green",
     variable: "amber",
-    chain: "cyan",
     flow: "blue",
 });
 
@@ -91,7 +90,6 @@ const ACTION_HEAD_GROUPS = Object.freeze([
     { head: "dash", title: "Dash" },
     { head: "cancel", title: "Cancel" },
     { head: "variable", title: "Variables" },
-    { head: "chain", title: "Chains" },
 ]);
 
 const ACTION_DESCRIPTIONS = Object.freeze({
@@ -101,13 +99,8 @@ const ACTION_DESCRIPTIONS = Object.freeze({
     variable: "Set, add or subtract",
 });
 
-const CHAIN_ACTION_COPY = Object.freeze({
-    run_chain: { label: "Run chain", description: "Start a chain of timed steps" },
-});
-
 // Rows are named by their group now, so the "Ability: / Movement: / Rotate: / Variable:" prefixes go.
 export function actionPickerLabel(action) {
-    if (CHAIN_ACTION_COPY[action?.id]) return CHAIN_ACTION_COPY[action.id].label;
     return String(action?.label ?? "")
         .replace(/^(Ability|Movement|Rotate|Cancel|Variable):\s*/i, "")
         .replace(/^Modify Custom Variable$/i, "Modify custom variable")
@@ -115,7 +108,6 @@ export function actionPickerLabel(action) {
 }
 
 export function actionPickerDescription(action) {
-    if (CHAIN_ACTION_COPY[action?.id]) return CHAIN_ACTION_COPY[action.id].description;
     if (action?.id === "cancel_windup") return "Works from any root while you're winding up";
     return ACTION_DESCRIPTIONS[action?.head] ?? "";
 }

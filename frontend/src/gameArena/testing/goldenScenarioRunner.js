@@ -66,9 +66,11 @@ function runScenarioFight(scenario, { log = true } = {}) {
     const states = [];
     const spec = (slot) => scenario.bots.find((bot) => bot.slot === slot);
     const loadoutOf = (slot) => encodeBotLoadout({ abilities: spec(slot).abilities });
-    // Brains are normalized once per fight; the tick takes normalized input.
-    const configurationOf = (slot) => (spec(slot).roots.length > 0
-        ? normalizeAbilityStrategyConfiguration({ roots: spec(slot).roots }) : null);
+    // Brains are normalized once per fight; the tick takes normalized input. A `lanes` brain replaces the tree.
+    const configurationOf = (slot) => {
+        if (spec(slot).lanes) return normalizeAbilityStrategyConfiguration(spec(slot).lanes);
+        return spec(slot).roots.length > 0 ? normalizeAbilityStrategyConfiguration({ roots: spec(slot).roots }) : null;
+    };
     const fight = createFight(startingShapes(scenario), {
         selectedLoadout: loadoutOf(1),
         opponentLoadout: loadoutOf(2),

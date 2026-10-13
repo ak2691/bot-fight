@@ -1,5 +1,6 @@
 import { linkedActionDiscount } from "./linkedActions.js";
-import { stepConditionLists, walkChainStepsWithLoose } from "./chainSteps.js";
+import { BOT_LOGIC_LANES_VERSION } from "./constants.js";
+import { laneCards } from "./laneCardTree.js";
 
 export function actionEntryCost(entry) {
     if (!entry || entry.action === "none") return 0;
@@ -7,22 +8,15 @@ export function actionEntryCost(entry) {
     return 1;
 }
 
-/** Every step of every chain, nested steps included. */
-function chainSteps(configuration) {
-    return (Array.isArray(configuration?.chains) ? configuration.chains : []).flatMap((chain) => [...walkChainStepsWithLoose(chain)]);
-}
-
 export function countActionSlots(configuration) {
+    if (isLanesConfiguration(configuration)) return laneCards(configuration).reduce((total, card) => total + actionEntryCost(card.action), 0);
     const countBranches = (branches = []) => (Array.isArray(branches) ? branches : []).reduce((total, branch) => {
         const actions = Array.isArray(branch?.actions) && branch.actions.length ? branch.actions : [branch];
         return total + actions.reduce((sum, entry) => sum + actionEntryCost(entry), 0) + countBranches(branch?.children);
     }, 0);
-    // A chain step costs like an action; steps that are not actions cost one slot each.
-    const chainCost = chainSteps(configuration)
-        .reduce((total, step) => total + (step?.type === "action" ? actionEntryCost(step) : 1), 0);
     return (configuration?.roots ?? []).reduce((total, root) => total + countBranches(root?.branches)
         + (root?.actions ?? []).reduce((sum, entry) => sum + actionEntryCost(entry), 0), 0)
-        + (Array.isArray(configuration?.orphans) ? configuration.orphans : []).reduce((total, node) => total + (node?.kind === "action" ? actionEntryCost(node) : countBranches([node])), 0) + chainCost
+        + (Array.isArray(configuration?.orphans) ? configuration.orphans : []).reduce((total, node) => total + (node?.kind === "action" ? actionEntryCost(node) : countBranches([node])), 0)
         - linkedActionDiscount(configuration, actionEntryCost);
 }
 
@@ -47,12 +41,31 @@ export function countConditionSlots(configuration) {
             .filter((id) => variableCosts.has(id)));
         return referenced.size ? [...referenced].reduce((total, id) => total + variableCosts.get(id), 0) : 1;
     };
+    if (isLanesConfiguration(configuration)) {
+        return laneCards(configuration).reduce((total, card) => total + (Array.isArray(card.conditions) ? card.conditions : [])
+            .reduce((sum, condition) => sum + conditionCost(condition), 0), 0);
+    }
     const countBranches = (branches = []) => (Array.isArray(branches) ? branches : []).reduce((total, branch) => (
         total + (Array.isArray(branch?.conditions) ? branch.conditions : []).reduce((sum, condition) => sum + conditionCost(condition), 0)
             + countBranches(branch?.children)
     ), 0);
-    const chainConditions = chainSteps(configuration).reduce((total, step) => total
-        + stepConditionLists(step).reduce((sum, list) => sum + list.reduce((inner, condition) => inner + conditionCost(condition), 0), 0), 0);
     return (configuration?.roots ?? []).reduce((total, root) => total + countBranches(root?.branches), 0)
-        + countBranches((Array.isArray(configuration?.orphans) ? configuration.orphans : []).filter((node) => node?.kind === "conditional")) + chainConditions;
+        + countBranches((Array.isArray(configuration?.orphans) ? configuration.orphans : []).filter((node) => node?.kind === "conditional"));
+}
+
+/**
+ * Lanes totals for the editor meters and brain rules. Cards count every one, disabled included.
+ * Tree brains have no such counts (they report 0 for each).
+ */
+export function countLaneTotals(configuration) {
+    if (!isLanesConfiguration(configuration)) return { cards: 0, conditions: 0 };
+    const cards = laneCards(configuration);
+    return {
+        cards: cards.length,
+        conditions: cards.reduce((total, card) => total + (Array.isArray(card.conditions) ? card.conditions.length : 0), 0),
+    };
+}
+
+function isLanesConfiguration(configuration) {
+    return configuration?.version === BOT_LOGIC_LANES_VERSION;
 }

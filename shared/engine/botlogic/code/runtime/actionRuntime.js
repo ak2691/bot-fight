@@ -26,8 +26,6 @@ export function actionExecutableNow(block, state, operations) {
     const action = operations.actionById.get(block?.action) ?? operations.actionTypes[0];
     if (action.id === BOT_CODE_ACTIONS.NONE) return false;
     if (action.id === BOT_CODE_ACTIONS.VARIABLE) return true;
-    // Chain control is instant bookkeeping: it always selects its block and uses no category.
-    if (action.head === ACTION_HEADS.CHAIN) return true;
     if (actionSupportsTarget(action)
         && !(action.movementConfig && block.movementMode !== "target")
         && !(action.coordinateTarget && ["coordinates", "angle"].includes(block.targetMode))

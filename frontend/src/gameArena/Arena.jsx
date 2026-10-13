@@ -318,6 +318,15 @@ export default function Arena({
     const puzzleAttemptIdRef = useRef(0);
     const tutorialScenario = getTutorialScenario(tutorialStep);
     const isTutorialArenaIntro = tutorialMode && tutorialScenario.id === "arena-basics";
+    // The practice-room preview's view of the player's own bot (the "main" shape): which lanes mode it is in, and the
+    // card that won each lane. Only while a preview runs; never in a rated match. The editor paints highlights from it.
+    const practiceLanesLive = useMemo(() => {
+        if (!isPracticeRoom || isMatchTesting || !isAutoPlaying) return null;
+        const main = shapes.find((shape) => shape.id === "main");
+        const mode = main?.lastPredictedAction?.mode;
+        if (!mode) return null;
+        return { modeId: main.modeId ?? mode.modeId, timeInModeMs: main.timeInModeMs ?? 0, winners: mode.winners ?? {}, comboStepId: mode.comboStepId ?? null };
+    }, [isAutoPlaying, isMatchTesting, isPracticeRoom, shapes]);
     const allowBotRotation = isPracticeRoom || isPuzzleBuilder || isPuzzleMode || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
     const allowLockedBotEditing = isPuzzleMode || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
     const arenaEditingEnabled = isEditingArena && (!tutorialMode || isTutorialArenaIntro);
@@ -1216,7 +1225,6 @@ export default function Arena({
                     </main>
 
                     <CodingPanel
-                        runtimeBots={shapes}
                         configuration={testingConfiguration}
                         onChange={updateTestingConfiguration}
                         opponentConfiguration={isMatchTesting || tutorialMode || (isPuzzleMode && initialPuzzle?.hideOpponentCode !== false) ? null : opponentTestingConfiguration}
@@ -1256,6 +1264,7 @@ export default function Arena({
                         onAutoPlayToggle={handleAutoPlayToggle}
                         onResetArenaStats={resetArenaStats}
                         onSaveGameState={!tutorialMode && ((isPracticeRoom && !isAbilityTesting) || (isMatchTesting && finishStatus === "BUILDING")) ? saveGameState : null}
+                        liveLanes={practiceLanesLive}
                         customVariableValues={shapes.find((shape) => shape.id === "main")?.customVariables ?? {}}
                         opponentCustomVariableValues={shapes.find((shape) => shape.id === "opponent-model")?.customVariables ?? {}}
                         onFinishMatch={handleFinishMatch}

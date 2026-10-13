@@ -1,0 +1,46 @@
+{
+  "rule": "A lanes brain has at most eight modes.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [
+      {
+        "id": "m0",
+        "name": "Mode 0"
+      },
+      {
+        "id": "m1",
+        "name": "Mode 1"
+      },
+      {
+        "id": "m2",
+        "name": "Mode 2"
+      },
+      {
+        "id": "m3",
+        "name": "Mode 3"
+      },
+      {
+        "id": "m4",
+        "name": "Mode 4"
+      },
+      {
+        "id": "m5",
+        "name": "Mode 5"
+      },
+      {
+        "id": "m6",
+        "name": "Mode 6"
+      },
+      {
+        "id": "m7",
+        "name": "Mode 7"
+      },
+      {
+        "id": "m8",
+        "name": "Mode 8"
+      }
+    ],
+    "shared": {}
+  }
+}

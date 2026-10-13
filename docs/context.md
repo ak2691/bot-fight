@@ -21,8 +21,7 @@ document is stale.
   entity, replay field or bot-state change, and for reviews.
 - [`PLAYER_COORDINATES.md`](PLAYER_COORDINATES.md): public centered/Y-up
   coordinates versus internal ones.
-- [`CODE_WORKSPACE_REDESIGN.md`](CODE_WORKSPACE_REDESIGN.md): how the brain and
-  chain editors work today (execution order, nodes, panels, chains, toolbar).
+- [`CODE_WORKSPACE_REDESIGN.md`](CODE_WORKSPACE_REDESIGN.md): how the brain editor works today (execution order, nodes, panels, toolbar).
 - [`LANES.md`](LANES.md): the lanes programming model, the starting point for the
   next visual programming style (ordered cards per lane, modes, defaults). Not built.
 

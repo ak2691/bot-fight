@@ -261,8 +261,6 @@ export function resetBotShape(shape) {
         matchElapsedMs: 0,
         closingZoneDamageCount: 0,
         customVariables: {},
-        chainStack: [],
-        runningChain: null,
         abilityLastHitAgeMs: {},
         abilityHitsThisTick: [],
         activationSerial: 0,

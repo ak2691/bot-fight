@@ -11,6 +11,7 @@ import { STATE_VARIABLES } from "../../shared/engine/botlogic/code/contracts/Bot
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../shared/brain-tests");
 const V2 = "bot-logic-tree-v2";
+const LANES = "bot-logic-lanes-v1";
 const always = [{ type: "always" }];
 const clone = (value) => JSON.parse(JSON.stringify(value));
 // The editor fills a status effect in from the loadout; with none equipped the normalizer leaves null, so name one here.
@@ -22,7 +23,6 @@ const root = (branches = [branch()], overrides = {}) => ({ id: "root-1", name: "
 const variable = (id = "custom.n", valueType = "number") => ({ id, name: id.slice(7).toUpperCase() || "V", valueType, initialValue: valueType === "number" ? 0 : false });
 const withCondition = (condition) => ({ version: V2, loadout: { abilities: [] }, roots: [root([branch({ conditions: [condition] })])] });
 const expression = (left, right, extra = {}) => ({ type: "expression", left, comparator: "lt", right, ...extra });
-const chain = (steps, id = "chain.a") => ({ id, name: "A", steps });
 
 const valid = {};
 const invalid = {};
@@ -47,22 +47,6 @@ valid["custom-variables-and-actions"] = ["Number and boolean custom variables, s
         ],
     })])],
 })];
-valid["chains-and-run-chain"] = ["Chains with every step type, run by a root action.", {
-    version: V2, loadout: { abilities: [] },
-    chains: [
-        chain([
-            { type: "action", action: "move_walk", movementMode: "target", movementDirection: 0, forMs: 300 },
-            { type: "wait", forMs: 200 },
-            { type: "if", conditions: always, steps: [{ type: "end" }] },
-            { type: "elseIf", conditions: [], steps: [{ type: "runChain", chainId: "chain.b" }] },
-            { type: "repeat", count: 3, steps: [{ type: "exitLoop" }] },
-            { type: "repeat", whileConditions: always, maxMs: 500, steps: [{ type: "wait", forMs: 100 }] },
-            { type: "wait", untilConditions: always, maxMs: 1000 },
-        ]),
-        { ...chain([{ type: "end" }], "chain.b"), loose: [{ x: 10, y: 20, step: { type: "end" } }] },
-    ],
-    roots: [root([branch({ actions: [{ action: "run_chain", chainId: "chain.a" }] })])],
-}];
 valid["orphans"] = ["Unconnected nodes: a conditional and an action.", {
     version: V2, loadout: { abilities: [] }, roots: [],
     orphans: [
@@ -122,13 +106,6 @@ add("custom-variable-bad-name", "Custom variable names start with a letter.", "s
 add("custom-variable-wrong-initial-type", "A number variable starts at a number.", "schema", { version: V2, customVariables: [{ id: "custom.a", name: "A", valueType: "number", initialValue: true }], roots: [] });
 add("custom-variable-retired-conditions", "Custom variables no longer carry conditions.", "schema", { version: V2, customVariables: [{ id: "custom.a", name: "A", valueType: "number", initialValue: 0, conditions: [] }], roots: [] });
 add("node-position-out-of-range", "Editor positions are 0 to 1,000,000.", "schema", { version: V2, roots: [], nodePositions: { n: { x: 2000000, y: 0 } } });
-add("chain-bad-id", "Chain ids look like chain.name.", "schema", { version: V2, roots: [], chains: [{ id: "Bad Id", name: "x", steps: [] }] });
-add("chain-unknown-step-type", "Chain steps come from the closed step list.", "schema", { version: V2, roots: [], chains: [chain([{ type: "teleport" }])] });
-add("chain-wait-not-multiple-of-100", "Timed steps are whole ticks of 100 ms.", "schema", { version: V2, roots: [], chains: [chain([{ type: "wait", forMs: 150 }])] });
-add("chain-repeat-count-zero", "Repeat counts are 1 to 20.", "schema", { version: V2, roots: [], chains: [chain([{ type: "repeat", count: 0, steps: [] }])] });
-add("chain-step-runs-chain-control", "A chain cannot run chain-control or N/A actions.", "schema", { version: V2, roots: [], chains: [chain([{ type: "action", action: "run_chain", chainId: "chain.a" }])] });
-add("chain-step-list-over-32", "A step list holds at most 32 steps.", "schema", { version: V2, roots: [], chains: [chain(Array.from({ length: 33 }, () => ({ type: "end" })))] });
-add("chains-over-16", "At most 16 chains.", "schema", { version: V2, roots: [], chains: Array.from({ length: 17 }, (_, index) => chain([], `chain.c${index}`)) });
 add("orphan-unknown-kind", "Orphans are conditional or action nodes.", "schema", { version: V2, roots: [], orphans: [{ id: "a", kind: "other" }] });
 add("orphan-action-with-children", "An orphan action cannot contain a subtree.", "schema", { version: V2, roots: [], orphans: [{ id: "a", kind: "action", ...walk, children: [] }] });
 add("lead-aim-auto-without-ability", "aim auto needs a leadAbilityId.", "schema", mutated((b) => { b.roots[0].branches[0].actions[0] = { action: "rotate_toward_enemy", aim: "auto" }; }));
@@ -140,10 +117,6 @@ add("condition-reads-unknown-custom-variable", "Conditions only read declared cu
 add("boolean-custom-variable-compared-to-number", "A custom variable is compared with its own type.", "rules", {
     version: V2, customVariables: [variable("custom.flag", "boolean")], roots: [root([branch({ conditions: [expression("custom.flag", { type: "number", value: 1 })] })])] });
 add("variable-action-on-unknown-variable", "Variable actions write declared custom variables.", "rules", { version: V2, roots: [root([branch({ actions: [{ action: "variable", variableId: "custom.ghost", value: true }] })])] });
-add("duplicate-chain-ids", "Chain ids are unique.", "rules", { version: V2, roots: [], chains: [chain([]), chain([])] });
-add("run-chain-to-missing-chain", "Run chain names an existing chain.", "rules", { version: V2, roots: [root([branch({ actions: [{ action: "run_chain", chainId: "chain.nope" }] })])] });
-add("chain-call-cycle", "Chains cannot call each other in a cycle.", "rules", { version: V2, roots: [], chains: [chain([{ type: "runChain", chainId: "chain.b" }]), chain([{ type: "runChain", chainId: "chain.a" }], "chain.b")] });
-add("chain-loops-nested-three-deep", "Loops nest at most twice.", "rules", { version: V2, roots: [], chains: [chain([{ type: "repeat", count: 1, steps: [{ type: "repeat", count: 1, steps: [{ type: "repeat", count: 1, steps: [] }] }] }])] });
 add("else-branch-not-last", "An else branch is the last sibling.", "rules", { version: V2, roots: [root([branch(), branch({ id: "b2", branchType: "else", conditions: [] }), branch({ id: "b3", priority: 2 })])] });
 add("first-sibling-is-else", "The first sibling is an if.", "rules", { version: V2, roots: [root([branch({ branchType: "else", conditions: [] })])] });
 add("duplicate-custom-variable-id", "Custom variable ids are unique.", "rules", { version: V2, customVariables: [variable(), variable()], roots: [] });
@@ -211,6 +184,126 @@ for (const [slug, constraints, brain] of [
 ]) {
     invalid[slug] = ["Puzzle brains obey authored budgets and reserve the puzzle namespace for outcome rules.", "rules", brain, { puzzleConstraints: constraints }];
 }
+
+// ---- lanes brains (bot-logic-lanes-v1: sections, combos, attached movement; docs/LANES.md)
+const card = (id, action, conditions = always, extra = {}) => ({ id, conditions, action, ...extra });
+const walkToEnemy = { action: "move_walk", movementMode: "target", movementDirection: 0, selectable: "opponent_1" };
+const faceEnemy = { action: "rotate_toward_enemy", selectable: "opponent_1" };
+const slashEnemy = { action: 1, selectable: "opponent_1" };
+const dashAway = { action: 19, movementMode: "target", movementDirection: 180, selectable: "opponent_1" };
+const cancelWindup = { action: "cancel_windup" };
+const nearEnemy = (value) => ({ ...createExpressionCondition("selectable.distance"), comparator: "lte", right: { type: "number", value } });
+// Empty sections and switch lists are left out, as the normalizer writes them.
+const mode = (id, name, sections = {}, switches = []) => ({ id, name, ...(switches.length ? { switches } : {}), ...sections });
+const lanesBrain = (modes, shared = {}, extra = {}) => ({ version: LANES, modes, shared, ...extra });
+
+valid["lanes-minimal"] = ["One mode and one card: walk toward the enemy.", normalized(lanesBrain([
+    mode("neutral", "Neutral", { movement: [card("walk", walkToEnemy)] }),
+]))];
+valid["lanes-starter"] = ["The editor starter: Walk to enemy and Face enemy in Movement; one ability card per equipped ability, each within its range.", normalized(lanesBrain(
+    [mode("fight", "Fight", {
+        movement: [card("walk-to-enemy", walkToEnemy), card("face-enemy", faceEnemy)],
+        actions: [card("slash-when-near", slashEnemy, [nearEnemy(150)])],
+    })],
+))];
+valid["lanes-switches-shared-and-timer"] = ["Two modes: a shared retreat switch, a mode switch on distance, a timer switch back, shared movement (face) and a disabled card.", normalized(lanesBrain(
+    [
+        mode("neutral", "Neutral", {
+            movement: [card("walk", walkToEnemy), card("walk-off", walkToEnemy, always, { enabled: false })],
+        }, [{ id: "to-punish", to: "punish", conditions: [nearEnemy(150)] }]),
+        mode("punish", "Punish", { actions: [card("slash", slashEnemy)] }, [
+            { id: "to-neutral", to: "neutral", conditions: [expression("bot.timeInModeMs", { type: "number", value: 800 }, { comparator: "gte" })] },
+        ]),
+    ],
+    {
+        switches: [{ id: "retreat", to: "neutral", conditions: [{ ...createExpressionCondition("selectable.hp"), leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 30 } }] }],
+        movement: [card("face", faceEnemy)],
+    },
+))];
+valid["lanes-variable-section"] = ["Variable cards run in order: a set, then an add that applies while the count is low.", normalized(lanesBrain(
+    [mode("neutral", "Neutral", {
+        variables: [
+            card("reset", { action: "variable", variableId: "custom.count", value: 1 }),
+            card("count", { action: "variable", variableId: "custom.count", terms: [{ operator: "add", operand: { type: "number", value: 1 } }] },
+                [expression("custom.count", { type: "number", value: 3 })]),
+        ],
+    })],
+    undefined,
+    { customVariables: [variable("custom.count")] },
+))];
+valid["lanes-combo-attached-movement"] = ["A three-deep combo: Slash (walks in and faces while it winds up), Dash away, Slash with an attached walk-away and face, then Dash out.", normalized(lanesBrain(
+    [mode("neutral", "Neutral", {
+        actions: [card("slash-combo", slashEnemy, always, {
+            move: walkToEnemy,
+            face: faceEnemy,
+            followUps: [card("dash-away", dashAway, always, {
+                followUps: [card("slash-again", slashEnemy, always, {
+                    move: { ...walkToEnemy, movementDirection: 180 },
+                    face: faceEnemy,
+                    followUps: [card("dash-out", dashAway)],
+                })],
+            })],
+        })],
+    })],
+))];
+valid["lanes-cancel-card"] = ["A cancel card in Actions, and a cancel follow-up after a slash (a cancel holds no follow-ups).", normalized(lanesBrain(
+    [mode("neutral", "Neutral", {
+        actions: [
+            card("cancel-slash", cancelWindup, [expression("bot.anyAbilityPreparing", { type: "boolean", value: true }, { leftSelectable: "my_bot" })]),
+            card("slash-then-cancel", slashEnemy, always, { followUps: [card("cancel-follow", cancelWindup)] }),
+        ],
+    })],
+))];
+
+// ---- lanes invalid
+const laneBase = () => clone(valid["lanes-switches-shared-and-timer"][1]);
+const laneMutated = (change) => { const brain = laneBase(); change(brain); return brain; };
+add("lanes-no-modes", "A lanes brain has one to eight modes.", "schema", lanesBrain([]));
+add("lanes-nine-modes", "A lanes brain has at most eight modes.", "schema", lanesBrain(Array.from({ length: 9 }, (_, index) => mode(`m${index}`, `Mode ${index}`))));
+add("lanes-mode-name-too-long", "Mode names are at most 25 characters.", "schema", laneMutated((b) => { b.modes[0].name = "x".repeat(26); }));
+add("lanes-seven-conditions", "A card or switch holds at most six conditions.", "schema", laneMutated((b) => { b.modes[0].movement[0].conditions = Array.from({ length: 7 }, () => ({ type: "always" })); }));
+add("lanes-enabled-true", "enabled is only ever false; an enabled card leaves the field out.", "schema", laneMutated((b) => { b.modes[0].movement[0].enabled = true; }));
+add("lanes-null-field", "No field is null: a mode name is text.", "schema", laneMutated((b) => { b.modes[0].name = null; }));
+add("lanes-empty-section", "An empty section is left out, not written as an empty list.", "schema", laneMutated((b) => { b.modes[0].variables = []; }));
+add("lanes-na-action", "A card needs an action; N/A is not one.", "schema", laneMutated((b) => { b.modes[0].movement[0].action = { action: "none" }; }));
+add("lanes-ability-in-movement", "A movement card holds a move or rotation action: an ability is not one.", "rules", laneMutated((b) => { b.modes[0].movement.push(card("oops", slashEnemy)); }));
+add("lanes-switch-to-unknown-mode", "A switch names an existing mode.", "rules", laneMutated((b) => { b.modes[0].switches[0].to = "missing"; }));
+add("lanes-duplicate-ids", "Ids are unique across modes, switches and cards.", "rules", laneMutated((b) => { b.shared.movement.push(card("face", faceEnemy)); b.modes[1].actions[0].id = "face"; }));
+add("lanes-duplicate-mode-name", "Mode names are unique.", "rules", laneMutated((b) => { b.modes[1].name = "neutral"; }));
+add("lanes-cards-over-100", "Cards and switches together stay within 100, shared ones included.", "rules", lanesBrain(
+    [mode("neutral", "Neutral", { movement: Array.from({ length: 60 }, (_, index) => card(`w${index}`, walkToEnemy)) }),
+        mode("punish", "Punish", { movement: Array.from({ length: 60 }, (_, index) => card(`x${index}`, walkToEnemy)) })],
+));
+add("lanes-conditions-over-300", "A lanes brain holds at most 300 conditions in total.", "rules", lanesBrain(
+    Array.from({ length: 4 }, (_, modeIndex) => mode(`m${modeIndex}`, `Mode ${modeIndex}`, {
+        movement: Array.from({ length: 20 }, (_, index) => card(`c${modeIndex}-${index}`, walkToEnemy,
+            Array.from({ length: 4 }, () => ({ type: "always" })))),
+    })),
+));
+add("lanes-follow-up-on-movement", "Only ability and dash cards have follow-ups: a movement card cannot.", "rules", laneMutated((b) => {
+    b.modes[0].movement[0].followUps = [card("nope", dashAway)];
+}));
+add("lanes-follow-up-on-cancel", "A cancel card holds no follow-ups.", "rules", laneMutated((b) => {
+    b.modes[0].actions = [card("cancel", cancelWindup, always, { followUps: [card("nope", dashAway)] })];
+}));
+add("lanes-follow-up-depth-4", "Follow-ups nest at most three levels below a top-level card.", "rules", laneMutated((b) => {
+    b.modes[0].actions = [card("top", slashEnemy, always, { followUps: [
+        card("f1", dashAway, always, { followUps: [
+            card("f2", slashEnemy, always, { followUps: [
+                card("f3", dashAway, always, { followUps: [card("f4", slashEnemy)] }),
+            ] }),
+        ] }),
+    ] })];
+}));
+add("lanes-follow-up-duplicate-id", "Ids are unique across the whole brain, follow-ups included.", "rules", laneMutated((b) => {
+    b.modes[0].actions = [card("top", slashEnemy, always, { followUps: [card("same", dashAway), card("same", dashAway)] })];
+}));
+add("lanes-move-on-dash", "Attached movement sits only on ability cards: a dash card cannot carry a move.", "rules", laneMutated((b) => {
+    b.modes[0].actions = [card("dash", dashAway, always, { move: walkToEnemy })];
+}));
+add("lanes-move-is-not-movement", "An attached move is a move action: a rotation or an ability is not.", "rules", laneMutated((b) => {
+    b.modes[0].actions = [card("slash", slashEnemy, always, { move: faceEnemy })];
+}));
 
 // ---- write
 function writeAll(directory, entries, shape) {

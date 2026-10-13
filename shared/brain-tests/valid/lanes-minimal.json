@@ -1,0 +1,33 @@
+{
+  "description": "One mode and one card: walk toward the enemy.",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [
+      {
+        "id": "neutral",
+        "name": "Neutral",
+        "movement": [
+          {
+            "id": "walk",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "selectable": "opponent_1",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "targetMode": "target",
+              "targetX": 0,
+              "targetY": 0
+            }
+          }
+        ]
+      }
+    ],
+    "shared": {},
+    "customVariables": []
+  }
+}

@@ -3,7 +3,7 @@
 Status: server and shared engine sections 3, 4 and 6 built 2026-10-10. Client UI, saved brains/snippets and sparring remain unbuilt. It amends
 [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) (the "timed-rounds doc"): where they disagree,
 this document describes the intended change, and the timed-rounds doc describes what exists today. Sections of
-the timed-rounds doc that this one doesn't mention (movement and stamina, chains, carry-over, the zone, the HP
+the timed-rounds doc that this one doesn't mention (movement and stamina, carry-over, the zone, the HP
 decision) are unchanged.
 
 ## 1. Problem
@@ -167,7 +167,7 @@ With about 4 × 11 × 10 × 5 ≈ 2,200 possible kits, there can't be a starter 
 | Increment | +45 s on unlock rounds (1, 3, 5), +30 s on gap rounds (2, 4, 6), at the start of each build |
 | Maximum build time | Base + 3:45 (6:45 in 1v1, 7:45 in 2v2) |
 
-- Custom increment is the gap-round value (0�60 s); unlock rounds add another 15 s.
+- Custom increment is the gap-round value (0�60 s); unlock rounds add another 15 s.
 - **Why 30 s on gap rounds, not less:** a player who has used up their base clock must still be able to make one
   real change in every round. 20 s is barely enough to open the editor. 30 s is a penalty for spending too long
   earlier, but never leaves a player unable to act.

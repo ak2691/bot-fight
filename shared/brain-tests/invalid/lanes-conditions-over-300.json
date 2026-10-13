@@ -1,0 +1,1874 @@
+{
+  "rule": "A lanes brain holds at most 300 conditions in total.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [
+      {
+        "id": "m0",
+        "name": "Mode 0",
+        "movement": [
+          {
+            "id": "c0-0",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-1",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-2",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-3",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-4",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-5",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-6",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-7",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-8",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-9",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-10",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-11",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-12",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-13",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-14",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-15",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-16",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-17",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-18",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c0-19",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          }
+        ]
+      },
+      {
+        "id": "m1",
+        "name": "Mode 1",
+        "movement": [
+          {
+            "id": "c1-0",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-1",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-2",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-3",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-4",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-5",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-6",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-7",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-8",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-9",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-10",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-11",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-12",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-13",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-14",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-15",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-16",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-17",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-18",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c1-19",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          }
+        ]
+      },
+      {
+        "id": "m2",
+        "name": "Mode 2",
+        "movement": [
+          {
+            "id": "c2-0",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-1",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-2",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-3",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-4",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-5",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-6",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-7",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-8",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-9",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-10",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-11",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-12",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-13",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-14",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-15",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-16",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-17",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-18",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c2-19",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          }
+        ]
+      },
+      {
+        "id": "m3",
+        "name": "Mode 3",
+        "movement": [
+          {
+            "id": "c3-0",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-1",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-2",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-3",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-4",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-5",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-6",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-7",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-8",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-9",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-10",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-11",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-12",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-13",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-14",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-15",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-16",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-17",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-18",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          },
+          {
+            "id": "c3-19",
+            "conditions": [
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              },
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "selectable": "opponent_1"
+            }
+          }
+        ]
+      }
+    ],
+    "shared": {}
+  }
+}

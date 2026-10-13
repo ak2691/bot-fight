@@ -75,14 +75,20 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
             ...(dashBlock.phaseFacingMode != null ? { phaseFacingMode: dashBlock.phaseFacingMode } : {}),
         } : null,
         customVariables: { ...(plan.customVariables ?? state.player.customVariables ?? {}) },
-        // The running chain's call stack persists across ticks like the custom variables.
-        chainStack: plan.chainStack ?? [],
-        runningChain: plan.runningChain ?? null,
+        // Lanes brains only: the mode the bot is in this tick, so fight.js can keep it. Never sent to opponents.
+        ...(plan.modeId != null ? { mode: {
+            modeId: plan.modeId,
+            timeInModeMs: plan.timeInModeMs,
+            winners: plan.winners,
+            ...(plan.comboStepId != null ? { comboStepId: plan.comboStepId } : {}),
+            ...(plan.runningActionCardId != null ? { runningActionCardId: plan.runningActionCardId } : {}),
+            ...(plan.startedCardId != null ? { startedCardId: plan.startedCardId } : {}),
+        } } : {}),
     };
 }
 
 export function idleAction() {
-    return { dx: 0, dy: 0, dRot: 0, abilityAction: null, dashAction: null, customVariables: {}, chainStack: [], runningChain: null };
+    return { dx: 0, dy: 0, dRot: 0, abilityAction: null, dashAction: null, customVariables: {} };
 }
 
 function offsetTarget(target, block) {

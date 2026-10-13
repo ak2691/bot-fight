@@ -53,9 +53,6 @@ export default function AbilityStatusPanel({ bot, abilityInfoEnabled = false, st
                 </div>
                 {hasHp && <HpBar hp={Number(bot.hp)} maxHp={maxHp} />}
                 {hasHp && <StaminaBar bot={bot} />}
-                {bot?.runningChain && <span className="hud-fighter__chain" title={`Call depth ${bot.runningChain.callDepth}`}>
-                    Chain: {bot.runningChain.name ?? bot.runningChain.chainId}
-                </span>}
                 <div className="ability-status-panel__abilities hud-fighter__abilities">
                     <div className="hud-abilities">
                         {orderedAbilities.map(({ abilityId, index, base }) => (

@@ -4,7 +4,6 @@ import {
     MAX_TOTAL_CONDITIONS,
     BOT_LOGIC_TREE_VERSION,
 } from "./constants.js";
-import { normalizeChains } from "./chainNormalizer.js";
 import { normalizeOrphans } from "./rootNormalizer.js";
 import { uniquePrioritiesForNodes } from "./identifiers.js";
 import { NODE_POSITIONS_FIELD, normalizeNodePositions } from "./nodePositions.js";
@@ -17,17 +16,12 @@ export function normalizeConfiguration(configuration, operations) {
     const priorities = uniquePrioritiesForNodes(boundedRoots);
     const roots = boundedRoots
         .map((root, rootIndex) => operations.normalizeRoot(root, rootIndex, remaining, customVariables, priorities[rootIndex]));
-    // Chains share the roots' action and condition budget. Brains saved before chains existed have none and stay as they were.
-    const chains = Array.isArray(configuration?.chains)
-        ? normalizeChains(configuration.chains, remaining, customVariables, operations)
-        : null;
     const orphans = normalizeOrphans(configuration?.orphans, remaining, customVariables, operations);
     return {
         version: BOT_LOGIC_TREE_VERSION,
         roots,
         customVariables,
         ...(Array.isArray(configuration?.orphans) ? { orphans } : {}),
-        ...(chains ? { chains } : {}),
         ...(Object.prototype.hasOwnProperty.call(configuration ?? {}, NODE_POSITIONS_FIELD)
             ? { [NODE_POSITIONS_FIELD]: remapNodePositions(configuration?.[NODE_POSITIONS_FIELD], sourceRoots, roots) }
             : {}),

@@ -1,0 +1,73 @@
+{
+  "description": "Variable cards run in order: a set, then an add that applies while the count is low.",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [
+      {
+        "id": "neutral",
+        "name": "Neutral",
+        "variables": [
+          {
+            "id": "reset",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "variable",
+              "selectable": "opponent_1",
+              "variableId": "custom.count",
+              "terms": [
+                {
+                  "operator": "set",
+                  "operand": {
+                    "type": "number",
+                    "value": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "count",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "custom.count",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 3
+                }
+              }
+            ],
+            "action": {
+              "action": "variable",
+              "selectable": "opponent_1",
+              "variableId": "custom.count",
+              "terms": [
+                {
+                  "operator": "add",
+                  "operand": {
+                    "type": "number",
+                    "value": 1
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "shared": {},
+    "customVariables": [
+      {
+        "id": "custom.count",
+        "name": "COUNT",
+        "valueType": "number",
+        "initialValue": 0
+      }
+    ]
+  }
+}

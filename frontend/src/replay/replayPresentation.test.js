@@ -263,10 +263,10 @@ test("forfeit team formation keeps match-spawn spacing while centering the winne
     assert.deepEqual(centeredTeamPosition(1, 2), { x: 2_000 / 3, y: 500, rotation: 0 });
 });
 
-test("native frames preserve ability visuals, targets, variables and chain state", () => {
+test("native frames preserve ability visuals, targets and variables", () => {
     const bot = { kind: "bot", id: "main", slot: 1, x: 10, y: 20, hp: 250,
         abilityVisual: { ability: 20, ms: 200 }, abilityTargetX: 91,
-        customVariables: { "custom.counter": 3 }, runningChain: { chainId: "chain.a", path: [1] } };
+        customVariables: { "custom.counter": 3 } };
     const entity = { id: "beam", type: "beam", x: 30, y: 40 };
     const frame = { elapsedMs: 100, shapes: [bot, entity] };
     assert.equal(replayFrameBots(frame)[0], bot);
@@ -275,7 +275,6 @@ test("native frames preserve ability visuals, targets, variables and chain state
     assert.equal(rendered.shapes[0].x, 15);
     assert.equal(rendered.shapes[0].abilityVisual, bot.abilityVisual);
     assert.equal(rendered.shapes[0].abilityTargetX, 91);
-    assert.equal(rendered.shapes[0].runningChain, bot.runningChain);
     const handoff = initialReplayHandoffFrame({ shapes: [bot, entity] },
         { elapsedMs: 100, shapes: [{ ...bot, x: 20 }, entity] }, 50);
     assert.equal(handoff.shapes[0].x, 15);

@@ -2,6 +2,7 @@ import { buildStatePayload } from "./modelPayloads/strategyStatePayload.js";
 import { stateHash } from "./stateHash.js";
 import { createFight } from "./fight.js";
 import { normalizeAbilityStrategyConfiguration, evaluatePuzzleTick } from "./botlogic/code/BotCode.js";
+import { BOT_LOGIC_LANES_VERSION } from "./botlogic/code/configuration/constants.js";
 import { initialAbilityState } from "./gameconfig/AbilityResourceSystem.js";
 import { CLOSING_ZONE_CONFIG, TIMED_ROUNDS_ZONE_CONFIG } from "./gameconfig/ArenaHazardConfig.js";
 import { BASE_BOT_STATS, STANDARD_ABILITY_IDS, encodeBotLoadout, decodeBotLoadout } from "./loadout/BotLoadout.js";
@@ -16,7 +17,7 @@ import { createBotState, isBotState } from "./modelPayloads/botState.js";
  *
  * - A match is up to six 20 s segments of one continuous fight. `segments[i].endsAtMs` ends segment i; at
  *   each boundary the listed bots swap brain, loadout and custom variables (`variableResets` names variables,
- *   by id or name, that go back to their default) and a running chain ends. Position, HP, statuses,
+ *   by id or name, that go back to their default). Position, HP, statuses,
  *   cooldowns, wind-ups, stamina, entities and the closing zone carry over.
  * - `recordFromMs` (a segment start) records only that segment and stops when it ends, as the server does;
  *   frames are relative to the segment start. Without it the whole run is recorded.
@@ -91,7 +92,10 @@ export function simulateFight(request, hooks = {}) {
     let ended = null;
     let lastElapsedMs = 0;
     let puzzleStatus = null;
+    // The puzzle's own variables, carried between ticks. Brain variables are read from the bot each tick: a stale
+    // copy of them here would overwrite what the brain wrote (a lanes or tree variable card would stop at its first value).
     let puzzleVariables = null;
+    const puzzleVariableIds = new Set((request.puzzle?.logicConfiguration?.customVariables ?? []).map((variable) => variable.id));
     for (let elapsedMs = AUTO_STEP_MS; elapsedMs <= loopEndMs; elapsedMs += AUTO_STEP_MS) {
         // A segment boundary is the end of the previous tick: swap brains before any logic of this tick runs,
         // then start recording if this is the target segment.
@@ -112,10 +116,11 @@ export function simulateFight(request, hooks = {}) {
             const player = fight.bots.find((bot) => bot.slot === 1 && bot.teamNumber === 1)
                 ?? fight.bots.filter((bot) => bot.teamNumber === 1).sort((a, b) => a.slot - b.slot)[0];
             if (!player) throw new Error("Puzzle requires a player on team 1");
+            const carried = puzzleVariables == null ? null : { ...puzzleVariables, ...player.customVariables };
             const evaluated = evaluatePuzzleTick(request.puzzle.logicConfiguration,
-                buildStatePayload(fight.frame(), player.combatLoadout, player.id), puzzleVariables, slots.get(player.slot)?.brain.configuration.customVariables);
-            puzzleVariables = evaluated.customVariables;
-            player.customVariables = { ...player.customVariables, ...puzzleVariables };
+                buildStatePayload(fight.frame(), player.combatLoadout, player.id), carried, slots.get(player.slot)?.brain.configuration.customVariables);
+            player.customVariables = { ...player.customVariables, ...evaluated.customVariables };
+            puzzleVariables = Object.fromEntries(Object.entries(evaluated.customVariables).filter(([id]) => puzzleVariableIds.has(id)));
             puzzleStatus = evaluated.status ?? (elapsedMs >= request.puzzle.timeLimitMs ? "failed" : null);
             if (puzzleStatus) break;
         }
@@ -162,8 +167,8 @@ function buildResult(fight, ended, continues, segmentEndMs, engineVersion) {
         winnerTeam,
         teamHp,
         segmentEndMs,
-        endState: fight.bots.map(({ slot, x, y, rotation, hp, teamNumber, stamina, sprinting, runningChain }) =>
-            ({ slot, x, y, rotation, hp, teamNumber, stamina, sprinting, runningChain })),
+        endState: fight.bots.map(({ slot, x, y, rotation, hp, teamNumber, stamina, sprinting }) =>
+            ({ slot, x, y, rotation, hp, teamNumber, stamina, sprinting })),
     };
 }
 
@@ -207,11 +212,23 @@ function createRecorder(arena, recordStartMs) {
     return recorder;
 }
 
-/** The fight's frame without the working brain of the bots outside the two main slots (not a render field). */
+/**
+ * The fight's frame without the working brain of the bots outside the two main slots (not a render field), and
+ * without a lanes bot's mode: a replay never shows which mode a bot is in.
+ */
 function renderFrame(fight) {
-    return fight.frame().map((shape) => (isBotState(shape) && shape.strategyConfiguration != null
-        ? { ...shape, strategyConfiguration: null }
-        : shape));
+    return fight.frame().map((shape) => {
+        if (!isBotState(shape)) return shape;
+        const bot = "modeId" in shape || "timeInModeMs" in shape || "comboStepId" in shape || "runningActionCardId" in shape ? withoutMode(shape) : shape;
+        return bot.strategyConfiguration != null ? { ...bot, strategyConfiguration: null } : bot;
+    });
+}
+
+function withoutMode(bot) {
+    const { modeId: _modeId, timeInModeMs: _timeInModeMs, comboStepId: _comboStepId, runningActionCardId: _runningActionCardId, lastPredictedAction, ...rest } = bot;
+    if (!lastPredictedAction || !("mode" in lastPredictedAction)) return { ...rest, lastPredictedAction };
+    const { mode: _mode, ...action } = lastPredictedAction;
+    return { ...rest, lastPredictedAction: action };
 }
 
 /**
@@ -318,7 +335,7 @@ function applyBrains(fight, slots) {
 /**
  * Applies one segment's brain schedule at its boundary. Only brain, loadout and custom variables change: an
  * ability the bot did not have starts ready with full charges, while the cooldowns, charges, wind-up, stamina,
- * position, HP and statuses already in play carry over. A running chain ends.
+ * position, HP and statuses already in play carry over.
  */
 function applySegment(fight, slots, segment) {
     for (const update of segment.bots ?? []) {
@@ -343,10 +360,26 @@ function applySegment(fight, slots, segment) {
         bot.abilityState = abilityState;
         bot.combatLoadout = encodeBotLoadout({ abilities });
         bot.customVariables = reconcileVariables(bot.customVariables, previous.brain.configuration, brain.configuration, update.variableResets);
-        bot.chainStack = [];
-        bot.runningChain = null;
+        carryMode(bot, brain.configuration);
     }
     applyBrains(fight, slots);
+}
+
+/**
+ * A lanes bot keeps its mode and time in mode when the new brain still has that mode; otherwise it starts the
+ * first mode at 0. A tree brain has no modes, so the bot's mode state is dropped.
+ */
+function carryMode(bot, configuration) {
+    // A segment boundary drops a pending combo (its follow-ups are tried only right after their parent ends).
+    delete bot.comboStepId;
+    if (configuration?.version !== BOT_LOGIC_LANES_VERSION) {
+        delete bot.modeId;
+        delete bot.timeInModeMs;
+        return;
+    }
+    if (configuration.modes.some((mode) => mode.id === bot.modeId)) return;
+    bot.modeId = configuration.modes[0]?.id ?? null;
+    bot.timeInModeMs = 0;
 }
 
 /**

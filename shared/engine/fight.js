@@ -120,10 +120,14 @@ function act(fight, decisions) {
     setCombatStage("act");
     for (const { bot, action } of decisions) {
         bot.lastPredictedAction = action;
+        // A lanes bot carries its mode into the next tick: time in mode grows by one tick, unless the mode changed now.
+        if (action.mode) {
+            bot.modeId = action.mode.modeId;
+            bot.timeInModeMs = action.mode.timeInModeMs + AUTO_STEP_MS;
+        }
         applyBotAction(bot, action, AUTO_STEP_MS, fight.bots);
+        if (action.mode) trackComboState(bot, action);
         bot.customVariables = action.customVariables;
-        bot.chainStack = action.chainStack ?? [];
-        bot.runningChain = action.runningChain ?? null;
     }
     for (const bot of fight.bots) {
         if (bot.triggeredAbility == null) continue;
@@ -132,6 +136,32 @@ function act(fight, decisions) {
             abilityId: ACTION_TO_ABILITY[bot.triggeredAbility] ?? bot.triggeredAbility,
         });
     }
+}
+
+/**
+ * A lanes bot's combo state after this tick (docs/LANES.md). A new start counts only when the executor really started
+ * that action this tick (its ability or dash was triggered); a card that won its section but did not start leaves no
+ * combo step and no running action, so its follow-ups never fire for a move that did not happen. A kept state (no new
+ * start this tick) is taken as planned. A dead bot has none.
+ */
+export function trackComboState(bot, action) {
+    const mode = action.mode;
+    const alive = (bot.hp ?? 0) > 0;
+    const started = mode.startedCardId == null || startedAction(action, bot.triggeredAbility);
+    const keep = alive && started;
+    setOrClear(bot, "comboStepId", keep ? mode.comboStepId ?? null : null);
+    setOrClear(bot, "runningActionCardId", keep ? mode.runningActionCardId ?? null : null);
+}
+
+/** True when the action this tick's plan started (its ability or dash) is the one the executor triggered. */
+function startedAction(action, triggered) {
+    if (triggered == null) return false;
+    return action.abilityAction?.action === triggered || action.dashAction?.action === triggered;
+}
+
+function setOrClear(bot, key, value) {
+    if (value == null) delete bot[key];
+    else bot[key] = value;
 }
 
 /** The activation verbs of the abilities that activated this tick hit the opposing bots or apply to their owner. */

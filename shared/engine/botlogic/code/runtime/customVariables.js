@@ -49,7 +49,6 @@ export function customVariablesWithReferencedActions(configuration) {
     };
 
     visit(configuration?.roots);
-    visit(configuration?.chains);
     visit(configuration?.orphans);
     return variables;
 }

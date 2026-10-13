@@ -206,7 +206,7 @@ abstract class MatchWorkflowFixture {
     }
 
     protected static WorkerReplay.EndBotState replayBot(MatchPlayer player, double hp) {
-        return new WorkerReplay.EndBotState(player.slot(),100,100,0.0,hp,player.teamNumber(),100,false,null);
+        return new WorkerReplay.EndBotState(player.slot(),100,100,0.0,hp,player.teamNumber(),100,false);
     }
 
     // ---- timed rounds: clocks, picks and endings -----------------------------------------------

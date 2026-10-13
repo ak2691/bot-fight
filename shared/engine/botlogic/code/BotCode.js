@@ -8,11 +8,11 @@ import { hasStrategyActions, selectStrategyActionPlan } from "./runtime/actionSe
 import { validateConfiguration } from "./configuration/validation.js";
 import { compareAngleValues, compareValues, evaluateConditionNode, evaluateConditionNodes, rightOperandView, rightPairFieldValues } from "./runtime/conditionEvaluator.js";
 import { normalizeConfiguration } from "./configuration/normalization.js";
-import { normalizeChainActionFields } from "./configuration/chainNormalizer.js";
-import { validateChains } from "./configuration/chainValidation.js";
 import { isLinkId } from "./configuration/linkedActions.js";
 import { stateFromPayload } from "./runtime/runtimeState.js";
 import { selectPriorityCandidates as selectCandidates } from "./runtime/treeSelection.js";
+import { normalizeLanesConfiguration } from "./configuration/lanesNormalization.js";
+import { selectLanesActionPlan } from "./runtime/lanesSelection.js";
 import { normalizeRoot as normalizeCodeRoot } from "./configuration/rootNormalizer.js";
 import { actionExecutableNow as canExecuteAction, actionSupportsAim, actionSupportsTarget } from "./runtime/actionRuntime.js";
 import { countConditionSlots, countVariableSlots } from "./configuration/configurationMetrics.js";
@@ -25,7 +25,9 @@ import {
     resolveCustomVariable as resolveCustomVariableValue,
 } from "./runtime/customVariables.js";
 import {
+    BOT_LOGIC_LANES_VERSION,
     COORDINATE_LIMITS,
+    LANE_SECTIONS,
     MAX_LOGIC_BLOCKS,
     MAX_ROOT_NODES,
     MAX_TOTAL_CONDITIONS,
@@ -175,7 +177,9 @@ export function normalizeConditionSelections(condition, variable, rightVariable 
     return normalized;
 }
 
+/** Tree brains and lanes brains are told apart by `version`; each has its own normalizer, sharing these operations. */
 export function normalizeAbilityStrategyConfiguration(configuration) {
+    if (configuration?.version === BOT_LOGIC_LANES_VERSION) return normalizeLanesConfiguration(configuration, laneOperations());
     return normalizeConfiguration(configuration, {
         normalizeCustomVariables: (source) => normalizeCustomVariableDefinitions(source, { normalizeConditions, normalizeBoolean, clamp }),
         customVariablesWithReferencedActions,
@@ -187,8 +191,6 @@ export function normalizeAbilityStrategyConfiguration(configuration) {
         normalizePriority,
         normalizeConditions,
         normalizeRoots,
-        normalizeActionEntry: normalizeChainStepAction,
-        actionHead: rawActionHead,
         defaultConfiguration: createDefaultAbilityStrategyConfiguration,
     });
 }
@@ -202,29 +204,27 @@ export function validateAbilityStrategyConfiguration(configuration, { validateSc
         normalizeConfiguration: normalizeAbilityStrategyConfiguration,
         countVariableSlots,
         countConditionSlots,
-        validateChains: (configuration) => validateChains(configuration, { actionHead: rawActionHead }),
         validateSchema,
     });
 }
 
-/** The execution head of a raw action ID or name, or null when it is not a known action. */
-function rawActionHead(action) {
-    const id = typeof action === "string" ? abilityIdFromName(action) ?? action : action;
-    const definition = ACTION_BY_ID.get(id);
-    return definition ? actionExecutionHead(definition) : null;
-}
-
-/** A chain step's action, normalized like a root action. Chains cannot run N/A or chain control. */
-function normalizeChainStepAction(raw) {
-    const [entry] = normalizedBlockActions({ actions: [raw] });
-    if (!entry || [BOT_CODE_ACTIONS.NONE, BOT_CODE_ACTIONS.RUN_CHAIN].includes(entry.action)) return null;
-    // Links join tree actions only; a chain step's steps stay a sequence.
-    const { linkId: _linkId, ...step } = entry;
-    return step;
+function laneOperations() {
+    return {
+        normalizeCustomVariables: (source) => normalizeCustomVariableDefinitions(source, { normalizeConditions, normalizeBoolean, clamp }),
+        customVariablesWithReferencedActions,
+        normalizeConditions,
+        // A lanes card holds one action: the tree's normalized entry without its entry identity.
+        normalizeActionEntry: (entry) => {
+            const [normalizedEntry] = normalizedBlockActions({ actions: [entry] });
+            const { id: _id, linkId: _linkId, ...action } = normalizedEntry;
+            return action;
+        },
+    };
 }
 
 /** Takes a normalized configuration (normalizeAbilityStrategyConfiguration); it is never normalized per call. */
 export function selectAbilityStrategyActionPlan(normalized, payload) {
+    if (normalized.version === BOT_LOGIC_LANES_VERSION) return selectLanesActionPlan(normalized, payload, selectionRuntime());
     return selectStrategyActionPlan(normalized, payload, selectionRuntime());
 }
 
@@ -284,7 +284,8 @@ export function inspectAbilityStrategyConditions(configuration, payload) {
             visitBranches(branch.children, rootName, branchPath);
         });
     };
-    normalized.roots.forEach((root) => visitBranches(root.branches, root.name));
+    // Lanes brains have no roots yet; their inspection is not part of this format.
+    (normalized.roots ?? []).forEach((root) => visitBranches(root.branches, root.name));
     return inspections;
 }
 
@@ -328,6 +329,10 @@ function abilityInspection(value) {
 }
 
 export function hasAbilityStrategyActions(normalized) {
+    if (normalized.version === BOT_LOGIC_LANES_VERSION) {
+        const hasEntries = (set) => (set.switches?.length ?? 0) > 0 || LANE_SECTIONS.some((section) => (set[section]?.length ?? 0) > 0);
+        return normalized.modes.some(hasEntries) || hasEntries(normalized.shared);
+    }
     return hasStrategyActions(normalized);
 }
 
@@ -566,7 +571,7 @@ function normalizedBlockActions(block) {
         const entries = action.variableAction ? [normalizeVariableActionEntry(entry)] : [entry];
         for (const normalizedEntry of entries) {
             const head = actionExecutionHead(action);
-            const headKey = head === ACTION_HEADS.VARIABLE || head === ACTION_HEADS.CHAIN ? `${head}:${normalized.length}` : head;
+            const headKey = head === ACTION_HEADS.VARIABLE ? `${head}:${normalized.length}` : head;
             if (seenHeads.has(headKey)) continue;
             seenHeads.add(headKey);
             const movementMode = action.movementConfig
@@ -610,7 +615,6 @@ function normalizedBlockActions(block) {
                 } : {}),
                 ...(actionSupportsAim(action) && (targetMode == null || targetMode === "target")
                     ? normalizeAim(normalizedEntry) : {}),
-                ...(action.chainAction ? normalizeChainActionFields({ ...normalizedEntry, action: action.id }) : {}),
                 ...(action.variableAction ? {
                     variableId: String(normalizedEntry?.variableId ?? ""),
                     ...(normalizedEntry?.value === true || normalizedEntry?.value === false

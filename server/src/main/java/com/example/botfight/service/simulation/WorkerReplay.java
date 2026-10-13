@@ -1,7 +1,6 @@
 package com.example.botfight.service.simulation;
 
 import java.util.List;
-import tools.jackson.databind.JsonNode;
 
 /** Only metadata is interpreted by Spring; render payloads are retained verbatim. */
 public record WorkerReplay(Result result, String initialState, List<Batch> batches) {
@@ -11,7 +10,7 @@ public record WorkerReplay(Result result, String initialState, List<Batch> batch
                          List<EndBotState> endState, String puzzleStatus) {}
     /** Frozen segment summary for the next-round preview and result presentation. */
     public record EndBotState(int slot, double x, double y, Double rotation, double hp, int teamNumber,
-                              Integer stamina, Boolean sprinting, JsonNode runningChain) {}
+                              Integer stamina, Boolean sprinting) {}
     public record Batch(int sequence, int endMs, boolean terminal, String frames) {}
 
     public String frames() {

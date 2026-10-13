@@ -474,4 +474,3 @@
     .ability-status-icon-button::before { inset: -.375rem -.25rem; }
 }
 
-.hud-fighter__chain { grid-column: 1 / -1; align-self: flex-start; justify-self: start; max-width: 100%; padding: 3px 7px; border: 1px solid #367286; border-radius: 5px; background: #16323a; color: #b9effa; font: 600 12px "Chakra Petch", sans-serif; overflow-wrap: anywhere; }

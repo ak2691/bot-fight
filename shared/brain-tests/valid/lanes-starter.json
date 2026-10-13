@@ -1,0 +1,76 @@
+{
+  "description": "The editor starter: Walk to enemy and Face enemy in Movement; one ability card per equipped ability, each within its range.",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [
+      {
+        "id": "fight",
+        "name": "Fight",
+        "movement": [
+          {
+            "id": "walk-to-enemy",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "selectable": "opponent_1",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "targetMode": "target",
+              "targetX": 0,
+              "targetY": 0
+            }
+          },
+          {
+            "id": "face-enemy",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "rotate_toward_enemy",
+              "selectable": "opponent_1",
+              "targetOffsetX": 0,
+              "targetOffsetY": 0,
+              "targetMode": "target",
+              "targetX": 0,
+              "targetY": 0,
+              "targetAngle": 0
+            }
+          }
+        ],
+        "actions": [
+          {
+            "id": "slash-when-near",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.distance",
+                "comparator": "lte",
+                "right": {
+                  "type": "number",
+                  "value": 150
+                },
+                "selectable1": "my_bot",
+                "selectable2": "opponent_1",
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0
+              }
+            ],
+            "action": {
+              "action": 1,
+              "selectable": "opponent_1"
+            }
+          }
+        ]
+      }
+    ],
+    "shared": {},
+    "customVariables": []
+  }
+}

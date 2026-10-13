@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lanes editor mockup</title>
+<!-- Reference mockup approved by the owner on 2026-10-13. Build the real editor to match it.
+     Icons here come from the Tabler webfont only for the mockup; the app uses its own inline SVG icons. -->
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+:root{--page:#0d1114;--menu:#181e24;--line:#262f37;--text:#e6edf3;--muted:#8b98a5;--faint:#5d6873;--accent:#5fd4f0;--accent2:#3aa6c9;--cond:#16364a;--condSel:#1f4c66;--condIcon:#9fdcf2;--value:#ffd166;--danger:#f08a8a}
+body{margin:0;background:var(--page);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:13px;padding:24px}
+h2{font-family:'Chakra Petch',sans-serif;font-size:15px;color:var(--muted);margin:28px 0 8px;font-weight:600}
+p.note{color:var(--muted);max-width:760px;margin:0 0 12px;line-height:1.5}
+.cp{font-family:'Chakra Petch',sans-serif}
+/* Tiles: chevrons. The action tile is first (flat left edge), condition tiles notch into it. */
+.t{display:flex;align-items:center;gap:7px;height:38px;padding:0 20px 0 9px;clip-path:polygon(0 0,calc(100% - 11px) 0,100% 50%,calc(100% - 11px) 100%,0 100%,7px 50%);flex:none;white-space:nowrap;cursor:pointer}
+.t.first{clip-path:polygon(0 0,calc(100% - 11px) 0,100% 50%,calc(100% - 11px) 100%,0 100%);padding-left:6px}
+.t:hover{filter:brightness(1.18)}
+.ic{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+.act-name{font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:14px}
+.cond{background:var(--cond)}.cond.sel{background:var(--condSel)}
+.cond i{color:var(--condIcon);font-size:16px}
+.val{font-family:'Chakra Petch',sans-serif;color:var(--value);font-weight:700}
+.row{display:flex;align-items:center;gap:8px;padding:3px 6px;border-radius:7px;position:relative}
+.row:hover{background:rgba(255,255,255,.03)}
+.num{width:16px;text-align:right;color:var(--faint);font-size:13px;flex:none;font-family:'Chakra Petch',sans-serif}
+.tiles{display:flex;gap:2px;flex-wrap:wrap;flex:1;min-width:0;align-items:center}
+.add{height:30px;display:flex;align-items:center;gap:5px;padding:0 10px;margin-left:6px;border-radius:6px;border:1.5px dashed #2a3c45;color:#6f8a96;font-size:12.5px;cursor:pointer;flex:none}
+.add:hover,.add.open{border-color:var(--accent2);color:var(--accent);background:rgba(95,212,240,.06)}
+.more{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;font-size:16px;opacity:0}
+.row:hover .more,.more.open{opacity:1}.more:hover,.more.open{background:rgba(255,255,255,.06);color:var(--text)}
+.lane{margin-bottom:14px}
+.tag{font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;letter-spacing:.05em;margin:0 0 4px 6px;display:inline-block}
+.fu{margin-left:26px;padding-left:12px;border-left:2px solid #2a3239}
+.ghost{color:var(--faint);font-size:13px;margin:2px 0 0 30px;display:inline-block;padding:3px 6px;border-radius:5px;cursor:pointer}
+.ghost:hover{background:rgba(255,255,255,.06);color:var(--text)}
+.off .tiles{opacity:.4}
+.offtag{color:var(--muted);font-size:12px;flex:none}
+.menu{background:var(--menu);border:1px solid #2f3a43;border-radius:10px;overflow:hidden}
+.rowmenu{position:absolute;right:6px;top:34px;padding:4px;z-index:2;min-width:170px}
+.rowmenu div{padding:6px 10px;border-radius:5px;cursor:pointer}.rowmenu div:hover{background:rgba(255,255,255,.06)}
+.editor{background:var(--menu);border:1px solid #2c5566;border-radius:8px;padding:8px 12px;margin:4px 0 8px 30px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:560px}
+.seg{display:inline-flex;border:1px solid #30363d;border-radius:6px;overflow:hidden}
+.seg span{padding:4px 10px;cursor:pointer;color:var(--muted)}.seg span.on{background:#1f3a47;color:var(--accent)}
+.numbox{width:70px;height:30px;background:var(--page);border:1px solid #30363d;border-radius:6px;color:var(--text);font-family:monospace;padding:0 8px;font-size:14px;box-sizing:border-box}
+.remove{color:var(--danger);cursor:pointer;margin-left:auto}
+/* Condition menu: search row (no box of its own), category rail, scrolling list. Fixed 300 px. */
+.cmenu{width:430px;max-width:100%;margin-top:6px}
+.sr{display:flex;align-items:center;gap:8px;padding:0 12px;height:40px;border-bottom:1px solid var(--line)}
+.sr input{all:unset;flex:1;color:var(--text);font-size:13.5px;height:38px}
+.sr input::placeholder{color:#6b7782}
+.body{display:flex;height:260px}
+.rail{width:118px;border-right:1px solid var(--line);padding:6px;flex:none;overflow-y:auto}
+.cat{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;cursor:pointer;color:#aab6c2}
+.cat:hover{background:rgba(255,255,255,.05)}.cat.on{background:rgba(255,255,255,.07);color:var(--text)}
+.dot{width:8px;height:8px;border-radius:2px;flex:none}
+.cnt{margin-left:auto;font-family:monospace;font-size:11px;color:var(--faint)}
+.list{flex:1;overflow-y:auto;padding:4px 6px}
+.sec{font-size:11.5px;font-weight:700;letter-spacing:.05em;padding:8px 8px 4px;position:sticky;top:-4px;background:var(--menu)}
+.it{display:flex;align-items:baseline;gap:9px;padding:6px 8px;border-radius:6px;cursor:pointer}
+.it:hover,.it.hi{background:rgba(95,212,240,.09)}
+.it i{color:var(--condIcon);font-size:15px;align-self:center}
+.it .d{color:#7b8792;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Card menu */
+.kmenu{width:430px;max-width:100%;margin-top:6px}
+.abgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;padding:12px;max-height:180px;overflow-y:auto}
+.ab{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-radius:8px;border:1px solid #2a3239;cursor:pointer;text-align:center}
+.ab:hover{border-color:#f0a03c;background:rgba(240,160,60,.07)}
+.rm{padding:0 6px 8px}
+.foot{border-top:1px solid var(--line);padding:9px 12px;color:#aab6c2;display:flex;gap:8px}
+.phone{width:360px;border:1px solid #2a3239;border-radius:14px;padding:12px;margin-top:6px}
+</style>
+</head>
+<body>
+
+<h2>1. Sections with cards</h2>
+<p class="note">Three sections: MOVEMENT, ACTIONS, VARIABLES. Each is a coloured label plus a one-line rule in muted text, no box. Tiles are coloured by action kind (Move cyan, Face violet, Ability amber, Dash teal, Cancel red). A card is one row: priority number, action tile, condition tiles, then an always-visible dashed "+ Condition"; the ⋯ menu shows on row hover (always on phones). In ACTIONS, combos are indented under their parent with a 2px left line; a follow-up has no number. Attached movement sits right after an ability tile as smaller tiles joined by a "＋" (here Fireball ＋ Back away ＋ Face enemy), added from ⋯ "Add movement while casting". A card that is off is dimmed with an "Off" label. VARIABLES shows only its label and "+" while empty.</p>
+<div style="max-width:760px">
+ <div style="display:flex;align-items:center;margin-bottom:14px"><span class="cp" style="font-size:16px;font-weight:700">Your bot's brain</span></div>
+ <div class="lane"><span class="tag" style="color:#3aa6c9">MOVEMENT</span> <span style="color:var(--faint);font-size:12px">the top Move and the top Face card run</span>
+  <div class="row"><span class="num">1</span><div class="tiles"><div class="t first" style="background:#13303b"><div class="ic" style="background:#3aa6c9;color:#0d1114"><i class="ti ti-walk"></i></div><span class="act-name">Walk to enemy</span></div><div class="t cond"><i class="ti ti-ruler-measure"></i>Distance <span class="val">&ge; 120</span></div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more">&#8943;</span></div>
+  <div class="row"><span class="num">2</span><div class="tiles"><div class="t first" style="background:#13303b"><div class="ic" style="background:#3aa6c9;color:#0d1114"><i class="ti ti-arrow-back-up"></i></div><span class="act-name">Back away</span></div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more">&#8943;</span></div>
+  <div class="row"><span class="num">3</span><div class="tiles"><div class="t first" style="background:#2a2340"><div class="ic" style="background:#a78bfa;color:#0d1114"><i class="ti ti-target-arrow"></i></div><span class="act-name">Face enemy</span></div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more">&#8943;</span></div>
+  <span class="ghost"><i class="ti ti-plus"></i> Card</span></div>
+ <div class="lane"><span class="tag" style="color:#f0a03c">ACTIONS</span> <span style="color:var(--faint);font-size:12px">one at a time: the top card that can act</span>
+  <div class="row"><span class="num">1</span><div class="tiles"><div class="t first" style="background:#3a2a12"><div class="ic" style="background:#0d1114;border:1.5px solid #f0a03c;color:#f0a03c"><i class="ti ti-sword"></i></div><span class="act-name">Slash</span></div><div class="t cond"><i class="ti ti-hourglass"></i>Enemy winding up</div><div class="t cond"><i class="ti ti-ruler-measure"></i>Distance <span class="val">&le; Slash range</span></div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more open">&#8943;</span>
+   <div class="menu rowmenu"><div><i class="ti ti-corner-down-right"></i> Add follow-up</div><div><i class="ti ti-walk"></i> Add movement while casting</div><div><i class="ti ti-copy"></i> Duplicate</div><div><i class="ti ti-arrow-up"></i> Move up</div><div><i class="ti ti-arrow-down"></i> Move down</div><div><i class="ti ti-eye-off"></i> Turn off</div><div style="color:var(--danger)"><i class="ti ti-trash"></i> Delete</div></div></div>
+  <div class="fu"><div class="row"><div class="tiles"><div class="t first" style="background:#123329"><div class="ic" style="background:#0d1114;border:1.5px solid #5dcaa5;color:#5dcaa5"><i class="ti ti-run"></i></div><span class="act-name">Dash away</span></div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more">&#8943;</span></div>
+   <div class="fu"><div class="row"><div class="tiles"><div class="t first" style="background:#3a2a12"><div class="ic" style="background:#0d1114;border:1.5px solid #f0a03c;color:#f0a03c"><i class="ti ti-flame"></i></div><span class="act-name">Fireball</span></div><span style="color:var(--faint);padding:0 4px">&#65291;</span><div class="t first" style="background:#13303b;height:30px;font-size:12.5px"><i class="ti ti-arrow-back-up" style="color:#3aa6c9"></i>Back away</div><span style="color:var(--faint);padding:0 4px">&#65291;</span><div class="t first" style="background:#2a2340;height:30px;font-size:12.5px"><i class="ti ti-target-arrow" style="color:#a78bfa"></i>Face enemy</div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more">&#8943;</span></div></div></div>
+  <div class="row"><span class="num">2</span><div class="tiles"><div class="t first" style="background:#4a1c1c"><div class="ic" style="background:#0d1114;border:1.5px solid #e46a6a;color:#e46a6a"><i class="ti ti-x"></i></div><span class="act-name">Cancel wind-up</span></div><div class="t cond"><i class="ti ti-run"></i>Enemy dashing</div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more">&#8943;</span></div>
+  <div class="row"><span class="num">3</span><div class="tiles"><div class="t first" style="background:#3a2a12"><div class="ic" style="background:#0d1114;border:1.5px solid #f0a03c;color:#f0a03c"><i class="ti ti-sword"></i></div><span class="act-name">Slash</span></div><div class="t cond"><i class="ti ti-ruler-measure"></i>Distance <span class="val">&le; 90</span></div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more">&#8943;</span></div>
+  <div class="row off"><span class="num">4</span><div class="tiles"><div class="t first" style="background:#123329"><div class="ic" style="background:#0d1114;border:1.5px solid #5dcaa5;color:#5dcaa5"><i class="ti ti-run"></i></div><span class="act-name">Dash in</span></div><div class="t cond"><i class="ti ti-ruler-measure"></i>Distance <span class="val">&ge; 200</span></div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="offtag">Off</span><span class="more">&#8943;</span></div>
+  <span class="ghost"><i class="ti ti-plus"></i> Card</span></div>
+ <div class="lane"><span class="tag" style="color:#e58fc0">VARIABLES</span> <span class="ghost" style="margin:0"><i class="ti ti-plus"></i></span></div>
+</div>
+
+<h2>1b. Live highlight (practice room)</h2>
+<p class="note">While a preview runs, every card that acted this tick gets a 3px left bar in its kind colour (usually several: a Move, a Face and maybe an action). A running combo step keeps its bar while its action runs, and its parent rows show a faint bar so the whole combo path is visible.</p>
+
+<h2>2. Inline condition editor (opens under the row when a condition tile is clicked)</h2>
+<p class="note">One line: what it reads, comparator (≥ ≤ =), the value. The value is a plain number box, or a reading shown with a "Num | reading" toggle when the condition compares against one (e.g. Slash range). True/false readings show a two-option toggle instead. Remove is quiet red on the right. No side panel.</p>
+<div class="editor" style="margin-left:0"><span>Enemy HP</span><span class="seg"><span>≥</span><span class="on">≤</span><span>=</span></span><input class="numbox" value="50" aria-label="Value"><span class="remove">Remove</span></div>
+<div class="editor" style="margin-left:0"><span>Slash</span><span class="seg"><span class="on">ready</span><span>not ready</span></span><span class="remove">Remove</span></div>
+
+<h2>3. Condition menu (opens from "+ Condition"; the button itself never changes shape)</h2>
+<p class="note">A separate menu below the button, shifted left if it would overflow. Search is the menu's first row with no box of its own (same background as the menu) and is focused on open. Fixed height 300 px: category rail with counts on the left, one scrolling list on the right with sticky section headers. Each item is icon, short name and a muted one-line description. Typing filters live, fades empty categories, highlights the first match; ↑ ↓ Enter Esc work. The ability group is named after the card's ability. Picking an item adds the tile and opens its inline editor.</p>
+<div class="menu cmenu">
+ <div class="sr"><i class="ti ti-search" style="color:#6b7782;font-size:16px"></i><input placeholder="Search conditions"></div>
+ <div class="body"><div class="rail">
+  <div class="cat on"><span class="dot" style="background:#3aa6c9"></span>Me<span class="cnt">7</span></div><div class="cat"><span class="dot" style="background:#ff7166"></span>Enemy<span class="cnt">8</span></div><div class="cat"><span class="dot" style="background:#f0a03c"></span>Slash<span class="cnt">5</span></div><div class="cat"><span class="dot" style="background:#d4a35a"></span>Other abilities<span class="cnt">4</span></div><div class="cat"><span class="dot" style="background:#5dcaa5"></span>Objects<span class="cnt">2</span></div><div class="cat"><span class="dot" style="background:#8b98a5"></span>Match<span class="cnt">2</span></div><div class="cat"><span class="dot" style="background:#a78bfa"></span>Variables<span class="cnt">2</span></div></div>
+  <div class="list"><div class="sec" style="color:#3aa6c9">ME</div>
+   <div class="it"><i class="ti ti-heart"></i><span>HP</span><span class="d">my current HP</span></div>
+   <div class="it"><i class="ti ti-bolt"></i><span>Stamina</span><span class="d">my stamina</span></div>
+   <div class="it"><i class="ti ti-run"></i><span>Moving</span><span class="d">I am moving</span></div>
+   <div class="it"><i class="ti ti-arrows-maximize"></i><span style="white-space:nowrap">Edge distance</span><span class="d">how close I am to the edge</span></div>
+   <div class="sec" style="color:#ff7166">ENEMY</div>
+   <div class="it hi"><i class="ti ti-ruler-measure"></i><span>Distance</span><span class="d">how far the enemy is</span></div>
+   <div class="it"><i class="ti ti-heart-broken"></i><span style="white-space:nowrap">Enemy HP</span><span class="d">the enemy's HP</span></div>
+   <div class="it"><i class="ti ti-hourglass"></i><span style="white-space:nowrap">Winding up</span><span class="d">charging an ability</span></div>
+   <div class="it"><i class="ti ti-eye"></i><span style="white-space:nowrap">In view</span><span class="d">inside my facing arc</span></div>
+   <div class="sec" style="color:#f0a03c">SLASH</div>
+   <div class="it"><i class="ti ti-clock-pause"></i><span>Ready</span><span class="d">can be used now</span></div>
+   <div class="it"><i class="ti ti-target"></i><span style="white-space:nowrap">Hit recently</span><span class="d">seconds since it hit</span></div>
+  </div></div>
+</div>
+
+<h2>4. Card menu (opens from "+ Card" in a section, or "Add follow-up")</h2>
+<p class="note">Same menu shell and search row. Shows only the actions that fit: for Movement the move and face actions, for Actions the abilities, dash and cancel; abilities show as the kit as big icon tiles (scrolls if many). Below: ready-made cards (one click adds a finished card). The footer shows the hovered action's stats. For "Add follow-up" it shows the Actions choices (abilities, dash, cancel). For "Add movement while casting" it shows move and face actions.</p>
+<div class="menu kmenu">
+ <div class="sr"><i class="ti ti-search" style="color:#6b7782;font-size:16px"></i><input placeholder="Search ability cards"></div>
+ <div class="abgrid">
+  <div class="ab"><div class="ic" style="width:40px;height:40px;font-size:24px;background:#f0a03c;color:#0d1114"><i class="ti ti-sword"></i></div><span class="act-name">Slash</span></div>
+  <div class="ab"><div class="ic" style="width:40px;height:40px;font-size:24px;background:#f0a03c;color:#0d1114"><i class="ti ti-flame"></i></div><span class="act-name">Fireball</span></div>
+  <div class="ab"><div class="ic" style="width:40px;height:40px;font-size:24px;background:#f0a03c;color:#0d1114"><i class="ti ti-shield"></i></div><span class="act-name">Guard</span></div>
+  <div class="ab"><div class="ic" style="width:40px;height:40px;font-size:24px;background:#f0a03c;color:#0d1114"><i class="ti ti-bomb"></i></div><span class="act-name">Mine</span></div>
+ </div>
+ <div style="padding:0 12px 4px;color:var(--muted);font-size:12px">Ready-made</div>
+ <div class="rm">
+  <div class="it"><i class="ti ti-sword" style="color:#f0a03c"></i><span class="act-name">Slash</span><span class="d">when enemy within Slash range</span></div>
+  <div class="it"><i class="ti ti-flame" style="color:#f0a03c"></i><span class="act-name">Fireball</span><span class="d">when ready and enemy in view</span></div>
+  <div class="it"><i class="ti ti-shield" style="color:#f0a03c"></i><span class="act-name">Guard</span><span class="d">when enemy winding up</span></div>
+ </div>
+ <div class="foot"><span style="color:var(--text);font-weight:500">Slash</span><span>Melee, 12 dmg, 0.4 s wind-up</span></div>
+</div>
+
+<h2>6. Inline action editor (opens under the row when the action tile is clicked)</h2>
+<p class="note">Same shell as the condition editor. The action name with "Change" (opens the card menu to swap the action, keeping the conditions), then Target as a segmented control showing only the targets this action supports (Enemy, Me, Point, Angle; Point/Angle reveal their small number boxes), then the action's own settings as compact controls in the same row, wrapping if needed (segmented for choices, a switch for on/off, number boxes for numbers). Abilities aimed at an entity show Aim: Current | Lead | Auto (Lead reveals a seconds box); Auto is the default for projectile abilities. An &#9432; after the ability name opens the details panel (section 7). "Delete card" is quiet red on the right. Action tile labels include a short target: "Walk to enemy", "Face enemy", "Dash away"; abilities show just their name. Real ability icons sit on a dark square with a lane-coloured border (not on a solid colour fill), so every icon stays visible.</p>
+<div class="editor" style="margin-left:0;max-width:640px"><span class="act-name">Walk</span><span style="color:var(--accent);cursor:pointer;font-size:12.5px">Change</span><span style="color:var(--muted)">Target</span><span class="seg"><span class="on">Enemy</span><span>Point</span></span><span style="color:var(--muted)">Direction</span><span class="seg"><span class="on">Toward</span><span>Away</span><span>Strafe</span></span><span style="color:var(--muted)">Sprint</span><span style="width:30px;height:17px;border-radius:9px;background:#30363d;display:inline-block"></span><span class="remove">Delete card</span></div>
+<div style="display:flex;gap:2px;margin-top:10px"><div class="t first" style="background:#3a2a12"><div class="ic" style="background:#0d1114;border:1.5px solid #f0a03c;color:#f0a03c"><i class="ti ti-crosshair"></i></div><span class="act-name">Sniper</span></div></div>
+
+<h2>7. Details panel (&#9432; on the action editor and on ability tiles in the card menu)</h2>
+<p class="note">A small popover anchored to the &#9432;, in the menu colours. Ability name with its icon, a one-line description, then a two-column grid of stats in mono numbers with units: damage, wind-up, active time, cooldown, range, projectile speed, stamina cost. Only stats the ability has are shown. Esc or a click outside closes it. No editing here.</p>
+<div class="menu" style="width:300px;padding:12px">
+ <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div class="ic" style="background:#0d1114;border:1.5px solid #f0a03c;color:#f0a03c"><i class="ti ti-flame"></i></div><span class="act-name">Fireball</span></div>
+ <div style="color:var(--muted);margin-bottom:10px">Throws a fireball that explodes on the first bot it hits.</div>
+ <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 14px">
+  <span style="color:var(--muted)">Damage</span><span style="font-family:monospace">18</span>
+  <span style="color:var(--muted)">Wind-up</span><span style="font-family:monospace">0.6 s</span>
+  <span style="color:var(--muted)">Cooldown</span><span style="font-family:monospace">1.2 s</span>
+  <span style="color:var(--muted)">Range</span><span style="font-family:monospace">400</span>
+  <span style="color:var(--muted)">Projectile speed</span><span style="font-family:monospace">600 / s</span>
+ </div>
+</div>
+
+<h2>5. Phone (360 px)</h2>
+<p class="note">Same rows; tiles wrap onto a second line when needed. ⋯ is always visible. Both menus open as bottom sheets: search on top, categories become a sideways-scrolling chip row, the list fills the rest.</p>
+<div class="phone">
+ <span class="tag" style="color:#f0a03c">ABILITY</span>
+ <div class="row"><span class="num">1</span><div class="tiles"><div class="t first" style="background:#3a2a12"><div class="ic" style="background:#f0a03c;color:#0d1114"><i class="ti ti-sword"></i></div><span class="act-name">Slash</span></div><div class="t cond"><i class="ti ti-ruler-measure"></i>Distance <span class="val">≤ 90</span></div><div class="t cond"><i class="ti ti-clock-pause"></i>Ready</div><div class="add"><i class="ti ti-plus"></i>Condition</div></div><span class="more" style="opacity:1">⋯</span></div>
+</div>
+</body>
+</html>

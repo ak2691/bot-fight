@@ -1,5 +1,4 @@
-// Pure edits to a custom-variable action entry's operands. Shared by the main canvas and the
-// chain editor so a Variable action behaves the same wherever it lives.
+// Pure edits to a custom-variable action entry's operands, so a Variable action behaves the same wherever it is edited.
 import { CUSTOM_VARIABLE_OPERATIONS, defaultSelectableForVariable } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 
 /** The terms of a number variable action; older single-operand entries read as one term. */

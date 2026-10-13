@@ -5,7 +5,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
     ACTION_TYPES,
-    CHAIN_ACTION_TYPES,
     SELECTABLE_TYPES,
     STATE_VARIABLES,
 } from "../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
@@ -18,10 +17,11 @@ import {
 import { actionSupportsAim, actionSupportsTarget } from "../../shared/engine/botlogic/code/runtime/actionRuntime.js";
 import { LINK_ID_PATTERN } from "../../shared/engine/botlogic/code/configuration/linkedActions.js";
 import {
-    CHAIN_MS_MAX, CHAIN_MS_STEP, MAX_CHAINS, MAX_CHAIN_NAME_LENGTH, MAX_CHAIN_STEPS, MAX_LEAD_SECONDS,
-    MAX_LOGIC_BLOCKS, MAX_REPEAT_COUNT, MAX_ROOT_NAME_LENGTH, MAX_ROOT_NODES, MAX_TOTAL_CONDITIONS,
+    MAX_LEAD_SECONDS,
+    MAX_LOGIC_BLOCKS, MAX_ROOT_NAME_LENGTH, MAX_ROOT_NODES, MAX_TOTAL_CONDITIONS,
     MAX_CUSTOM_VARIABLE_SLOTS, MAX_VARIABLE_ACTION_TERMS, CUSTOM_NUMBER_MAX, CUSTOM_NUMBER_MIN,
-    BOT_LOGIC_TREE_VERSION, COORDINATE_LIMITS,
+    BOT_LOGIC_LANES_VERSION, BOT_LOGIC_TREE_VERSION, COORDINATE_LIMITS,
+    LANE_SECTIONS, MAX_LANE_CARDS_AND_SWITCHES, MAX_LANE_CONDITIONS_PER_ENTRY, MAX_LANE_MODE_NAME_LENGTH, MAX_LANE_MODES,
 } from "../../shared/engine/botlogic/code/configuration/constants.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../shared/engine/modelPayloads/arenaConstants.js";
 
@@ -88,6 +88,8 @@ function selectableRef(variable, slot = null) {
 const num = (minimum, maximum) => ({ type: "number", minimum, maximum });
 const int = (minimum, maximum) => ({ type: "integer", minimum, maximum });
 const idString = { type: "string", minLength: 1, maxLength: 160 };
+/** Ids of orphans, modes, switches and cards: today's identifier rule. */
+const idPattern = { type: "string", pattern: "^[A-Za-z0-9_:. -]{1,160}$" };
 const customId = { type: "string", pattern: "^custom\\.[A-Za-z0-9_.-]{1,52}$" };
 const customNumber = num(CUSTOM_NUMBER_MIN, CUSTOM_NUMBER_MAX);
 const abilityIds = ALL_ABILITY_DEFINITIONS.map((a) => a.id);
@@ -121,8 +123,6 @@ function commonDefs() {
         ...selectableDefs(),
         customNumber,
         customVariableId: customId,
-        chainId: { type: "string", pattern: "^chain\\.[a-z0-9_-]{1,40}$" },
-        ms: { type: "integer", minimum: CHAIN_MS_STEP, maximum: CHAIN_MS_MAX, multipleOf: CHAIN_MS_STEP },
         angle: num(-360, 360),
         abilityId: { enum: abilityIds },
         statusEffect: { enum: statusIds },
@@ -362,10 +362,10 @@ function treeDefs() {
     defs.conditions = { type: "array", maxItems: MAX_TOTAL_CONDITIONS, items: ref("condition") };
 
     // ---- actions
-    const actionDefs = [...ACTION_TYPES, ...CHAIN_ACTION_TYPES];
+    const actionDefs = [...ACTION_TYPES];
     const classKey = (a) => JSON.stringify([
         a.id === "move_walk" || a.id === "rotate_toward_enemy" || a.id === "none" || a.id === "variable"
-            || a.id === "cancel_windup" || a.id === "run_chain" ? a.id : "ability",
+            || a.id === "cancel_windup" ? a.id : "ability",
         a.head, Boolean(a.movementConfig), Boolean(a.coordinateTarget), Boolean(a.angleTarget),
         Boolean(a.orientationConfig), Boolean(a.targetMode), Boolean(a.locationTarget),
     ]);
@@ -376,7 +376,7 @@ function treeDefs() {
         classes.get(key).push(action);
     }
 
-    function actionClass(members, { chainStep }) {
+    function actionClass(members) {
         const sample = members[0];
         const ids = members.map((a) => a.id);
         const properties = { action: { enum: ids }, selectable: ref("selectable") };
@@ -424,10 +424,6 @@ function treeDefs() {
             properties.leadAbilityId = ref("abilityId");
             allOf.push({ if: { properties: { aim: { const: "auto" } }, required: ["aim"] }, then: { required: ["leadAbilityId"] } });
         }
-        if (sample.chainAction) {
-            properties.chainId = ref("chainId");
-            allOf.push({ required: ["chainId"] });
-        }
         if (sample.variableAction) {
             properties.variableId = ref("customVariableId");
             properties.value = { anyOf: [{ type: "boolean" }, customNumber] };
@@ -441,31 +437,12 @@ function treeDefs() {
             allOf.push({ required: ["variableId"] });
             allOf.push({ anyOf: [{ required: ["value"] }, { required: ["operand"] }, { required: ["terms"] }] });
         }
-        if (chainStep) {
-            const timed = sample.head === "movement" || sample.head === "rotation";
-            if (timed) {
-                properties.forMs = ref("ms");
-                properties.untilConditions = ref("conditions");
-                properties.maxMs = ref("ms");
-                allOf.push({
-                    oneOf: [
-                        { required: ["forMs"], not: { anyOf: [{ required: ["untilConditions"] }, { required: ["maxMs"] }] } },
-                        { required: ["untilConditions", "maxMs"], not: { required: ["forMs"] } },
-                    ],
-                });
-            } else if (sample.head === "ability" || sample.head === "dash") {
-                properties.continue = { enum: ["end", "now"] };
-            }
-        }
         return { if: { properties: { action: { enum: ids } }, required: ["action"] }, then: { properties, ...(allOf.length ? { allOf } : {}) } };
     }
 
     const entryClasses = [...classes.values()];
-    defs.actionFields = { allOf: entryClasses.map((members) => actionClass(members, { chainStep: false })) };
-    const chainClasses = entryClasses.filter((members) => !["none", "run_chain"].includes(members[0].id));
-    defs.chainActionFields = { allOf: chainClasses.map((members) => actionClass(members, { chainStep: true })) };
+    defs.actionFields = { allOf: entryClasses.map((members) => actionClass(members)) };
     const allActionIds = actionDefs.map((a) => a.id);
-    const chainActionIds = chainClasses.flat().map((a) => a.id);
     defs.actionEntry = {
         type: "object",
         required: ["action"],
@@ -510,7 +487,7 @@ function treeDefs() {
     defs.roots = { type: "array", maxItems: MAX_ROOT_NODES, items: ref("root") };
 
     // ---- orphans
-    const orphanId = { type: "string", pattern: "^[A-Za-z0-9_:. -]{1,160}$" };
+    const orphanId = idPattern;
     defs.orphan = {
         type: "object",
         required: ["kind", "id"],
@@ -529,92 +506,105 @@ function treeDefs() {
     };
     defs.orphans = { type: "array", maxItems: MAX_NODES, items: ref("orphan") };
 
-    // ---- chains
-    const timedStep = {
-        oneOf: [
-            { required: ["forMs"], not: { anyOf: [{ required: ["untilConditions"] }, { required: ["maxMs"] }] } },
-            { required: ["untilConditions", "maxMs"], not: { required: ["forMs"] } },
-        ],
-    };
-    defs.step = {
-        type: "object",
-        required: ["type"],
-        properties: { type: { enum: ["action", "wait", "if", "elseIf", "repeat", "runChain", "exitLoop", "end"] } },
-        allOf: [
-            {
-                if: { properties: { type: { const: "action" } } },
-                then: { required: ["action"], properties: { id: idString, action: { enum: chainActionIds } }, allOf: [ref("chainActionFields")] },
-            },
-            {
-                if: { properties: { type: { const: "wait" } } },
-                then: { properties: { forMs: ref("ms"), untilConditions: ref("conditions"), maxMs: ref("ms") }, ...timedStep },
-            },
-            {
-                if: { properties: { type: { enum: ["if", "elseIf"] } } },
-                then: { required: ["conditions", "steps"], properties: { conditions: ref("conditions"), steps: ref("steps") } },
-            },
-            {
-                if: { properties: { type: { const: "repeat" } } },
-                then: {
-                    required: ["steps"],
-                    properties: {
-                        count: int(1, MAX_REPEAT_COUNT), whileConditions: ref("conditions"), maxMs: ref("ms"), steps: ref("steps"),
-                    },
-                    oneOf: [
-                        { required: ["count"], not: { anyOf: [{ required: ["whileConditions"] }, { required: ["maxMs"] }] } },
-                        { required: ["whileConditions", "maxMs"], not: { required: ["count"] } },
-                    ],
-                },
-            },
-            {
-                if: { properties: { type: { const: "runChain" } } },
-                then: { required: ["chainId"], properties: { chainId: ref("chainId") } },
-            },
-        ],
-        unevaluatedProperties: false,
-    };
-    defs.steps = { type: "array", maxItems: MAX_CHAIN_STEPS, items: ref("step") };
-    defs.chain = {
-        type: "object",
-        required: ["id", "steps"],
-        properties: {
-            id: ref("chainId"),
-            name: { type: "string", minLength: 1, maxLength: MAX_CHAIN_NAME_LENGTH, pattern: "\\S" },
-            steps: ref("steps"),
-            loose: {
-                type: "array", maxItems: MAX_CHAIN_STEPS,
-                items: {
-                    type: "object", required: ["step", "x", "y"],
-                    properties: { step: ref("step"), x: num(0, MAX_NODE_COORDINATE), y: num(0, MAX_NODE_COORDINATE) },
-                    additionalProperties: false,
-                },
-            },
-        },
-        additionalProperties: false,
-    };
-    defs.chains = { type: "array", maxItems: MAX_CHAINS, items: ref("chain") };
-    return defs;
-}
-
-export function buildBrainSchema() {
-    return {
-        $schema: "https://json-schema.org/draft/2020-12/schema",
-        $id: SCHEMA_ID,
-        title: "Botfight brain",
-        description: "The submitted logic-block configuration. Generated by frontend/scripts/generate-brain-schema.mjs; do not edit by hand.",
+    // The whole tree brain: its top-level fields and the closed set of properties it accepts.
+    defs.treeBrain = {
         type: "object",
         required: ["version", "roots"],
         properties: {
             version: { const: BOT_LOGIC_TREE_VERSION },
             roots: ref("roots"),
             orphans: ref("orphans"),
-            chains: ref("chains"),
             customVariables: { type: "array", maxItems: MAX_CUSTOM_VARIABLE_SLOTS, items: ref("customVariable") },
             loadout: ref("loadout"),
             nodePositions: ref("nodePositions"),
         },
         additionalProperties: false,
-        $defs: { ...commonDefs(), ...treeDefs() },
+    };
+    return defs;
+}
+
+// ------------------------------------------------------------------ lanes brain definitions
+/** Lanes brain (bot-logic-lanes-v1): modes, switches and cards. Totals and lane membership are brainRules.js checks. */
+function lanesDefs() {
+    const defs = {};
+    defs.laneConditions = { type: "array", maxItems: MAX_LANE_CONDITIONS_PER_ENTRY, items: ref("condition") };
+    // A card's action is an ordinary action entry; a card with no action (N/A) is meaningless and rejected.
+    defs.laneAction = { allOf: [ref("actionEntry"), { properties: { action: { not: { const: "none" } } } }] };
+    defs.laneCard = {
+        type: "object",
+        required: ["id", "conditions", "action"],
+        properties: {
+            id: idPattern,
+            conditions: ref("laneConditions"),
+            action: ref("laneAction"),
+            // Only ever false: a card is on unless it is switched off, and then it stays in place.
+            enabled: { const: false },
+            // Follow-ups are cards too (recursive). Only ability and dash cards may have them, holding ability, dash or
+            // cancel cards, at most three levels down; brainRules.js checks these, since the schema cannot tell a card's
+            // section from its action.
+            followUps: { type: "array", minItems: 1, maxItems: MAX_LANE_CARDS_AND_SWITCHES, items: ref("laneCard") },
+            // Attached movement: a move action and a rotation action that run while an ability card's ability is
+            // winding up or active. Only ability cards may carry them (brainRules.js).
+            move: ref("laneAction"),
+            face: ref("laneAction"),
+        },
+        additionalProperties: false,
+    };
+    defs.laneSwitch = {
+        type: "object",
+        required: ["id", "to", "conditions"],
+        properties: { id: idPattern, to: idPattern, conditions: ref("laneConditions") },
+        additionalProperties: false,
+    };
+    defs.laneSwitches = { type: "array", minItems: 1, maxItems: MAX_LANE_CARDS_AND_SWITCHES, items: ref("laneSwitch") };
+    // Each section is omitted when empty (the normalizer never writes an empty list).
+    const sectionProperties = Object.fromEntries(LANE_SECTIONS.map((section) => [section, {
+        type: "array", minItems: 1, maxItems: MAX_LANE_CARDS_AND_SWITCHES, items: ref("laneCard"),
+    }]));
+    defs.laneMode = {
+        type: "object",
+        required: ["id", "name"],
+        properties: {
+            id: idPattern,
+            name: { type: "string", minLength: 1, maxLength: MAX_LANE_MODE_NAME_LENGTH, pattern: "\\S" },
+            switches: ref("laneSwitches"),
+            ...sectionProperties,
+        },
+        additionalProperties: false,
+    };
+    defs.laneShared = {
+        type: "object",
+        properties: { switches: ref("laneSwitches"), ...sectionProperties },
+        additionalProperties: false,
+    };
+    defs.lanesBrain = {
+        type: "object",
+        required: ["version", "modes", "shared"],
+        properties: {
+            version: { const: BOT_LOGIC_LANES_VERSION },
+            modes: { type: "array", minItems: 1, maxItems: MAX_LANE_MODES, items: ref("laneMode") },
+            shared: ref("laneShared"),
+            customVariables: { type: "array", maxItems: MAX_CUSTOM_VARIABLE_SLOTS, items: ref("customVariable") },
+            loadout: ref("loadout"),
+        },
+        additionalProperties: false,
+    };
+    return defs;
+}
+
+/** A brain is a tree brain or a lanes brain, told apart by `version`. */
+export function buildBrainSchema() {
+    return {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        $id: SCHEMA_ID,
+        title: "Botfight brain",
+        description: "The submitted logic configuration: a tree brain (bot-logic-tree-v2) or a lanes brain (bot-logic-lanes-v1). Generated by frontend/scripts/generate-brain-schema.mjs; do not edit by hand.",
+        type: "object",
+        required: ["version"],
+        if: { properties: { version: { const: BOT_LOGIC_LANES_VERSION } }, required: ["version"] },
+        then: ref("lanesBrain"),
+        else: ref("treeBrain"),
+        $defs: { ...commonDefs(), ...treeDefs(), ...lanesDefs() },
     };
 }
 

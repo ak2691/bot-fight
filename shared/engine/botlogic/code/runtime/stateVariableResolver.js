@@ -69,6 +69,8 @@ export function resolveStateVariable(state, condition, variableId, selectableId,
 
 const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.MATCH_ELAPSED_SECONDS]: ({ state }) => millisecondsToSeconds(state.player.matchElapsedMs),
+    // Only lanes brains set the bot's mode; a tree bot has no time in mode and reads 0.
+    [STATE_VARIABLE_SOURCES.BOT_TIME_IN_MODE_MS]: ({ state }) => Number(state.player?.timeInModeMs ?? 0),
     [STATE_VARIABLE_SOURCES.SELECTABLE_DISTANCE]: ({ selectable, target }) => distanceBetween(selectable, target),
     [STATE_VARIABLE_SOURCES.SELECTABLE_DAMAGE_TAKEN_LAST_TICK]: ({ selectable, normalizedSelectableId }) => selectableDamageTaken(normalizedSelectableId, selectable),
     [STATE_VARIABLE_SOURCES.SELECTABLE_HP_NET_CHANGE_LAST_TICK]: ({ selectable, normalizedSelectableId }) => selectableHpNetChange(normalizedSelectableId, selectable),

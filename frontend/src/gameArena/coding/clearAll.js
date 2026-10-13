@@ -5,7 +5,6 @@ export function clearAllCounts(configuration) {
     return {
         roots: configuration?.roots?.length ?? 0,
         unconnected: configuration?.orphans?.length ?? 0,
-        chains: configuration?.chains?.length ?? 0,
         variables: configuration?.customVariables?.length ?? 0,
     };
 }
@@ -14,7 +13,6 @@ export function clearAllMessage(counts) {
     const parts = [
         counts.roots && plural(counts.roots, "root"),
         counts.unconnected && plural(counts.unconnected, "unconnected node"),
-        counts.chains && plural(counts.chains, "chain"),
         counts.variables && plural(counts.variables, "variable"),
     ].filter(Boolean);
     if (!parts.length) return "";
@@ -22,8 +20,8 @@ export function clearAllMessage(counts) {
     return `Delete ${list}?`;
 }
 
-// Roots (with their root actions), orphans, chains, variables and node positions all go in one edit,
+// Roots (with their root actions), orphans, variables and node positions all go in one edit,
 // so a single undo restores everything.
 export function clearedConfiguration(configuration) {
-    return { ...configuration, roots: [], orphans: [], chains: [], customVariables: [], nodePositions: {} };
+    return { ...configuration, roots: [], orphans: [], customVariables: [], nodePositions: {} };
 }

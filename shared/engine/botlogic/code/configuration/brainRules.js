@@ -1,8 +1,15 @@
 import { ACTION_TO_ABILITY, STANDARD_ABILITY_IDS } from "../../../loadout/BotLoadout.js";
 import { ACTION_BY_ID, ACTION_HEADS, CUSTOM_VARIABLE_CONTRACT, STATE_VARIABLE_BY_ID } from "../contracts/BotLogicContracts.js";
-import { countActionSlots, countConditionSlots } from "./configurationMetrics.js";
-import { validateChains } from "./chainValidation.js";
-import { MAX_LOGIC_BLOCKS, MAX_TOTAL_CONDITIONS, MAX_CUSTOM_VARIABLE_SLOTS } from "./constants.js";
+import { countActionSlots, countConditionSlots, countLaneTotals } from "./configurationMetrics.js";
+import {
+    BOT_LOGIC_LANES_VERSION,
+    MAX_CUSTOM_VARIABLE_SLOTS,
+    MAX_FOLLOW_UP_DEPTH,
+    MAX_LANE_CARDS,
+    MAX_LANE_CONDITIONS_PER_ENTRY,
+    MAX_LOGIC_BLOCKS,
+    MAX_TOTAL_CONDITIONS,
+} from "./constants.js";
 
 /** Deepest branch nesting. With the server's JSON nesting cap this also bounds every recursion below. */
 export const MAX_TREE_DEPTH = 40;
@@ -13,7 +20,7 @@ const list = (value) => (Array.isArray(value) ? value : []);
 const actionHead = (action) => ACTION_BY_ID.get(action)?.head ?? null;
 
 /**
- * The brain rules a JSON Schema cannot express: references (variables, chains, equipped abilities),
+ * The brain rules a JSON Schema cannot express: references (variables, equipped abilities),
  * sibling order, one action per head, nesting depth and totals across the whole brain. Run them on a brain
  * that already passed shared/schemas/brain.schema.json. The sim-worker runs them for every submission and
  * puzzle (POST /validate), so this is the one implementation. `puzzleRules: true` checks outcome
@@ -29,8 +36,8 @@ export function brainRuleErrors(brain, { puzzleRules = false, requireActions = !
     if (countConditionSlots(brain) > MAX_TOTAL_CONDITIONS) errors.push(`Conditions exceed the ${MAX_TOTAL_CONDITIONS} condition slots.`);
     if (countActionSlots(puzzleRules ? puzzleRulesAsBrain(brain) : brain) > MAX_LOGIC_BLOCKS) errors.push(`Actions exceed the ${MAX_LOGIC_BLOCKS} action limit.`);
     checkTree(brain, true, errors);
+    if (brain.version === BOT_LOGIC_LANES_VERSION) checkLanes(brain, errors);
     if (requireActions) checkLoadout(brain, errors);
-    errors.push(...validateChains(brain, { actionHead }));
     return errors;
 }
 
@@ -112,7 +119,7 @@ function checkTree(brain, requireActions, errors) {
         const heads = new Set();
         actions.forEach((entry, index) => {
             const head = actionHead(entry?.action) ?? ACTION_HEADS.ABILITY;
-            const key = head === ACTION_HEADS.VARIABLE || head === ACTION_HEADS.CHAIN ? `${head}:${index}` : head;
+            const key = head === ACTION_HEADS.VARIABLE ? `${head}:${index}` : head;
             if (heads.has(key)) errors.push(`${path} has more than one ${head} action.`);
             heads.add(key);
         });
@@ -142,6 +149,75 @@ function checkTree(brain, requireActions, errors) {
         checkBranches(node.children, `${here}.children`);
     });
     if (nodes > MAX_TREE_NODES) errors.push(`The brain has more than ${MAX_TREE_NODES} conditional nodes.`);
+}
+
+/** The action categories each section holds: Movement holds move and rotation, Actions holds ability, dash and cancel. */
+const SECTION_HEADS = Object.freeze({
+    movement: [ACTION_HEADS.MOVEMENT, ACTION_HEADS.ROTATION],
+    actions: [ACTION_HEADS.ABILITY, ACTION_HEADS.DASH, ACTION_HEADS.CANCEL],
+    variables: [ACTION_HEADS.VARIABLE],
+});
+const FOLLOW_UP_HEADS = [ACTION_HEADS.ABILITY, ACTION_HEADS.DASH, ACTION_HEADS.CANCEL];
+
+/**
+ * Lanes brains (docs/LANES.md): ids are unique across cards (follow-ups included); every card's action belongs to the
+ * section it sits in. Follow-ups sit only under ability and dash cards, hold ability, dash or cancel cards, and nest at
+ * most MAX_FOLLOW_UP_DEPTH levels below the top-level card. Attached movement (`move`, `face`) sits only on ability
+ * cards, and holds a move action and a rotation action respectively. The cards (follow-ups included) of the whole brain
+ * stay within MAX_LANE_CARDS (disabled ones included). Condition totals are counted by countConditionSlots above, and
+ * the schema bounds each list.
+ */
+function checkLanes(brain, errors) {
+    const ids = new Set();
+    const claim = (id, here) => {
+        if (ids.has(id)) errors.push(`${here} repeats the ID ${id}.`);
+        ids.add(id);
+    };
+    let cards = 0;
+    const checkConditionCount = (entry, here) => {
+        if (list(entry?.conditions).length > MAX_LANE_CONDITIONS_PER_ENTRY) {
+            errors.push(`${here} has more than ${MAX_LANE_CONDITIONS_PER_ENTRY} conditions.`);
+        }
+    };
+    const headOfAction = (action) => ACTION_BY_ID.get(action?.action)?.head ?? ACTION_HEADS.NONE;
+    // A card and its follow-ups: each counts once and claims its id.
+    const checkCard = (card, cardHere, depth) => {
+        cards += 1;
+        claim(card?.id, cardHere);
+        checkConditionCount(card, cardHere);
+        const head = headOfAction(card?.action);
+        const followUps = list(card?.followUps);
+        if (followUps.length && head !== ACTION_HEADS.ABILITY && head !== ACTION_HEADS.DASH) {
+            errors.push(`${cardHere} has follow-ups, but only ability and dash cards can have them.`);
+        }
+        if (card?.move != null || card?.face != null) {
+            if (head !== ACTION_HEADS.ABILITY) errors.push(`${cardHere} has attached movement, but only ability cards can carry it.`);
+        }
+        if (card?.move != null && headOfAction(card.move) !== ACTION_HEADS.MOVEMENT) {
+            errors.push(`${cardHere}.move must be a move action.`);
+        }
+        if (card?.face != null && headOfAction(card.face) !== ACTION_HEADS.ROTATION) {
+            errors.push(`${cardHere}.face must be a rotation action.`);
+        }
+        followUps.forEach((follow, index) => {
+            const followHere = `${cardHere}.followUps[${index}]`;
+            if (depth + 1 > MAX_FOLLOW_UP_DEPTH) errors.push(`${followHere} nests deeper than ${MAX_FOLLOW_UP_DEPTH} follow-up levels.`);
+            const followHead = headOfAction(follow?.action);
+            if (!FOLLOW_UP_HEADS.includes(followHead)) errors.push(`${followHere} has the ${followHead} category; a follow-up is an ability, dash or cancel.`);
+            checkCard(follow, followHere, depth + 1);
+        });
+    };
+    for (const [section, heads] of Object.entries(SECTION_HEADS)) {
+        list(brain[section]).forEach((card, index) => {
+            const cardHere = `brain.${section}[${index}]`;
+            const head = headOfAction(card?.action);
+            if (!heads.includes(head)) errors.push(`${cardHere} is in the ${section} section, but its action is in the ${head} category.`);
+            checkCard(card, cardHere, 0);
+        });
+    }
+    if (cards > MAX_LANE_CARDS) {
+        errors.push(`The brain has ${cards} cards; the limit is ${MAX_LANE_CARDS}.`);
+    }
 }
 
 /** Actions and selected-ability conditions may only use equipped (or standard) abilities. */
@@ -211,9 +287,11 @@ function checkPuzzleRules(brain, errors) {
 
 /** Authored puzzle limits use the same slot metrics as submissions and the editor. */
 function checkPuzzleConstraints(brain, constraints, errors) {
+    // A lanes brain counts its cards and switches, and its conditions, as the editor's budget does.
+    const lanes = brain.version === BOT_LOGIC_LANES_VERSION ? countLaneTotals(brain) : null;
     const limits = [
-        ["maxActionNodes", MAX_LOGIC_BLOCKS, countActionSlots(brain), "action nodes"],
-        ["maxConditionNodes", MAX_TOTAL_CONDITIONS, countConditionSlots(brain), "condition nodes"],
+        ["maxActionNodes", MAX_LOGIC_BLOCKS, lanes ? lanes.cards : countActionSlots(brain), lanes ? "cards" : "action nodes"],
+        ["maxConditionNodes", MAX_TOTAL_CONDITIONS, lanes ? lanes.conditions : countConditionSlots(brain), "condition nodes"],
         ["maxCustomVariables", MAX_CUSTOM_VARIABLE_SLOTS, list(brain.customVariables).length, "custom variables"],
         ["maxLoadoutAbilities", 6, list(brain.loadout?.abilities).length, "loadout abilities"],
     ];

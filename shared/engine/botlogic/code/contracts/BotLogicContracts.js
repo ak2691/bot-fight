@@ -14,8 +14,6 @@ export const BOT_CODE_ACTIONS = Object.freeze({
     MOVE_WALK: "move_walk",
     ROTATE_TOWARD_TARGET: "rotate_toward_enemy",
     CANCEL_WINDUP: "cancel_windup",
-    // Chain control actions. The main canvas offers them in the action picker; chains themselves cannot run them.
-    RUN_CHAIN: "run_chain",
 });
 
 export const BOT_CODE_CONDITIONS = Object.freeze({
@@ -74,8 +72,6 @@ export const ACTION_HEADS = Object.freeze({
     // Dash has its own channel too (interim): a dash never blocks or waits on another ability, and one dash
     // and one ability can start on the same tick.
     DASH: "dash",
-    // Chain control uses no movement, rotation, ability or cancel category.
-    CHAIN: "chain",
 });
 
 export const CUSTOM_VARIABLE_CONTRACT = Object.freeze({
@@ -97,6 +93,7 @@ export const STATE_VARIABLE_SCOPES = Object.freeze({
 
 export const STATE_VARIABLE_SOURCES = Object.freeze({
     MATCH_ELAPSED_SECONDS: "matchElapsedSeconds",
+    BOT_TIME_IN_MODE_MS: "botTimeInModeMs",
     SELECTABLE_DISTANCE: "selectableDistance",
     SELECTABLE_DAMAGE_TAKEN_LAST_TICK: "selectableDamageTakenLastTick",
     SELECTABLE_HP_NET_CHANGE_LAST_TICK: "selectableHpNetChangeLastTick",
@@ -280,11 +277,7 @@ export const ACTION_TYPES = Object.freeze([
     { id: BOT_CODE_ACTIONS.CANCEL_WINDUP, label: "Cancel: Wind-up", head: ACTION_HEADS.CANCEL },
     ...ALL_ABILITY_DEFINITIONS.flatMap((ability) => ability.actions.map((id) => abilityActionDefinition(ability, id))),
 ]);
-// Resolvable by ID. The main canvas picker adds them to ACTION_TYPES; chain steps never offer them.
-export const CHAIN_ACTION_TYPES = Object.freeze([
-    { id: BOT_CODE_ACTIONS.RUN_CHAIN, label: "Chain: Run", head: ACTION_HEADS.CHAIN, chainAction: true },
-]);
-export const ACTION_BY_ID = new Map([...ACTION_TYPES, ...CHAIN_ACTION_TYPES].map((action) => [action.id, action]));
+export const ACTION_BY_ID = new Map(ACTION_TYPES.map((action) => [action.id, action]));
 
 export const SELECTABLE_TYPES = Object.freeze([
     { id: BOT_CODE_SELECTABLES.MY, label: "My Bot", owner: SELECTABLE_OWNERS.MY, role: "self", botIndex: 0, botSelector: BOT_CODE_SELECTABLES.MY, kind: "bot", healthBearing: true, selectableIdentities: BOT_SELECTABLE_IDENTITIES },
@@ -296,6 +289,7 @@ export const SELECTABLE_BY_ID = new Map(SELECTABLE_TYPES.map((selectable) => [se
 // One-line picker hints (under ~45 characters). UI-only; ids and runtime contracts are unchanged.
 const VARIABLE_DESCRIPTIONS = Object.freeze({
     "match.elapsedSeconds": "Seconds since the match started",
+    "bot.timeInModeMs": "Milliseconds since this bot entered its current mode",
     "selectable.distance": "Gap between two entities",
     "selectable.hp": "Current health",
     "selectable.damageTakenLastTick": "Damage taken in the last tick",
@@ -378,6 +372,8 @@ const GENERIC_STATUS_VARIABLES = [
 
 export const STATE_VARIABLES = Object.freeze([
     variableDefinition("match.elapsedSeconds", "Match Time", "number", { group: "General", min: 0, max: 99_999, defaultValue: 0, unit: "seconds", step: 0.1, scope: STATE_VARIABLE_SCOPES.MATCH, runtimeSource: STATE_VARIABLE_SOURCES.MATCH_ELAPSED_SECONDS }),
+    // Self only (no selector): the time the bot has spent in its current lanes mode; tree brains always read 0.
+    variableDefinition("bot.timeInModeMs", "Time in Mode", "number", { group: "General", min: 0, max: 99_999, defaultValue: 0, unit: "ms", step: 100, scope: STATE_VARIABLE_SCOPES.MATCH, runtimeSource: STATE_VARIABLE_SOURCES.BOT_TIME_IN_MODE_MS }),
     variableDefinition("selectable.distance", "Distance", "number", { group: "Entity", min: 0, max: Math.hypot(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS), unit: "arena units", supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, targetModes: DISTANCE_TARGET_MODES, pairSelectableIdentities: [[], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_DISTANCE }),
     variableDefinition("selectable.hp", "HP", "number", { group: "Entity", min: 0, max: 225, unit: "HP", supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_HP }),
     variableDefinition("selectable.damageTakenLastTick", "Damage Taken", "number", { group: "Entity", min: 0, max: 300, unit: "damage", supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_DAMAGE_TAKEN_LAST_TICK }),

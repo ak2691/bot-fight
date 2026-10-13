@@ -1,0 +1,222 @@
+{
+  "rule": "Follow-ups nest at most three levels below a top-level card.",
+  "layer": "rules",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [
+      {
+        "id": "neutral",
+        "name": "Neutral",
+        "switches": [
+          {
+            "id": "to-punish",
+            "to": "punish",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "selectable.distance",
+                "comparator": "lte",
+                "right": {
+                  "type": "number",
+                  "value": 150
+                },
+                "selectable1": "my_bot",
+                "selectable2": "opponent_1",
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0
+              }
+            ]
+          }
+        ],
+        "movement": [
+          {
+            "id": "walk",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "selectable": "opponent_1",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "targetMode": "target",
+              "targetX": 0,
+              "targetY": 0
+            }
+          },
+          {
+            "id": "walk-off",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": "move_walk",
+              "selectable": "opponent_1",
+              "movementMode": "target",
+              "movementDirection": 0,
+              "targetMode": "target",
+              "targetX": 0,
+              "targetY": 0
+            },
+            "enabled": false
+          }
+        ],
+        "actions": [
+          {
+            "id": "top",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": 1,
+              "selectable": "opponent_1"
+            },
+            "followUps": [
+              {
+                "id": "f1",
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "action": {
+                  "action": 19,
+                  "movementMode": "target",
+                  "movementDirection": 180,
+                  "selectable": "opponent_1"
+                },
+                "followUps": [
+                  {
+                    "id": "f2",
+                    "conditions": [
+                      {
+                        "type": "always"
+                      }
+                    ],
+                    "action": {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    },
+                    "followUps": [
+                      {
+                        "id": "f3",
+                        "conditions": [
+                          {
+                            "type": "always"
+                          }
+                        ],
+                        "action": {
+                          "action": 19,
+                          "movementMode": "target",
+                          "movementDirection": 180,
+                          "selectable": "opponent_1"
+                        },
+                        "followUps": [
+                          {
+                            "id": "f4",
+                            "conditions": [
+                              {
+                                "type": "always"
+                              }
+                            ],
+                            "action": {
+                              "action": 1,
+                              "selectable": "opponent_1"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "punish",
+        "name": "Punish",
+        "switches": [
+          {
+            "id": "to-neutral",
+            "to": "neutral",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.timeInModeMs",
+                "comparator": "gte",
+                "right": {
+                  "type": "number",
+                  "value": 800
+                }
+              }
+            ]
+          }
+        ],
+        "actions": [
+          {
+            "id": "slash",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "action": {
+              "action": 1,
+              "selectable": "opponent_1"
+            }
+          }
+        ]
+      }
+    ],
+    "shared": {
+      "switches": [
+        {
+          "id": "retreat",
+          "to": "neutral",
+          "conditions": [
+            {
+              "type": "expression",
+              "left": "selectable.hp",
+              "comparator": "lt",
+              "right": {
+                "type": "number",
+                "value": 30
+              },
+              "leftSelectable": "my_bot"
+            }
+          ]
+        }
+      ],
+      "movement": [
+        {
+          "id": "face",
+          "conditions": [
+            {
+              "type": "always"
+            }
+          ],
+          "action": {
+            "action": "rotate_toward_enemy",
+            "selectable": "opponent_1",
+            "targetOffsetX": 0,
+            "targetOffsetY": 0,
+            "targetMode": "target",
+            "targetX": 0,
+            "targetY": 0,
+            "targetAngle": 0
+          }
+        }
+      ]
+    },
+    "customVariables": []
+  }
+}

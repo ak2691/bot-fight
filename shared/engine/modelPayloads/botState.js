@@ -77,8 +77,6 @@ function botStateDefaults() {
         hitParticleEvent: null,
         // Brain runtime
         customVariables: {},
-        chainStack: [],
-        runningChain: null,
         lastPredictedAction: null,
         // Ability bookkeeping
         abilityLastHitAgeMs: {},

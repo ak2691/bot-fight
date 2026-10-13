@@ -1,29 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import AddIcon from "./controls/AddIcon.jsx";
 import { createPortal } from "react-dom";
 import {
     CONDITION_TYPES,
     STATE_VARIABLES,
     VISIBLE_STATE_VARIABLES,
-    createCodeRoot,
     customVariableDefinitions,
-    MAX_ROOT_NODES,
     MAX_LOGIC_BLOCKS,
     MAX_TOTAL_CONDITIONS,
     MAX_CUSTOM_VARIABLE_SLOTS,
-    normalizeRoots,
-    normalizeAbilityStrategyConfiguration,
     abilityDefinitionsForVariable,
 } from "../../../../shared/engine/botlogic/code/BotCode.js";
 import { validateAbilityStrategyConfiguration } from "../botlogic/code/validateBrain.js";
 import { statusEffectDefinitionsForAbilities } from "../../../../shared/engine/loadout/BotLoadout.js";
-import { priorityForNode } from "../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide from "../../tutorial/TutorialGuide.jsx";
 import Toast, { ToastStack } from "../../components/Toast.jsx";
-import { clearAllCounts, clearAllMessage, clearedConfiguration } from "./clearAll.js";
-import { BudgetMeter, PhoneBarButton, SheetRow, ToolbarBracesIcon, ToolbarCloseIcon, ToolbarMoreMenu, ToolbarNodeIcon, WorkspaceSheet } from "./controls/WorkspaceToolbarBits.jsx";
+import { BudgetMeter, PhoneBarButton, SheetRow, ToolbarBracesIcon, ToolbarCloseIcon, ToolbarMoreMenu, WorkspaceSheet } from "./controls/WorkspaceToolbarBits.jsx";
 import {
     captureTutorialNavigationScrollPosition,
     tutorialLessonNavigationForArena,
@@ -39,27 +32,29 @@ import {
     selectableAbilityIdsForLoadouts,
     selectableTypesForLoadouts,
 } from "./nodes/GraphNodes.jsx";
-import { TreeLogicBoard } from "./LogicBoard.jsx";
-import { ChainEditor } from "./chains/ChainEditor.jsx";
-import { ChainCrumb, ChainStepMeter } from "./chains/ChainToolbarBits.jsx";
-import { NewChainDialog } from "./modals/NewChainDialog.jsx";
-import { chainLimitReason, chainUsage, chainsOf, countChainSteps, createChain, findChain, removeChain, updateChain } from "./chains/chainEditing.js";
+import LanesBoard, { LegacyTreeNotice } from "./lanes/LanesBoard.jsx";
+import { createLanesStarter } from "./lanes/laneStarter.js";
+import { isLanesBrain, TIME_IN_MODE_VARIABLE } from "./lanes/laneEdits.js";
+import { LANE_SPECS } from "./lanes/laneView.js";
+import { countLaneEntries } from "../../../../shared/engine/botlogic/code/configuration/configurationMetrics.js";
+import { MAX_LANE_CARDS_AND_SWITCHES } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { HudBudget, HudButton, HudScoreboard, HudSwitchRow } from "./HudControls.jsx";
 import BuildClocks, { BuildOutOfTime, BuildWaiting } from "./BuildClocks.jsx";
 import HoldToSubmitButton from "./HoldToSubmitButton.jsx";
 import { roundLabel, teamHpTotals } from "./matchHud.js";
 import { formatHp } from "../../../../shared/engine/gameconfig/visualState.js";
 import { TIMEOUT_FALLBACKS } from "../../matchmaking/buildClock.js";
-import { isWorkspaceShortcutKeydown, readAddRootShortcut, readWorkspaceShortcut } from "./addRootShortcut.js";
-import { BOT_LOGIC_TREE_VERSION, MAX_CHAIN_STEPS } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
+import { BOT_LOGIC_TREE_VERSION } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 1.35;
-const EMPTY_CONFIGURATION = Object.freeze({ version: BOT_LOGIC_TREE_VERSION, roots: [], customVariables: [] });
-
-function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
+// A new, empty tree brain (the default every new workspace starts from) becomes the lanes starter.
+function isEmptyTreeBrain(configuration) {
+    return !isLanesBrain(configuration)
+        && (configuration?.roots ?? []).length === 0
+        && (configuration?.orphans ?? []).length === 0
+        && (configuration?.customVariables ?? []).length === 0;
 }
+
+const EMPTY_CONFIGURATION = Object.freeze({ version: BOT_LOGIC_TREE_VERSION, roots: [], customVariables: [] });
 
 function TutorialLessonNavigationControls({ navigation }) {
     const navigate = useNavigate();
@@ -205,7 +200,6 @@ function ToolbarSearchIcon() {
 export default function CodingPanel({
     configuration,
     onChange,
-    runtimeBots = [],
     opponentConfiguration = null,
     onOpponentChange = null,
     offlineCodeParticipants = null,
@@ -228,6 +222,7 @@ export default function CodingPanel({
     variableResetChoices = null,
     onVariableResetChoiceChange = null,
     isAutoPlaying = false,
+    liveLanes = null,
     measurementEnabled = false,
     onMeasurementToggle,
     hitboxesEnabled = false,
@@ -266,25 +261,14 @@ export default function CodingPanel({
     });
     const [isLogicOpen, setIsLogicOpen] = useState(false);
     const [isCustomVariablesOpen, setIsCustomVariablesOpen] = useState(false);
-    const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
-    const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
     const [activeCode, setActiveCode] = useState("player");
-    // The chain open on the canvas, remembered with the code it belongs to so switching bots returns to the brain.
-    const [openChain, setOpenChain] = useState(null);
     const [confirmingSurrender, setConfirmingSurrender] = useState(false);
     const [isToolsSheetOpen, setIsToolsSheetOpen] = useState(false);
     const toolsSheetRef = useRef(null);
     useDialogFocus(toolsSheetRef, { onClose: () => setIsToolsSheetOpen(false), enabled: isToolsSheetOpen });
-    const [canvasZoom, setCanvasZoom] = useState(0.85);
-    const [canvasPan, setCanvasPan] = useState({ x: 40, y: 36 });
-    const logicBoardRef = useRef(null);
-    const chainEditorRef = useRef(null);
     // Layout stage from the workspace's own width (not the viewport): full above 1100px, mid 640-1100px, phone below.
     const [stage, setStage] = useState("full");
     const [phoneSheet, setPhoneSheet] = useState(null);
-    // The selected node or block on a phone (reported by the active editor); it swaps the bottom bar's actions.
-    const [phoneSelection, setPhoneSelection] = useState(null);
-    const [chainDragging, setChainDragging] = useState(false);
     const logicDialogRef = useRef(null);
     useEffect(() => {
         const element = logicDialogRef.current;
@@ -300,7 +284,6 @@ export default function CodingPanel({
         return () => observer.disconnect();
     }, [isLogicOpen]);
     const workspaceToolbarRef = useRef(null);
-    const zoomToFitRef = useRef(null);
     const [workspaceToolbarHeight, setWorkspaceToolbarHeight] = useState(56);
     useLayoutEffect(() => {
         if (!isLogicOpen || !workspaceToolbarRef.current) return undefined;
@@ -315,18 +298,8 @@ export default function CodingPanel({
         return () => observer.disconnect();
     }, [isLogicOpen]);
     const closeTopLogicLayer = () => {
-        if (logicBoardRef.current?.cancelWire()) return;
-        if (isNodeSearchOpen) {
-            setIsNodeSearchOpen(false);
-            setIsQuickSearchOpen(false);
-            return;
-        }
         if (isCustomVariablesOpen) {
             setIsCustomVariablesOpen(false);
-            return;
-        }
-        if (openChain) {
-            setOpenChain(null);
             return;
         }
         setIsLogicOpen(false);
@@ -491,41 +464,11 @@ export default function CodingPanel({
     }, [activeParticipant, codeSelectorRoster, isMatchTesting, matchContext, selectableParticipants]);
     const teamHp = teamHpTotals(matchContext?.players, matchContext?.timedRounds?.segmentEndState);
     const isCodeEditingLocked = isBotCodeLocked || activeCodeReadOnly;
-    const openLogicWorkspace = useCallback((quickSearch = false) => {
+    const openLogicWorkspace = useCallback(() => {
         if (isBotCodeLocked) return;
         onWorkspaceOpen?.();
-        setOpenChain(null);
         setIsLogicOpen(true);
-        if (quickSearch) {
-            setIsQuickSearchOpen(true);
-            setIsNodeSearchOpen(true);
-        }
     }, [isBotCodeLocked, onWorkspaceOpen]);
-    const addChainRef = useRef(() => {});
-    useEffect(() => {
-        const handleWorkspaceShortcut = (event) => {
-            const textEntry = event.target?.closest?.("input,textarea,select,[contenteditable=\"true\"]");
-            if (isBotCodeLocked || textEntry || event.ctrlKey || event.metaKey || event.altKey) return;
-            if (isLogicOpen && !openChain && !isNodeSearchOpen && !isCustomVariablesOpen && !document.querySelector(".pk")
-                && isWorkspaceShortcutKeydown(event, readWorkspaceShortcut("addChain"))) {
-                event.preventDefault();
-                addChainRef.current();
-                return;
-            }
-            if (!isWorkspaceShortcutKeydown(event, readWorkspaceShortcut("search"))) return;
-            event.preventDefault();
-            if (isLogicOpen) {
-                if (!isNodeSearchOpen && !isCustomVariablesOpen && !openChain) {
-                    setIsQuickSearchOpen(true);
-                    setIsNodeSearchOpen(true);
-                }
-                return;
-            }
-            openLogicWorkspace(true);
-        };
-        window.addEventListener("keydown", handleWorkspaceShortcut);
-        return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
-    }, [isBotCodeLocked, isCustomVariablesOpen, isLogicOpen, isNodeSearchOpen, openChain, openLogicWorkspace]);
     const applyActiveConfiguration = (next) => {
         if (isCodeEditingLocked) return;
         if (viewingOfflineParticipant) onOfflineCodeChange?.(activeOfflineParticipantId, next);
@@ -545,16 +488,9 @@ export default function CodingPanel({
         });
         applyActiveConfiguration(next);
     };
-    // Chain workspace "Clear all": empties the open chain (stacked and loose steps) in one undoable edit.
-    const clearChain = () => {
-        if (!openChainData || !countChainSteps(openChainData)) return;
-        if (!window.confirm(`Delete all ${countChainSteps(openChainData)} steps in ${openChainData.name}?`)) return;
-        updateActiveConfiguration(updateChain(activeConfiguration, openChainData.id, (chain) => ({ ...chain, steps: [], loose: [] })));
-    };
     const clearAll = () => {
-        const message = clearAllMessage(clearAllCounts(activeConfiguration));
-        if (!message || !window.confirm(message)) return;
-        updateActiveConfiguration(clearedConfiguration(activeConfiguration));
+        if (!window.confirm("Replace every mode, card, switch and variable with the starter brain?")) return;
+        updateActiveConfiguration(createLanesStarter([...abilityIdsForConfiguration(activeLoadout)]));
     };
     const travelHistory = (direction) => {
         if (isTesting || isCodeEditingLocked) return;
@@ -569,17 +505,18 @@ export default function CodingPanel({
         } }));
         applyActiveConfiguration(next);
     };
-    const updateRoots = (roots, nodePositions = activeConfiguration.nodePositions) => updateActiveConfiguration({
-        ...activeConfiguration,
-        version: BOT_LOGIC_TREE_VERSION,
-        roots: normalizeRoots(roots),
-        customVariables: activeConfiguration?.customVariables ?? [],
-        ...(nodePositions ? { nodePositions } : {}),
-    });
-    const totalActiveBlocks = countActions(activeConfiguration);
-    const totalRootNodes = activeConfiguration?.roots?.length ?? 0;
-    const totalActiveConditions = countLogicConditions(activeConfiguration);
-    const usesTree = Array.isArray(activeConfiguration?.roots);
+    // Lanes brains count cards with switches, and conditions. A tree brain only shows the old-format notice.
+    const lanesBrain = isLanesBrain(activeConfiguration);
+    // The live highlight is for the player's own bot in the practice room only: never an opponent, an offline bot or a match.
+    const lanesLive = liveLanes && !isMatchTesting && !viewingOpponent && !viewingOfflineParticipant && !viewingLiveParticipant
+        ? liveLanes
+        : null;
+    const laneCounts = countLaneEntries(activeConfiguration);
+    const totalActiveBlocks = lanesBrain ? laneCounts.cards + laneCounts.switches : countActions(activeConfiguration);
+    const totalActiveConditions = lanesBrain ? laneCounts.conditions : countLogicConditions(activeConfiguration);
+    // A lanes brain is held to the lanes ceiling and to the puzzle's own limit, whichever is lower.
+    const budgetMaxActions = lanesBrain ? Math.min(maxActionNodes, MAX_LANE_CARDS_AND_SWITCHES) : maxActionNodes;
+    const budgetMaxConditions = lanesBrain ? Math.min(maxConditionNodes, MAX_TOTAL_CONDITIONS) : maxConditionNodes;
     const viewingCurrentRound = true;
     const roundDeleteLocked = false;
     const selectedLogicRound = currentRound;
@@ -605,7 +542,7 @@ export default function CodingPanel({
             };
         }).filter((variable) => (!variable.supportsAbility || variable.abilityOptions.length > 0)
             && (!variable.supportsStatusEffect || variable.statusEffectOptions.length > 0));
-        return [...builtIns, ...customVariableDefinitions(activeConfiguration)];
+        return [...builtIns.filter((variable) => variable.id !== TIME_IN_MODE_VARIABLE || isLanesBrain(activeConfiguration)), ...customVariableDefinitions(activeConfiguration)];
     }, [activeLoadout, opposingLoadout, activeConfiguration]);
     const defaultCondition = visibleConditionTypes[0] ?? CONDITION_TYPES[0];
     const defaultVariable = visibleStateVariables.find((variable) => variable.id === "selectable.distance")
@@ -629,125 +566,20 @@ export default function CodingPanel({
         else onChange(sanitized);
     }, [activeConfiguration, activeLiveParticipantId, activeOfflineParticipantId, activeLoadout, defaultCondition, editingOpponent, isCodeEditingLocked, onChange, onOfflineCodeChange, onOpponentChange, onSandboxParticipantChange, opposingLoadout, viewingLiveTeammateSandbox, viewingOfflineParticipant, visibleConditionTypes, visibleStateVariables, visibleSelectableTypes, visibleSelectableAbilityIds]);
 
-    useEffect(() => {
-        if (isCodeEditingLocked) return;
-        if (!isLogicOpen || usesTree) return;
-        const tree = normalizeAbilityStrategyConfiguration(activeConfiguration);
-        if (viewingOfflineParticipant) onOfflineCodeChange?.(activeOfflineParticipantId, tree);
-        else if (viewingLiveTeammateSandbox) onSandboxParticipantChange?.(activeLiveParticipantId, tree);
-        else if (editingOpponent) onOpponentChange?.(tree);
-        else onChange(tree);
-    }, [activeConfiguration, activeLiveParticipantId, activeOfflineParticipantId, editingOpponent, isCodeEditingLocked, isLogicOpen, onChange, onOfflineCodeChange, onOpponentChange, onSandboxParticipantChange, viewingLiveTeammateSandbox, viewingOfflineParticipant, usesTree]);
 
     useEffect(() => {
         if (!isBotCodeLocked) return;
         const closeWorkspaceId = window.setTimeout(() => {
             setIsLogicOpen(false);
-            setIsNodeSearchOpen(false);
             setIsCustomVariablesOpen(false);
-            setIsQuickSearchOpen(false);
         }, 0);
         return () => window.clearTimeout(closeWorkspaceId);
     }, [isBotCodeLocked]);
 
-    const addRootNode = () => {
-        if (isCodeEditingLocked || totalRootNodes >= MAX_ROOT_NODES) return;
-        const roots = activeConfiguration.roots ?? [];
-        const nextPriority = roots.reduce((highest, root, index) => Math.max(highest, priorityForNode(root, index + 1)), 0) + 1;
-        const root = createCodeRoot(nextPriority);
-        root.branches = [];
-        const nextRoots = [...roots, root];
-        const nodePositions = logicBoardRef.current?.placeRootAtCenter(nextRoots, nextRoots.length - 1);
-        updateRoots(nextRoots, nodePositions ?? activeConfiguration.nodePositions);
-    };
-    const chainList = chainsOf(activeConfiguration);
-    const openChainId = openChain?.owner === activeCode && findChain(activeConfiguration, openChain.id) ? openChain.id : null;
-    const openChainData = openChainId ? findChain(activeConfiguration, openChainId) : null;
-    // A "Used in" entry from the Variables dialog: go to its canvas or chain, then select the node or step.
+    // A "Used in" entry from the Variables dialog: the lanes list shows that card or switch.
     const [pendingUse, setPendingUse] = useState(null);
-    const jumpToUse = (target) => {
-        if (target.type === "step") openChainById(target.chainId);
-        else setOpenChain(null);
-        setPendingUse(target);
-    };
-    useEffect(() => {
-        if (!pendingUse) return;
-        const onChain = pendingUse.type === "step";
-        if (onChain ? openChainData?.id !== pendingUse.chainId : openChainData) return;
-        if (onChain) chainEditorRef.current?.selectStep(pendingUse.path);
-        else logicBoardRef.current?.selectNode(pendingUse.nodeId);
-        setPendingUse(null);
-    }, [pendingUse, openChainData]);
-    const openChainById = (chainId) => {
-        if (!findChain(activeConfiguration, chainId)) return;
-        setIsNodeSearchOpen(false);
-        setIsQuickSearchOpen(false);
-        setIsCustomVariablesOpen(false);
-        setOpenChain({ owner: activeCode, id: chainId });
-    };
-    // "+ New chain": asks for a name, then adds an empty chain and opens it.
-    const [namingChain, setNamingChain] = useState(false);
-    const addChain = () => {
-        if (isCodeEditingLocked || isTesting || namingChain || !createChain(activeConfiguration)) return;
-        setIsNodeSearchOpen(false);
-        setIsQuickSearchOpen(false);
-        setIsCustomVariablesOpen(false);
-        setNamingChain(true);
-    };
-    const confirmNewChain = (name) => {
-        setNamingChain(false);
-        const chain = createChain(activeConfiguration, name);
-        if (!chain || isCodeEditingLocked || isTesting) return;
-        updateActiveConfiguration({ ...activeConfiguration, chains: [...chainList, chain] });
-        setOpenChain({ owner: activeCode, id: chain.id });
-    };
-    addChainRef.current = addChain;
-    // Deleting a chain that something runs asks first; the calls to it go with it.
-    const removeChainById = (chainId) => {
-        const chain = findChain(activeConfiguration, chainId);
-        if (!chain || isCodeEditingLocked || isTesting) return;
-        const usage = chainUsage(activeConfiguration, chainId);
-        const users = [
-            usage.roots ? `${usage.roots} ${usage.roots === 1 ? "root" : "roots"}` : "",
-            usage.chains ? `${usage.chains} other ${usage.chains === 1 ? "chain" : "chains"}` : "",
-        ].filter(Boolean).join(" and ");
-        if (users && !window.confirm(`Delete "${chain.name}"? It is used by ${users}. Those Run chain actions and steps will be removed too.`)) return;
-        updateActiveConfiguration(removeChain(activeConfiguration, chainId));
-    };
-    // Zoom keeps the point under the cursor fixed. Latest zoom / pan live in refs
-    // (updated synchronously) so rapid wheel events and StrictMode double renders
-    // never apply the pan correction twice or from a stale value.
-    const zoomRef = useRef(canvasZoom);
-    const panRef = useRef(canvasPan);
-    useEffect(() => { zoomRef.current = canvasZoom; panRef.current = canvasPan; });
-    const changeZoom = (delta, origin = null) => {
-        const currentZoom = zoomRef.current;
-        const nextZoom = clamp(Number((currentZoom + delta).toFixed(2)), MIN_ZOOM, MAX_ZOOM);
-        if (nextZoom === currentZoom) return;
-        // Toolbar buttons have no cursor point, so zoom about the centre of the board.
-        let anchor = origin;
-        if (!anchor) {
-            const rect = logicDialogRef.current?.querySelector(".code-board")?.getBoundingClientRect();
-            if (rect) anchor = { x: rect.width / 2, y: rect.height / 2 };
-        }
-        if (anchor) {
-            const currentPan = panRef.current;
-            const nextPan = {
-                x: anchor.x - ((anchor.x - currentPan.x) / currentZoom) * nextZoom,
-                y: anchor.y - ((anchor.y - currentPan.y) / currentZoom) * nextZoom,
-            };
-            panRef.current = nextPan;
-            setCanvasPan(nextPan);
-        }
-        zoomRef.current = nextZoom;
-        setCanvasZoom(nextZoom);
-    };
-    const applyPinchZoom = (nextZoom, nextPan) => {
-        zoomRef.current = nextZoom;
-        panRef.current = nextPan;
-        setCanvasZoom(nextZoom);
-        setCanvasPan(nextPan);
-    };
+    const jumpToUse = (target) => setPendingUse(target);
+    const lanesBoardRef = useRef(null);
     const activeSelectorParticipant = isMatchTesting
         ? activeCode === "player"
             ? matchContext?.player
@@ -890,12 +722,21 @@ export default function CodingPanel({
     );
     const budget = (
         <HudBudget
-            actions={countActions(activeConfiguration)}
-            maxActions={maxActionNodes}
-            conditions={countLogicConditions(activeConfiguration)}
-            maxConditions={maxConditionNodes}
+            actions={totalActiveBlocks}
+            maxActions={budgetMaxActions}
+            conditions={totalActiveConditions}
+            maxConditions={budgetMaxConditions}
+            actionsLabel={lanesBrain ? "Cards" : "Actions"}
         />
     );
+    // A new, empty brain starts as the lanes starter, in puzzles too. Tutorials keep the brain they were given.
+    useEffect(() => {
+        if (isCodeEditingLocked || tutorialGuideProps || !isEmptyTreeBrain(activeConfiguration)) return;
+        applyActiveConfiguration(createLanesStarter([...abilityIdsForConfiguration(activeLoadout)]));
+        // applyActiveConfiguration is rebuilt each render; the brain it receives is what changes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeConfiguration, activeLoadout, isCodeEditingLocked, tutorialGuideProps]);
+    const startNewBrain = () => updateActiveConfiguration(createLanesStarter([...abilityIdsForConfiguration(activeLoadout)]));
     const toolsBody = (
         <>
             <div className="hud-switches">
@@ -925,26 +766,16 @@ export default function CodingPanel({
     const canEditWorkspace = !isCodeEditingLocked && !isTesting && viewingCurrentRound;
     const canUndoNow = !isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0;
     const canRedoNow = !isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0;
-    const chainDisabledReason = chainLimitReason(activeConfiguration);
-    const clearAllDisabled = !canEditWorkspace || !clearAllMessage(clearAllCounts(activeConfiguration));
-    const openSearch = () => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); };
-    const closeWorkspace = () => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setPhoneSheet(null); setIsLogicOpen(false); };
-    const zoomToFit = () => (openChainData ? chainEditorRef.current?.fit() : zoomToFitRef.current?.());
+    const clearAllDisabled = !canEditWorkspace || !lanesBrain;
+    const closeWorkspace = () => { setIsCustomVariablesOpen(false); setPhoneSheet(null); setIsLogicOpen(false); };
     // "⋯ More" at mid width; the same tools live in the phone More sheet.
-    const moreItems = openChainData
-        ? [{ label: "Zoom to fit", onClick: zoomToFit }, { divider: true }, { label: "Clear all", danger: true, onClick: clearChain, disabled: !canEditWorkspace || !countChainSteps(openChainData) }]
-        : [
-            { label: "+ New chain", kbd: readWorkspaceShortcut("addChain").toUpperCase(), onClick: addChain, disabled: !canEditWorkspace || Boolean(chainDisabledReason) },
-            { label: "Tidy layout", onClick: () => logicBoardRef.current?.tidy(), disabled: !canEditWorkspace },
-            { label: "Zoom to fit", onClick: zoomToFit },
-            { divider: true },
-            { label: "Clear all", danger: true, onClick: clearAll, disabled: clearAllDisabled },
-        ];
+    const moreItems = [
+        { label: "Clear all", danger: true, onClick: clearAll, disabled: clearAllDisabled },
+    ];
     const inSheet = (action) => () => { setPhoneSheet(null); action(); };
     const budgetRows = [
-        ...(openChainData ? [{ label: "Steps", value: `${countChainSteps(openChainData)} of ${MAX_CHAIN_STEPS}` }] : [{ label: "Roots", value: `${totalRootNodes} of ${MAX_ROOT_NODES}` }]),
-        { label: "Actions", value: `${totalActiveBlocks} of ${maxActionNodes}` },
-        { label: "Conditions", value: `${totalActiveConditions} of ${maxConditionNodes}` },
+        { label: lanesBrain ? "Cards and switches" : "Actions", value: `${totalActiveBlocks} of ${budgetMaxActions}` },
+        { label: "Conditions", value: `${totalActiveConditions} of ${budgetMaxConditions}` },
     ];
 
     return (
@@ -962,7 +793,7 @@ export default function CodingPanel({
                 )}
                 {typeof builderControls === "function"
                     ? builderControls({
-                        openOpponentCode: () => { setActiveCode("opponent"); openLogicWorkspace(false); },
+                        openOpponentCode: () => { setActiveCode("opponent"); openLogicWorkspace(); },
                         startTest: onAutoPlayToggle,
                     })
                     : builderControls}
@@ -998,7 +829,7 @@ export default function CodingPanel({
                                 {isAutoPlaying ? "Pause" : "Play"}
                             </HudButton>
                         )}
-                        <HudButton icon="node" onClick={() => openLogicWorkspace(false)} disabled={editCodeDisabled}>
+                        <HudButton icon="node" onClick={() => openLogicWorkspace()} disabled={editCodeDisabled}>
                             {isBotCodeLocked ? "Code locked" : "Edit code"}
                         </HudButton>
                         {isMatchTesting && (
@@ -1024,7 +855,7 @@ export default function CodingPanel({
                 {isPuzzleRoom && (
                     <HudButton variant="icon" icon={isAutoPlaying ? "pause" : "play"} label={isAutoPlaying ? "Pause" : "Play"} onClick={onAutoPlayToggle} disabled={isBaseTesting || isTesting} />
                 )}
-                {!isPuzzleRoom && <HudButton variant="icon" icon="node" label={isBotCodeLocked ? "Code locked" : "Edit code"} onClick={() => openLogicWorkspace(false)} disabled={editCodeDisabled} />}
+                {!isPuzzleRoom && <HudButton variant="icon" icon="node" label={isBotCodeLocked ? "Code locked" : "Edit code"} onClick={() => openLogicWorkspace()} disabled={editCodeDisabled} />}
                 {isMatchTesting && (
                     <HudButton variant="icon" icon={isAutoPlaying ? "pause" : "play"} label={previewLabel} onClick={onAutoPlayToggle} disabled={isBaseTesting || isTesting} />
                 )}
@@ -1043,7 +874,7 @@ export default function CodingPanel({
                                 <h3 className="hud-card__title"><ToolIcon name="node" className="h-4 w-4" /> Your bot's brain</h3>
                                 {budget}
                                 {isPuzzleRoom && (
-                                    <HudButton icon="node" className="hud-btn--wide" onClick={() => { setIsToolsSheetOpen(false); openLogicWorkspace(false); }} disabled={editCodeDisabled}>
+                                    <HudButton icon="node" className="hud-btn--wide" onClick={() => { setIsToolsSheetOpen(false); openLogicWorkspace(); }} disabled={editCodeDisabled}>
                                         {isBotCodeLocked ? "Code locked" : "Edit code"}
                                     </HudButton>
                                 )}
@@ -1061,8 +892,7 @@ export default function CodingPanel({
                         <div className="code-workspace-top-layer">
                         <header ref={workspaceToolbarRef} className="code-tb">
                             <h2 id="code-workspace-title" className="sr-only">Bot code workspace</h2>
-                            {openChainData && <ChainCrumb name={openChainData.name} onBack={() => setOpenChain(null)} />}
-                            {!openChainData && codeSelectorRoster.length > 0 && (
+                            {codeSelectorRoster.length > 0 && (
                                 <div className={`code-tb-bot ${activeSelectorRole === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select bot code workspace">
                                     <button type="button" aria-label="Show previous bot" title="Previous bot" onClick={() => cycleCodeParticipant(-1)} disabled={codeSelectorRoster.length < 2} className="code-tb-arrow">‹</button>
                                     <span className="code-tb-dot" aria-hidden="true" />
@@ -1092,51 +922,26 @@ export default function CodingPanel({
                                 </div>
                             )}
                             <span className="code-tb-divider" aria-hidden="true" />
-                            {openChainData && <ChainStepMeter count={countChainSteps(openChainData)} max={MAX_CHAIN_STEPS} />}
                             <div className="code-tb-meters" role="group" aria-label="Code budget">
-                                {!openChainData && <BudgetMeter label="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} />}
-                                <BudgetMeter label="Actions" value={totalActiveBlocks} max={maxActionNodes} />
-                                <BudgetMeter label="Conditions" value={totalActiveConditions} max={maxConditionNodes} />
+                                
+                                <BudgetMeter label={lanesBrain ? "Cards" : "Actions"} value={totalActiveBlocks} max={budgetMaxActions} />
+                                <BudgetMeter label="Conditions" value={totalActiveConditions} max={budgetMaxConditions} />
                             </div>
                             <div className="code-tb-chips" role="group" aria-label="Code budget" onClick={stage === "phone" ? () => setPhoneSheet("counts") : undefined}>
-                                {openChainData && <BudgetMeter label="Steps" title="Steps" value={countChainSteps(openChainData)} max={MAX_CHAIN_STEPS} compact />}
-                                {!openChainData && <BudgetMeter label="R" title="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} compact />}
-                                <BudgetMeter label="A" title="Actions" value={totalActiveBlocks} max={maxActionNodes} compact />
-                                <BudgetMeter label="C" title="Conditions" value={totalActiveConditions} max={maxConditionNodes} compact />
+                                
+                                <BudgetMeter label="A" title={lanesBrain ? "Cards" : "Actions"} value={totalActiveBlocks} max={budgetMaxActions} compact />
+                                <BudgetMeter label="C" title="Conditions" value={totalActiveConditions} max={budgetMaxConditions} compact />
                             </div>
                             <span className="code-tb-break" aria-hidden="true" />
                             <span className="code-tb-spacer" />
-                            {!openChainData && <button type="button" onClick={openSearch} className="code-tb-search" aria-label="Search roots and chains" title="Search roots and chains">
-                                <ToolbarSearchIcon />
-                                <span className="code-tb-search-text">Search</span>
-                                <kbd className="code-tb-kbd">{readWorkspaceShortcut("search").toUpperCase()}</kbd>
-                            </button>}
+                            
                             {stage !== "phone" && <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className="code-tb-btn" aria-label="Custom variables" title="Custom variables">
                                 <ToolbarBracesIcon />
                                 <span className="code-tb-label">Variables</span>
                             </button>}
-                            {stage !== "phone" && openChainData && <button type="button" className="code-tb-btn" aria-label="Add node" title="Add a node under the selected one" disabled={!canEditWorkspace} onClick={() => chainEditorRef.current?.addStep()}><span className="code-tb-icon-compact"><ToolbarNodeIcon /></span><span className="code-tb-label">+ Node</span> <kbd className="code-tb-kbd">{readWorkspaceShortcut("addNode").toUpperCase()}</kbd></button>}
-                            {stage !== "phone" && !openChainData && <button
-                                type="button"
-                                disabled={!canEditWorkspace || totalRootNodes >= MAX_ROOT_NODES}
-                                onClick={addRootNode}
-                                className="code-tb-btn is-primary"
-                                aria-label="Add root"
-                                title="Add root"
-                            >
-                                <AddIcon className="code-toolbar-icon" /> <span className="code-tb-label">Add root</span> <kbd className="code-tb-kbd">{readAddRootShortcut().toUpperCase()}</kbd>
-                            </button>}
-                            {stage === "full" && !openChainData && <button
-                                type="button"
-                                onClick={addChain}
-                                disabled={!canEditWorkspace || Boolean(chainDisabledReason)}
-                                className="code-tb-btn code-tb-chain"
-                                aria-label="Add chain"
-                                title={chainDisabledReason ?? "Create a chain, then add Run chain to a conditional to use it"}
-                            >+ New chain <kbd className="code-tb-kbd">{readWorkspaceShortcut("addChain").toUpperCase()}</kbd></button>}
-                            {stage !== "phone" && !openChainData && <button type="button" className="code-tb-btn" aria-label="Add node" title="Add an unconnected node" disabled={!canEditWorkspace} onClick={() => logicBoardRef.current?.addNode()}><span className="code-tb-icon-compact"><ToolbarNodeIcon /></span><span className="code-tb-label">+ Node</span> <kbd className="code-tb-kbd">{readWorkspaceShortcut("addNode").toUpperCase()}</kbd></button>}
-                            {stage === "full" && !openChainData && <button type="button" className="code-tb-btn code-tb-clear" aria-label="Clear all" title="Delete every root, unconnected node, chain and variable" disabled={clearAllDisabled} onClick={clearAll}>Clear all</button>}
-                            {stage === "full" && openChainData && <button type="button" className="code-tb-btn code-tb-clear" aria-label="Clear all" title="Delete every step in this chain" disabled={!canEditWorkspace || !countChainSteps(openChainData)} onClick={clearChain}>Clear all</button>}
+                            
+                            
+                            {stage === "full" && <button type="button" className="code-tb-btn code-tb-clear" aria-label="Clear all" title="Delete every root, unconnected node and variable" disabled={clearAllDisabled} onClick={clearAll}>Clear all</button>}
                             {stage === "mid" && <ToolbarMoreMenu items={moreItems} />}
                             <button
                                 type="button"
@@ -1157,15 +962,7 @@ export default function CodingPanel({
                             </ToastStack>
                         )}
                         </div>
-                        {openChainData && stage === "phone" && <div className="code-zoom-cluster" role="group" aria-label="Zoom">
-                            <button type="button" aria-label="Zoom to fit" title="Zoom to fit" onClick={zoomToFit}>⤢</button>
-                        </div>}
-                        {!openChainData && <div className="code-zoom-cluster" role="group" aria-label="Zoom">
-                            <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => changeZoom(-0.1)}>−</button>
-                            <span className="code-zoom-value">{Math.round(canvasZoom * 100)}%</span>
-                            <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => changeZoom(0.1)}>+</button>
-                            <button type="button" aria-label="Zoom to fit the tree" title="Zoom to fit" onClick={() => zoomToFitRef.current?.()}>⤢</button>
-                        </div>}
+                        
                         {tutorialGuideProps && (
                             <div className="tg-workspace-host">
                                 <TutorialGuide {...tutorialGuideProps} variant="workspace" />
@@ -1197,108 +994,44 @@ export default function CodingPanel({
                                 </div>
                             </div>
                         )}
-                        {openChainData ? (
-                            <ChainEditor
-                                ref={chainEditorRef}
-                                onDragChange={setChainDragging}
-                                phone={stage === "phone"}
-                                onSelectionChange={setPhoneSelection}
+                        {lanesBrain ? (
+                            <LanesBoard
+                                ref={lanesBoardRef}
                                 configuration={activeConfiguration}
-                                chainId={openChainData.id}
-                                runningChain={viewingCurrentRound ? runtimeBots.find((bot) => viewingLiveOpponentSandbox ? false
-                                    : viewingLiveParticipant ? String(bot.userId) === String(activeLiveParticipantId)
-                                    : viewingOfflineParticipant ? bot.id === (activeOfflineParticipant.codeKey === "player" ? "main"
-                                        : activeOfflineParticipant.codeKey === "opponent" ? "opponent-model"
-                                        : `bot-puzzle-${activeOfflineParticipant.teamNumber}-${activeOfflineParticipant.slot}`)
-                                    : bot.id === (viewingOpponent ? "opponent-model" : "main"))?.runningChain : null}
+                                onChange={updateActiveConfiguration}
                                 disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}
-                                selectedLoadout={activeLoadout}
-                                selectableAbilityIds={visibleSelectableAbilityIds}
                                 stateVariables={visibleStateVariables}
                                 defaultVariable={defaultVariable}
                                 selectableTypes={visibleSelectableTypes}
-                                onChange={updateActiveConfiguration}
-                                onOpenChain={openChainById}
-                                canUndo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0}
-                                canRedo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0}
-                                onUndo={() => travelHistory("undo")}
-                                onRedo={() => travelHistory("redo")}
-                                maxLogicBlocks={maxActionNodes}
-                                maxTotalConditions={maxConditionNodes}
-                                isExternalConfigurationOpen={isCustomVariablesOpen}
-                                onCloseExternalConfiguration={() => setIsCustomVariablesOpen(false)}
+                                selectableAbilityIds={visibleSelectableAbilityIds}
+                                selectedLoadout={activeLoadout}
+                                customVariableValues={activeCustomVariableValues}
+                                onOpenVariables={() => setIsCustomVariablesOpen(true)}
+                                focusId={pendingUse?.nodeId ?? null}
+                                onFocusHandled={() => setPendingUse(null)}
+                                live={lanesLive}
                             />
                         ) : (
-                        <TreeLogicBoard
-                                ref={logicBoardRef}
-                                phone={stage === "phone"}
-                                onSelectionChange={setPhoneSelection}
-                                configuration={activeConfiguration}
-                                disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}
-                                canRemove={!isCodeEditingLocked && !isTesting && !roundDeleteLocked}
-                                selectedLoadout={activeLoadout}
-                                selectableAbilityIds={visibleSelectableAbilityIds}
-                                stateVariables={visibleStateVariables}
-                                defaultVariable={defaultVariable}
-                                selectableTypes={visibleSelectableTypes}
-                                onChange={updateActiveConfiguration}
-                                zoom={canvasZoom}
-                                pan={canvasPan}
-                                onPanChange={setCanvasPan}
-                                onZoomChange={changeZoom}
-                                zoomToFitRef={zoomToFitRef}
-                                onPinchZoom={applyPinchZoom}
-                                canUndo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0}
-                                canRedo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0}
-                                onUndo={() => travelHistory("undo")}
-                                onRedo={() => travelHistory("redo")}
-                                onAddRoot={addRootNode}
-                                canAddRoot={totalRootNodes < MAX_ROOT_NODES}
-                                isSearchOpen={isNodeSearchOpen}
-                                isQuickSearchOpen={isQuickSearchOpen}
-                                onSearchClose={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); }}
-                                isExternalConfigurationOpen={isCustomVariablesOpen}
-                                onCloseExternalConfiguration={() => setIsCustomVariablesOpen(false)}
-                                maxLogicBlocks={maxActionNodes}
-                                maxTotalConditions={maxConditionNodes}
-                                onOpenChain={openChainById}
-                                onCreateChain={addChain}
-                                onRemoveChain={removeChainById}
-                            />
+                            <LegacyTreeNotice onStartNew={startNewBrain} disabled={isCodeEditingLocked || isTesting} />
                         )}
-                        {stage === "phone" && phoneSelection && <nav className={`code-phone-bar ${chainDragging ? "is-faded" : ""}`} aria-label="Selection actions">
-                            <PhoneBarButton icon="✎" label="Edit" disabled={!canEditWorkspace || phoneSelection.canEdit === false} aria-label="Edit" onClick={() => (openChainData ? chainEditorRef.current?.editSelection() : logicBoardRef.current?.editSelection())} />
-                            {openChainData
-                                ? <PhoneBarButton primary icon="+" label="Below" disabled={!canEditWorkspace} aria-label="Add below" onClick={() => chainEditorRef.current?.addStep()} />
-                                : <PhoneBarButton icon="⛓" label="Disconnect" disabled={!canEditWorkspace || !phoneSelection.canDisconnect} aria-label="Disconnect" onClick={() => logicBoardRef.current?.disconnectSelection()} />}
-                            <PhoneBarButton icon="↑" label="Up" disabled={!canEditWorkspace || !phoneSelection.canUp} aria-label="Move up" onClick={() => (openChainData ? chainEditorRef.current?.moveSelection(-1) : logicBoardRef.current?.nudgeSelection(-1))} />
-                            <PhoneBarButton icon="↓" label="Down" disabled={!canEditWorkspace || !phoneSelection.canDown} aria-label="Move down" onClick={() => (openChainData ? chainEditorRef.current?.moveSelection(1) : logicBoardRef.current?.nudgeSelection(1))} />
-                            <PhoneBarButton icon="🗑" label="Delete" disabled={!canEditWorkspace || phoneSelection.canDelete === false} aria-label="Delete" onClick={() => (openChainData ? chainEditorRef.current?.deleteSelection() : logicBoardRef.current?.deleteSelection())} />
-                            <PhoneBarButton icon="✓" label="Done" aria-label="Done" onClick={() => (openChainData ? chainEditorRef.current?.clearSelection() : logicBoardRef.current?.clearSelection())} />
-                        </nav>}
-                        {stage === "phone" && !phoneSelection && <nav className={`code-phone-bar ${chainDragging ? "is-faded" : ""}`} aria-label="Workspace actions">
+                        
+                        {stage === "phone" && <nav className="code-phone-bar" aria-label="Workspace actions">
                             <PhoneBarButton icon="↶" label="Undo" disabled={!canUndoNow} onClick={() => travelHistory("undo")} aria-label="Undo code edit" />
                             <PhoneBarButton icon="↷" label="Redo" disabled={!canRedoNow} onClick={() => travelHistory("redo")} aria-label="Redo code edit" />
-                            <PhoneBarButton primary icon="+" label={openChainData ? "Node" : "Add"} disabled={!canEditWorkspace} aria-label={openChainData ? "Add node" : "Add"} onClick={() => (openChainData ? chainEditorRef.current?.addStep() : setPhoneSheet("add"))} />
+                            <PhoneBarButton primary icon="+" label="Add" disabled={!canEditWorkspace} aria-label="Add" onClick={() => setPhoneSheet("add")} />
                             <PhoneBarButton icon="{ }" label="Vars" aria-label="Custom variables" onClick={() => setIsCustomVariablesOpen(true)} />
                             <PhoneBarButton icon="⋯" label="More" aria-label="More tools" onClick={() => setPhoneSheet("more")} />
                         </nav>}
-                        {stage === "phone" && phoneSheet === "add" && !openChainData && <WorkspaceSheet title="Add" onClose={() => setPhoneSheet(null)}>
-                            <SheetRow tag="ROOT" tone="root" label="Add root" disabled={totalRootNodes >= MAX_ROOT_NODES} onClick={inSheet(addRootNode)} />
-                            <SheetRow tag="IF" tone="if" label="Conditional node" onClick={inSheet(() => logicBoardRef.current?.addConditional())} />
-                            <SheetRow tag="ACTION" tone="action" label="Action node…" onClick={inSheet(() => logicBoardRef.current?.addNode())} />
-                            <SheetRow tag="CHAIN" tone="chain" label="New chain" disabled={Boolean(chainDisabledReason)} onClick={inSheet(addChain)} />
+                        {stage === "phone" && phoneSheet === "add" && <WorkspaceSheet title="Add" onClose={() => setPhoneSheet(null)}>
+                            {LANE_SPECS.map((spec) => <SheetRow key={spec.lane} label={`${spec.title} card`} disabled={!canEditWorkspace} onClick={inSheet(() => lanesBoardRef.current?.addCard(spec.lane))} />)}
                         </WorkspaceSheet>}
                         {stage === "phone" && phoneSheet === "more" && <WorkspaceSheet title="More" onClose={() => setPhoneSheet(null)}>
-                            {!openChainData && <SheetRow label="Tidy layout" disabled={!canEditWorkspace} onClick={inSheet(() => logicBoardRef.current?.tidy())} />}
-                            <SheetRow label="Zoom to fit" onClick={inSheet(zoomToFit)} />
-                            {!openChainData && <SheetRow label="Clear all" danger disabled={clearAllDisabled} onClick={inSheet(clearAll)} />}
+                            <SheetRow label="Clear all" danger disabled={clearAllDisabled} onClick={inSheet(clearAll)} />
                         </WorkspaceSheet>}
                         {stage === "phone" && phoneSheet === "counts" && <WorkspaceSheet title="Counts" onClose={() => setPhoneSheet(null)}>
                             {budgetRows.map((row) => <SheetRow key={row.label} label={row.label} value={row.value} />)}
                         </WorkspaceSheet>}
-                        {namingChain && <NewChainDialog defaultName={createChain(activeConfiguration)?.name ?? ""} onConfirm={confirmNewChain} onCancel={() => setNamingChain(false)} />}
-                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal resetChoices={isMatchTesting && !viewingOpponent && !viewingLiveParticipant ? variableResetChoices : null} onResetChoiceChange={onVariableResetChoiceChange} configuration={activeConfiguration} currentValues={activeCustomVariableValues} stateVariables={visibleStateVariables} selectableTypes={visibleSelectableTypes} onJumpToUse={jumpToUse} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
+                        {isCustomVariablesOpen && <CustomVariablesModal resetChoices={isMatchTesting && !viewingOpponent && !viewingLiveParticipant ? variableResetChoices : null} onResetChoiceChange={onVariableResetChoiceChange} configuration={activeConfiguration} currentValues={activeCustomVariableValues} stateVariables={visibleStateVariables} selectableTypes={visibleSelectableTypes} onJumpToUse={jumpToUse} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting || !lanesBrain} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
                     </section>
                 </div>,
                 document.body

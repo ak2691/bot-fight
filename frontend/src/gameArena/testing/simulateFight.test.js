@@ -18,7 +18,9 @@ const scenarioFile = loadScenarios();
 const golden = loadGolden(BROWSER_GOLDEN_FILE);
 
 function brainOf(spec) {
-    return { version: "bot-logic-tree-v1", loadout: { abilities: spec.abilities }, customVariables: [], roots: spec.roots, chains: [] };
+    // A lanes scenario bot carries its lanes brain; simulateFight normalizes it like any submitted brain.
+    if (spec.lanes) return { ...spec.lanes, loadout: { abilities: spec.abilities } };
+    return { version: "bot-logic-tree-v1", loadout: { abilities: spec.abilities }, customVariables: [], roots: spec.roots };
 }
 
 function requestFor(scenario) {
@@ -65,8 +67,8 @@ const SPRINT_EAST = { action: "move_walk", movementMode: "absolute", movementDir
 const SLASH = [{ action: "rotate_toward_enemy", selectable: "opponent_1" }, { action: 1, selectable: "opponent_1" }];
 
 const always = (...actions) => [{ priority: 1, branches: [{ branchType: "if", priority: 1, conditions: [{ type: "always" }], actions, children: [] }] }];
-const brain = (abilities, roots, customVariables = [], chains = []) => ({
-    version: "bot-logic-tree-v1", loadout: { abilities }, customVariables, roots, chains,
+const brain = (abilities, roots, customVariables = []) => ({
+    version: "bot-logic-tree-v1", loadout: { abilities }, customVariables, roots,
 });
 const idle = brain([], []);
 
@@ -93,7 +95,6 @@ function observe(request) {
                 triggeredAbility: subject.triggeredAbility,
                 cooldowns: Object.fromEntries(subject.abilities.map((id) => [id, cooldownRemainingMs(subject, id)])),
                 abilities: [...subject.abilities], variables: { ...subject.customVariables },
-                chainDepth: subject.chainStack.length,
             });
         },
     });
@@ -218,18 +219,6 @@ test("a wind-up in progress finishes after the brain that started it is gone", (
     assert.ok(at(seen, 600).preparingMs > 0);
     // The idle brain never fires it again, so the only release is the carried wind-up.
     assert.ok(seen.filter((entry) => entry.elapsedMs > 500).some((entry) => entry.triggeredAbility === 3));
-});
-
-test("a running chain ends at the boundary", () => {
-    const chains = [{ id: "chain.hold", name: "hold", steps: [{ type: "wait", forMs: 5000 }] }];
-    const running = brain([], always({ action: "run_chain", chainId: "chain.hold" }), [], chains);
-    const plain = brain([], [], [], chains);
-    const seen = observe(segmented([bot(1, 600, 600, running), bot(2, 100, 100, idle)], [first(500), swap(1_500, 1, plain)]));
-
-    assert.equal(at(seen, 100).chainDepth, 1);
-    assert.equal(at(seen, 500).chainDepth, 1);
-    assert.equal(at(seen, 600).chainDepth, 0);
-    assert.equal(at(seen, 1_500).chainDepth, 0);
 });
 
 test("a knockout mid-segment ends the run", () => {

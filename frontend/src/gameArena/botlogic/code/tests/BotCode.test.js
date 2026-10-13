@@ -1638,7 +1638,6 @@ test("orphans survive normalization and save, never run, and share budgets", () 
     assert.equal(validateAbilityStrategyConfiguration(normalized).errors.length, 0);
     assert.match(validateAbilityStrategyConfiguration(brain).warnings[0], /3 nodes aren't connected/);
     assert.ok(validateAbilityStrategyConfiguration({ ...brain, orphans: [{ id: "bad", kind: "action", action: "eval" }] }).errors.length);
-    assert.ok(validateAbilityStrategyConfiguration({ ...brain, orphans: [{ id: "bad", kind: "action", action: "run_chain", chainId: "chain.missing" }] }).errors.some((error) => error.includes("does not exist")));
 });
 
 

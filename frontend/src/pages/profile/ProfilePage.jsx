@@ -553,7 +553,6 @@ function ProfileContent({
                     <SignInSetting hasPassword={hasPassword} googleLinked={googleLinked} googleStatus={googleStatus} onSave={onPasswordSaved} />
                     <ShortcutSetting action="addRoot" />
                     <ShortcutSetting action="addNode" />
-                    <ShortcutSetting action="addChain" />
                     <ShortcutSetting action="search" />
                     <div className="pf-settings__footer">
                         <button type="button" onClick={() => void onLogout()} className="pf-link pf-link--danger">

@@ -1,13 +1,12 @@
 // Where a custom variable is used, and how a type change or delete rewrites those places.
 // Walks every part of a configuration that can hold a reference: connected roots (their
-// conditionals and root actions), unconnected nodes, and chains (steps, nested If / Repeat bodies
-// and loose blocks). Pure and UI-free so the rules can be tested directly.
+// conditionals and root actions) and unconnected nodes. Pure and UI-free so the rules can be tested directly.
 import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
-import { CHAIN_STEP_TYPES } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { editorRootsFor } from "./treeWiring.js";
-import { LOOSE, BODY, BRANCH, isConditional, numberChainSteps, pathKey } from "./chains/chainEditing.js";
-
-const CONDITION_FIELDS = Object.freeze(["conditions", "whileConditions", "untilConditions"]);
+import { normalizeAbilityStrategyConfiguration } from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { LANE_SECTIONS } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
+import { laneSetCards, mapLaneCards } from "../../../../shared/engine/botlogic/code/configuration/laneCardTree.js";
+import { isLanesBrain, SHARED_SCOPE } from "./lanes/laneEdits.js";
 
 const operandUses = (operand, variableId) => operand?.type === "variable" && operand.value === variableId;
 const conditionUses = (condition, variableId) => condition?.left === variableId || operandUses(condition?.right, variableId);
@@ -35,15 +34,15 @@ const actionNodeId = (entry, branchId, index, rootId) => entry.id ?? `action:${b
 
 /**
  * Every place the variable is used, in reading order. Each use is
- * `{ key, kind, where, text, target }`; `target` is `{ type: "node", nodeId }` for the main canvas
- * or `{ type: "step", chainId, path }` for a chain step. `describe` supplies the wording:
- * `condition(condition)` and `action(entry)` return the use's summary text.
+ * `{ key, kind, where, text, target }`; `target` is `{ type: "node", nodeId }` for the main canvas.
+ * `describe` supplies the wording: `condition(condition)` and `action(entry)` return the use's summary text.
  */
 export function collectVariableUses(configuration, variableId, describe = {}) {
+    if (isLanesBrain(configuration)) return laneUses(configuration, variableId, describe);
     const describeCondition = describe.condition ?? ((condition) => String(condition?.left ?? ""));
     const describeAction = describe.action ?? ((entry) => String(entry?.variableId ?? ""));
     const uses = [];
-    const push = (use) => uses.push({ ...use, key: `${use.target.type}:${use.target.nodeId ?? `${use.target.chainId}:${pathKey(use.target.path)}`}:${uses.length}` });
+    const push = (use) => uses.push({ ...use, key: `${use.target.type}:${use.target.nodeId}:${uses.length}` });
 
     const visitBranch = (branch, rootId, where) => {
         (branch?.conditions ?? []).forEach((condition) => {
@@ -58,29 +57,6 @@ export function collectVariableUses(configuration, variableId, describe = {}) {
     editorRootsFor(configuration ?? {}).forEach((root, rootIndex) => {
         const where = root._orphan ? "Unconnected" : `Root "${String(root.name ?? "").trim() || `Root ${rootIndex + 1}`}"`;
         (root.branches ?? []).forEach((branch) => visitBranch(branch, root.id, where));
-    });
-
-    (Array.isArray(configuration?.chains) ? configuration.chains : []).forEach((chain) => {
-        const where = `Chain "${chain.name ?? chain.id}"`;
-        const visitList = (steps, listPath, numbers, prefix) => (steps ?? []).forEach((step, index) => {
-            const path = [...listPath, index];
-            const label = numbers.get(pathKey(path));
-            // A loose block never runs, so it has no step number.
-            const kind = prefix.length ? "LOOSE" : step.type === CHAIN_STEP_TYPES.REPEAT ? "REPEAT" : label != null ? `STEP ${label}` : "STEP";
-            const target = { type: "step", chainId: chain.id, path: [...prefix, ...path] };
-            CONDITION_FIELDS.forEach((field) => (step[field] ?? []).forEach((condition) => {
-                if (conditionUses(condition, variableId)) push({ kind, where, text: describeCondition(condition), target });
-            }));
-            if (step.type === CHAIN_STEP_TYPES.ACTION && entryUses(step, variableId)) push({ kind, where, text: describeAction(step), target });
-            if (isConditional(step)) visitList(step.steps, [...path, BRANCH], numbers, prefix);
-            else if (step.type === CHAIN_STEP_TYPES.REPEAT) visitList(step.steps, [...path, BODY], numbers, prefix);
-        });
-        visitList(chain.steps, [], numberChainSteps(chain.steps ?? []), []);
-        (Array.isArray(chain.loose) ? chain.loose : []).forEach((entry, looseIndex) => {
-            if (!entry?.step) return;
-            // A loose block is a one-step stack; its path is [LOOSE, index, ...path within the block].
-            visitList([entry.step], [], numberChainSteps([entry.step]), [LOOSE, looseIndex]);
-        });
     });
     return uses;
 }
@@ -99,11 +75,12 @@ function withoutOperandReads(entry, variableId) {
 }
 
 /**
- * Applies `rewrite(entry)` to each Variable action that writes `variableId`, across roots, unconnected
- * nodes and chains. Returning null removes the action. When `readsToo` is set, operands that read the
+ * Applies `rewrite(entry)` to each Variable action that writes `variableId`, across roots and unconnected
+ * nodes. Returning null removes the action. When `readsToo` is set, operands that read the
  * variable are reset to 0 on the actions that remain.
  */
 export function rewriteVariableActions(configuration, variableId, rewrite, { readsToo = false } = {}) {
+    if (isLanesBrain(configuration)) return rewriteLaneActions(configuration, variableId, rewrite, readsToo);
     const mapEntry = (entry) => {
         if (entry?.action !== BOT_CODE_ACTIONS.VARIABLE) return entry;
         if (entry.variableId === variableId) return rewrite(entry);
@@ -115,11 +92,6 @@ export function rewriteVariableActions(configuration, variableId, rewrite, { rea
         const first = mapped[0] ?? (legacyRemoved ? { action: "none", selectable: BOT_CODE_SELECTABLES.OPPONENT } : null);
         return { ...branch, ...(first ? { ...first, actions: mapped } : { actions: mapped }), children: (branch.children ?? []).map(mapBranch) };
     };
-    const mapSteps = (steps) => (steps ?? []).flatMap((step) => {
-        const mapped = step.type === CHAIN_STEP_TYPES.ACTION ? mapEntry(step) : step;
-        if (!mapped) return [];
-        return [Array.isArray(mapped.steps) ? { ...mapped, steps: mapSteps(mapped.steps) } : mapped];
-    });
     const orphanEntry = (orphan) => {
         if (orphan.kind === "action") {
             const mapped = mapEntry(orphan);
@@ -135,38 +107,15 @@ export function rewriteVariableActions(configuration, variableId, rewrite, { rea
             branches: (root.branches ?? []).map(mapBranch),
         })),
         ...(Array.isArray(configuration.orphans) ? { orphans: configuration.orphans.flatMap(orphanEntry) } : {}),
-        ...(Array.isArray(configuration.chains) ? {
-            chains: configuration.chains.map((chain) => ({
-                ...chain,
-                steps: mapSteps(chain.steps),
-                ...(Array.isArray(chain.loose) ? { loose: chain.loose.flatMap((entry) => {
-                    const [step] = mapSteps([entry.step]);
-                    return step ? [{ ...entry, step }] : [];
-                }) } : {}),
-            })),
-        } : {}),
     };
 }
 
 function rewriteConditions(configuration, rewrite) {
     const mapBranch = (branch) => ({ ...branch, conditions: rewrite(branch.conditions), children: (branch.children ?? []).map(mapBranch) });
-    const mapSteps = (steps) => (steps ?? []).map((step) => {
-        const next = { ...step };
-        CONDITION_FIELDS.forEach((field) => { if (Array.isArray(step[field])) next[field] = rewrite(step[field]); });
-        if (Array.isArray(step.steps)) next.steps = mapSteps(step.steps);
-        return next;
-    });
     return {
         ...configuration,
         roots: (configuration.roots ?? []).map((root) => ({ ...root, branches: (root.branches ?? []).map(mapBranch) })),
         ...(Array.isArray(configuration.orphans) ? { orphans: configuration.orphans.map((orphan) => (orphan.kind === "action" ? orphan : mapBranch(orphan))) } : {}),
-        ...(Array.isArray(configuration.chains) ? {
-            chains: configuration.chains.map((chain) => ({
-                ...chain,
-                steps: mapSteps(chain.steps),
-                ...(Array.isArray(chain.loose) ? { loose: chain.loose.map((entry) => ({ ...entry, step: mapSteps([entry.step])[0] })) } : {}),
-            })),
-        } : {}),
     };
 }
 
@@ -188,6 +137,7 @@ function pruneEmptyModifyRoots(configuration) {
 
 /** The configuration without the variable: its actions and conditions are removed everywhere. */
 export function removeVariableFromConfiguration(configuration, variableId) {
+    if (isLanesBrain(configuration)) return removeLaneVariable(configuration, variableId);
     const customVariables = (configuration?.customVariables ?? []).filter((variable) => variable.id !== variableId).map((variable) => {
         const next = { ...variable };
         delete next.conditions;
@@ -195,4 +145,71 @@ export function removeVariableFromConfiguration(configuration, variableId) {
     });
     const cleaned = pruneEmptyModifyRoots(rewriteVariableActions({ ...configuration, customVariables }, variableId, () => null, { readsToo: true }));
     return rewriteConditions(cleaned, (conditions) => (conditions ?? []).filter((condition) => !conditionUses(condition, variableId)));
+}
+
+// ---- Lanes brains: the same rules over modes, All modes, cards and switches ----------------------
+
+/** Each scope of a lanes brain with the wording for it: every mode, then All modes. */
+function laneScopes(configuration) {
+    return [
+        ...(configuration.modes ?? []).map((mode) => ({ scope: mode.id, where: `Mode "${mode.name}"`, set: mode })),
+        { scope: SHARED_SCOPE, where: "All modes", set: configuration.shared ?? {} },
+    ];
+}
+
+function laneUses(configuration, variableId, describe = {}) {
+    const describeCondition = describe.condition ?? ((condition) => String(condition?.left ?? ""));
+    const describeAction = describe.action ?? ((entry) => String(entry?.variableId ?? ""));
+    const uses = [];
+    const push = (use) => uses.push({ ...use, key: `${use.target.type}:${use.target.nodeId}:${uses.length}` });
+    const pushConditions = (entry, where) => (entry.conditions ?? []).forEach((condition) => {
+        if (conditionUses(condition, variableId)) push({ kind: "IF", where, text: describeCondition(condition), target: { type: "node", nodeId: entry.id } });
+    });
+    for (const { where, set } of laneScopes(configuration)) {
+        (set.switches ?? []).forEach((entry) => pushConditions(entry, where));
+        for (const card of laneSetCards(set)) {
+            pushConditions(card, where);
+            if (entryUses(card.action, variableId)) push({ kind: "SET", where, text: describeAction(card.action), target: { type: "node", nodeId: card.id } });
+        }
+    }
+    return uses;
+}
+
+/** Maps every set of a lanes brain; `mapSet` returns the new set. Empty sections are left for normalization. */
+function mapLaneSets(configuration, mapSet) {
+    const modes = (configuration.modes ?? []).map((mode) => mapSet(mode));
+    return { ...configuration, modes, shared: mapSet(configuration.shared ?? {}) };
+}
+
+function rewriteLaneActions(configuration, variableId, rewrite, readsToo) {
+    const mapCard = (card) => {
+        if (card.action?.action !== BOT_CODE_ACTIONS.VARIABLE) return [card];
+        if (card.action.variableId === variableId) {
+            const next = rewrite(card.action);
+            return next ? [{ ...card, action: next }] : [];
+        }
+        return [readsToo ? { ...card, action: withoutOperandReads(card.action, variableId) } : card];
+    };
+    const mapped = mapLaneSets(configuration, (set) => ({
+        ...set,
+        ...Object.fromEntries(LANE_SECTIONS.map((section) => [section, mapLaneCards(set[section], mapCard)])),
+    }));
+    return normalizeAbilityStrategyConfiguration(mapped);
+}
+
+function removeLaneVariable(configuration, variableId) {
+    const customVariables = (configuration?.customVariables ?? []).filter((variable) => variable.id !== variableId).map((variable) => {
+        const next = { ...variable };
+        delete next.conditions;
+        return next;
+    });
+    const cleaned = rewriteLaneActions({ ...configuration, customVariables }, variableId, () => null, true);
+    return normalizeAbilityStrategyConfiguration(mapLaneSets(cleaned, (set) => ({
+        ...set,
+        switches: (set.switches ?? []).map((entry) => ({ ...entry, conditions: (entry.conditions ?? []).filter((condition) => !conditionUses(condition, variableId)) })),
+        ...Object.fromEntries(LANE_SECTIONS.map((section) => [section, mapLaneCards(set[section], (card) => [{
+            ...card,
+            conditions: (card.conditions ?? []).filter((condition) => !conditionUses(condition, variableId)),
+        }])])),
+    })));
 }

@@ -22,22 +22,12 @@ function configuration() {
         orphans: [
             { id: "orphan-1", kind: "conditional", conditions: [compare(VAR, 9)], actions: [{ action: "none" }], children: [] },
             { ...setVariable(VAR, 2), id: "orphan-action", kind: "action" },
+            { ...readVariable(OTHER, VAR), id: "orphan-reader", kind: "action" },
         ],
-        chains: [{
-            id: "reset", name: "Reset",
-            steps: [
-                { type: "action", ...setVariable(OTHER) },
-                {
-                    type: "if", conditions: [compare(VAR, 5)],
-                    steps: [{ type: "repeat", count: 2, steps: [{ type: "action", ...setVariable(VAR, 7) }] }],
-                },
-            ],
-            loose: [{ x: 10, y: 20, step: { type: "action", ...readVariable(OTHER, VAR) } }],
-        }],
     };
 }
 
-test("uses are found on roots, unconnected nodes and chains, including nested and loose blocks", () => {
+test("uses are found on roots and unconnected nodes", () => {
     const uses = collectVariableUses(configuration(), VAR);
     const where = uses.map((use) => `${use.where}|${use.kind}`);
     assert.deepEqual(where, [
@@ -45,23 +35,8 @@ test("uses are found on roots, unconnected nodes and chains, including nested an
         'Root "Defend"|SET',
         "Unconnected|IF",
         "Unconnected|SET",
-        'Chain "Reset"|STEP 2',
-        'Chain "Reset"|STEP 3',
-        'Chain "Reset"|LOOSE',
+        "Unconnected|SET",
     ]);
-    const nested = uses.find((use) => use.target.type === "step" && use.target.path.length === 5);
-    assert.deepEqual(nested.target.path, [1, "branch", 0, "body", 0]);
-    assert.equal(nested.target.chainId, "reset");
-    const loose = uses.at(-1);
-    assert.deepEqual(loose.target.path, ["loose", 0, 0]);
-});
-
-test("a variable only used inside a chain is counted", () => {
-    const config = configuration();
-    config.roots = [];
-    config.orphans = [];
-    assert.equal(collectVariableUses(config, VAR).length, 3);
-    assert.equal(collectVariableUses(config, "custom.unused").length, 0);
 });
 
 test("node targets use the ids the canvas gives its nodes", () => {
@@ -70,24 +45,19 @@ test("node targets use the ids the canvas gives its nodes", () => {
     assert.equal(action.target.nodeId, "action:b1:0:root:root-1");
 });
 
-test("deleting a variable removes its uses from roots, unconnected nodes and chains", () => {
+test("deleting a variable removes its uses from roots and unconnected nodes", () => {
     const cleaned = removeVariableFromConfiguration(configuration(), VAR);
     assert.deepEqual(cleaned.customVariables.map((variable) => variable.id), [OTHER]);
     assert.equal(collectVariableUses(cleaned, VAR).length, 0);
     assert.equal(JSON.stringify(cleaned).includes(VAR), false);
-    // The unrelated chain step survives; the one that wrote the variable is gone.
-    const chain = cleaned.chains[0];
-    assert.equal(chain.steps.filter((step) => step.type === "action").length, 1);
-    assert.deepEqual(chain.steps[1].steps[0].steps, []);
-    // The loose block only read the variable in an operand, so it stays with that operand reset.
-    assert.deepEqual(chain.loose[0].step.terms[0].operand, { type: "number", value: 0 });
     // Unconnected action nodes that wrote the variable are removed; the conditional loses its condition.
-    assert.deepEqual(cleaned.orphans.map((node) => node.id), ["orphan-1"]);
+    assert.deepEqual(cleaned.orphans.map((node) => node.id), ["orphan-1", "orphan-reader"]);
     assert.deepEqual(cleaned.orphans[0].conditions, []);
+    // The node that only read the variable in an operand stays, with that operand reset.
+    assert.deepEqual(cleaned.orphans[1].terms[0].operand, { type: "number", value: 0 });
 });
 
-test("changing a variable's type rewrites its actions in chains and unconnected nodes", () => {
+test("changing a variable's type rewrites its actions in unconnected nodes", () => {
     const rewritten = rewriteVariableActions(configuration(), VAR, (entry) => ({ ...entry, value: false, terms: undefined }));
-    assert.equal(rewritten.chains[0].steps[1].steps[0].steps[0].value, false);
     assert.equal(rewritten.orphans[1].value, false);
 });

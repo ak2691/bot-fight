@@ -1,0 +1,696 @@
+/* Lanes brain editor: one vertical list. Flat tool surface (botfight-ui-design): hairline borders, no glow. */
+.lanes-frame {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    color: #e6edf3;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.lanes-scroll {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    padding: 14px 16px 28px;
+}
+
+.lanes-scroll button,
+.lanes-scroll select,
+.lanes-scroll input {
+    font: inherit;
+    font-size: 13px;
+}
+
+/* ---- Mode tabs (hidden with one mode; "+ Mode" stays top right) ---- */
+.lanes-tabs-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.lanes-tabs {
+    display: flex;
+    max-width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+    gap: 4px;
+    overflow-x: auto;
+    border-bottom: 1px solid #262c33;
+    scrollbar-width: thin;
+}
+
+.lanes-tab-wrap {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+}
+
+.lanes-tab {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: #8b98a5;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.lanes-tab:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+.lanes-tab.is-active { border-bottom-color: #3aa6c9; color: #e6edf3; }
+/* The live mode: an accent ring around the tab while a preview runs. */
+.lanes-tab.is-live { outline: 2px solid #5fd4f0; outline-offset: -2px; border-radius: 5px; color: #e6edf3; }
+
+.lanes-tab-input {
+    min-height: 30px;
+    width: 9rem;
+    max-width: 60vw;
+    margin: 2px 0;
+    border: 1px solid #3aa6c9;
+    border-radius: 5px;
+    background: #0b1015;
+    padding: 0 8px;
+    color: #e6edf3;
+}
+
+.lanes-tab-menu { min-width: 26px; min-height: 26px; font-size: 16px; line-height: 1; }
+
+.lanes-tag {
+    border-radius: 4px;
+    background: #17303a;
+    padding: 1px 6px;
+    color: #5fd4f0;
+    font-size: 11px;
+}
+
+.lanes-live-time {
+    color: #5fd4f0;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.lanes-ghost,
+.lanes-primary {
+    min-height: 30px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.lanes-ghost {
+    border: 1px solid #262c33;
+    background: transparent;
+    padding: 0 10px;
+    color: #c4ccd4;
+}
+.lanes-ghost:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+
+.lanes-add-mode { margin-left: auto; }
+
+.lanes-primary {
+    border: 1px solid #2a7d99;
+    background: #1c5a70;
+    padding: 0 12px;
+    color: #eaf8fc;
+}
+.lanes-primary:hover { background: #22708a; }
+.lanes-primary:disabled { opacity: .5; cursor: default; }
+
+.lanes-icon {
+    display: inline-flex;
+    min-width: 30px;
+    min-height: 30px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: #8b98a5;
+    cursor: pointer;
+}
+.lanes-icon:hover:not(:disabled) { background: rgba(255, 255, 255, .06); color: #fff; }
+.lanes-icon:disabled { color: #3a444e; cursor: default; }
+
+/* A ⋯ menu: a trigger and a small popover under it. */
+.lane-menu-wrap { position: relative; display: inline-flex; }
+
+.lane-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 30;
+    display: flex;
+    min-width: 176px;
+    flex-direction: column;
+    gap: 1px;
+    border: 1px solid #2a323b;
+    border-radius: 6px;
+    background: #14181d;
+    padding: 4px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .45);
+}
+
+.lane-menu__item {
+    min-height: 30px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    padding: 0 10px;
+    color: #e6edf3;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.lane-menu__item:hover:not(:disabled) { background: rgba(255, 255, 255, .08); }
+.lane-menu__item:disabled { color: #4a5560; cursor: default; }
+.lane-menu__item.is-danger { color: #f0827a; }
+
+.lane-menu__rule { width: 100%; margin: 3px 0; border: 0; border-top: 1px solid #262c33; }
+
+.lanes-notice {
+    margin: 0;
+    border: 1px solid #5a3a2f;
+    border-radius: 5px;
+    background: rgba(90, 58, 47, .3);
+    padding: 8px 10px;
+    color: #f6c9b8;
+}
+
+.lanes-empty { margin: 0; color: #8b98a5; }
+
+.lanes-heading {
+    margin: 0 0 6px;
+    color: #8b98a5;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* ---- Switches ---- */
+.lanes-switches {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border: 1px solid #262c33;
+    border-radius: 5px;
+    padding: 10px 12px;
+}
+
+.lanes-switch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.lanes-switch {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lanes-switch__line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.lanes-switch select {
+    min-height: 30px;
+    border: 1px solid #262c33;
+    border-radius: 5px;
+    background: #0b1015;
+    padding: 0 6px;
+    color: #e6edf3;
+}
+
+.lanes-switch__go,
+.lanes-switch__when { color: #8b98a5; }
+
+/* ---- Lanes: coloured labels, no boxes; one row per card (docs/mockups/lanes-editor.html, section 1) ---- */
+.lane-group { margin-bottom: 14px; }
+
+.lane-group__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 24px;
+    margin: 0 0 4px 6px;
+}
+
+.lane-group__tag {
+    color: var(--lane-tone, #3aa6c9);
+    font-family: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+}
+
+/* An empty lane is its label with a small "+". */
+.lane-plus {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed #2a3c45;
+    border-radius: 6px;
+    background: transparent;
+    color: #6f8a96;
+    cursor: pointer;
+}
+.lane-plus:hover { border-color: #3aa6c9; color: #5fd4f0; background: rgba(95, 212, 240, .06); }
+
+.lane-group__cards {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.lane-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0 2px;
+    color: #5d6873;
+    font-size: 11px;
+    list-style: none;
+}
+.lane-divider::before,
+.lane-divider::after {
+    content: "";
+    flex: 1 1 auto;
+    border-top: 1px dashed #303942;
+}
+
+/* "+ Card" is a quiet ghost line under a lane that has cards. */
+.lane-add-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 2px 0 0 30px;
+    padding: 3px 6px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #5d6873;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.lane-add-card:hover { background: rgba(255, 255, 255, .06); color: #e6edf3; }
+
+/* A card: one row. Live highlight (practice room, mockup 1b): a card that acted this tick gets a 3 px bar in its kind
+   colour on its row; a card that is only the parent of the running combo step gets a faint one. */
+.lane-card { position: relative; list-style: none; }
+.lane-card.is-off .lane-tiles { opacity: .4; }
+.lane-card.is-live > .lane-row { box-shadow: inset 3px 0 0 var(--lane-tone, #3aa6c9); }
+.lane-card.is-live-faint > .lane-row { box-shadow: inset 3px 0 0 rgba(230, 237, 243, .22); }
+
+.lane-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 3px 6px;
+    border-radius: 7px;
+}
+.lane-row:hover { background: rgba(255, 255, 255, .03); }
+.lane-row:focus-visible { outline: 2px solid #3aa6c9; outline-offset: 1px; }
+
+.lane-row__num {
+    width: 16px;
+    flex: none;
+    text-align: right;
+    color: #5d6873;
+    font-family: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13px;
+}
+
+.lane-tiles {
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+
+/* Tiles are chevrons: the action tile has a flat left edge, condition tiles notch into it. */
+.lane-tile {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 7px;
+    height: 38px;
+    padding: 0 20px 0 9px;
+    border: 0;
+    color: #e6edf3;
+    font: inherit;
+    font-size: 13px;
+    white-space: nowrap;
+    clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 7px 50%);
+}
+.lane-tile--action {
+    padding: 0 20px 0 6px;
+    background: color-mix(in srgb, var(--lane-tone, #3aa6c9) 18%, #0d1114);
+    clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%);
+}
+.lane-tile--cond { background: #16364a; cursor: pointer; }
+.lane-tile--cond:hover:not(:disabled) { filter: brightness(1.18); }
+.lane-tile--cond.is-open { background: #1f4c66; }
+.lane-tile--cond.is-unknown { background: #1b2a35; }
+.lane-tile--cond:disabled { cursor: default; }
+
+.lane-tile__name {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13px;
+}
+.lane-tile__name--action {
+    font-family: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+}
+.lane-tile__icon { flex: none; color: #9fdcf2; }
+.lane-tile__value {
+    color: #ffd166;
+    font-family: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* The lane-coloured chip behind an action: ability artwork, or a small inline icon. */
+.lane-glyph {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: var(--lane-tone, #3aa6c9);
+    color: #0d1114;
+}
+/* Ability artwork sits on a dark square with a lane-coloured border, never on a solid colour fill. */
+.lane-glyph--art {
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1.5px solid var(--lane-tone, #3aa6c9);
+    background: #0d1114;
+}
+img.lane-glyph--art { display: block; object-fit: cover; }
+/* Artwork that is nearly black on the dark square is brightened so its shape shows. */
+img.lane-glyph--art.is-boosted { filter: brightness(2.8); }
+.lane-icon { display: block; flex: none; }
+
+/* "+ Condition": a dashed chip, always visible while the card can take another condition. */
+.lane-add-cond {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    margin-left: 6px;
+    padding: 0 10px;
+    border: 1.5px dashed #2a3c45;
+    border-radius: 6px;
+    background: transparent;
+    color: #6f8a96;
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+.lane-add-cond:hover { border-color: #3aa6c9; background: rgba(95, 212, 240, .06); color: #5fd4f0; }
+
+.lane-row__off { flex: none; color: #8b98a5; font-size: 12px; }
+
+/* The ⋯ button shows on row hover (and while its menu is open); touch and phone widths always show it. */
+.lane-more {
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #5d6873;
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0;
+}
+.lane-row:hover .lane-more,
+.lane-row:focus-within .lane-more,
+.lane-more[aria-expanded="true"] { opacity: 1; }
+.lane-more:hover,
+.lane-more[aria-expanded="true"] { background: rgba(255, 255, 255, .06); color: #e6edf3; }
+@media (hover: none), (max-width: 640px) {
+    .lane-more { opacity: 1; }
+}
+
+/* Follow-ups sit under their parent, indented, with a 2 px left line and nothing else. */
+.lane-fu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 0 26px;
+    padding: 0 0 0 12px;
+    border-left: 2px solid #2a3239;
+    list-style: none;
+}
+
+/* The inline condition editor: one line under the row. */
+.lane-editor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    max-width: 560px;
+    margin: 4px 0 8px 30px;
+    padding: 8px 12px;
+    border: 1px solid #2c5566;
+    border-radius: 8px;
+    background: #181e24;
+}
+.lane-editor__name { color: #e6edf3; font-weight: 500; }
+.lane-editor__value { display: inline-flex; align-items: center; gap: 6px; }
+.lane-editor__num {
+    width: 72px;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    background: #0d1114;
+    color: #e6edf3;
+    font-family: monospace;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+.lane-editor__unit { color: #8b98a5; }
+.lane-editor__static {
+    color: #ffd166;
+    font-family: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+    font-weight: 700;
+}
+.lane-editor__remove {
+    margin-left: auto;
+    padding: 4px 6px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #f08a8a;
+    font: inherit;
+    cursor: pointer;
+}
+.lane-editor__remove:hover:not(:disabled) { background: rgba(240, 138, 138, .1); }
+.lane-editor__remove:disabled { cursor: default; opacity: .5; }
+
+.lane-seg {
+    display: inline-flex;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.lane-seg__item {
+    padding: 4px 10px;
+    border: 0;
+    background: transparent;
+    color: #8b98a5;
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+.lane-seg__item + .lane-seg__item { border-left: 1px solid #30363d; }
+.lane-seg__item.is-on { background: #1f3a47; color: #5fd4f0; }
+.lane-seg__item:disabled { cursor: default; }
+
+/* Menu items with an icon. */
+.lane-menu__item { display: flex; align-items: center; gap: 8px; }
+
+.lanes-legacy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    border: 1px solid #5a4a2f;
+    border-radius: 5px;
+    background: rgba(90, 74, 47, .25);
+    padding: 14px;
+}
+.lanes-legacy p { margin: 0; color: #f0e0b8; }
+
+/* ---- Phones: the same list; tabs scroll sideways, controls stay large and visible ---- */
+@media (max-width: 600px) {
+    .lanes-scroll { padding: 12px 12px 24px; }
+    .lanes-tab { min-height: 36px; }
+    .lanes-ghost,
+    .lanes-primary,
+    .lanes-icon { min-height: 34px; }
+    .lanes-icon { min-width: 34px; }
+    .lane-tile { height: 34px; }
+    .lane-add-cond { height: 34px; }
+    .lane-more { width: 32px; height: 32px; }
+    .lane-add-card { min-height: 34px; }
+}
+
+/* The action tile is a button (it opens the action editor); reset the button chrome. */
+button.lane-tile { border: 0; color: inherit; text-align: left; }
+button.lane-tile--action { cursor: pointer; }
+button.lane-tile--action:disabled { cursor: default; }
+button.lane-tile--action.is-open { filter: brightness(1.15); }
+
+/* The action editor's fields: a muted label, then its control. */
+.lane-editor--action { flex-wrap: wrap; }
+.lane-editor__field { display: inline-flex; align-items: center; gap: 6px; }
+.lane-editor__label { color: #8b98a5; }
+.lane-editor__link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #5fd4f0;
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+.lane-editor__link:disabled { cursor: default; opacity: .5; }
+
+/* A small switch: a track with a knob, lit when on. */
+.lane-switch {
+    position: relative;
+    width: 30px;
+    height: 17px;
+    padding: 0;
+    border: 0;
+    border-radius: 9px;
+    background: #30363d;
+    cursor: pointer;
+}
+.lane-switch.is-on { background: #2a7a94; }
+.lane-switch__knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #cfd8e0;
+    transition: transform .12s;
+}
+.lane-switch.is-on .lane-switch__knob { transform: translateX(13px); }
+.lane-switch:disabled { cursor: default; opacity: .5; }
+
+/* Section rule: one muted line after the coloured label (mockup section 1). Wraps on a phone. */
+.lane-group__rule {
+    color: #6f7d88;
+    font-size: 12px;
+    min-width: 0;
+}
+@media (max-width: 600px) {
+    .lane-group__head { flex-wrap: wrap; row-gap: 2px; }
+}
+
+/* Attached movement: after an ability tile, smaller tiles joined by a plus sign (mockup section 4 and 1). */
+.lane-attached {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+}
+.lane-attached__join {
+    color: #5d6873;
+    font-size: 13px;
+    padding: 0 2px;
+}
+.lane-tile--attached {
+    height: 30px;
+    padding: 0 16px 0 6px;
+    font-size: 12.5px;
+    background: color-mix(in srgb, var(--lane-tone, #3aa6c9) 14%, #0d1114);
+    clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%);
+    cursor: pointer;
+}
+.lane-tile--attached:hover:not(:disabled) { filter: brightness(1.18); }
+.lane-tile--attached.is-open { filter: brightness(1.15); }
+.lane-tile--attached:disabled { cursor: default; }
+.lane-tile--attached .lane-glyph { width: 18px; height: 18px; }
+
+/* The ⓘ beside an ability name in the action editor. */
+.lane-editor__info {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #8fb8c8;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+.lane-editor__info:hover { background: rgba(255, 255, 255, .08); color: #e6edf3; }
+
+/* Ability tile in the card menu: the ⓘ sits in its corner. */
+.lane-menu2__tile-wrap { position: relative; }
+.lane-menu2__info {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(13, 17, 20, .7);
+    color: #9fdcf2;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+}
+.lane-menu2__info:hover { background: rgba(255, 255, 255, .14); color: #e6edf3; }
+
+/* The Auto ability picker of a Face action (a plain select, styled like the number boxes). */
+.lane-editor__select {
+    height: 30px;
+    background: var(--page, #0d1114);
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e6edf3;
+    font: inherit;
+    font-size: 13px;
+    padding: 0 6px;
+}

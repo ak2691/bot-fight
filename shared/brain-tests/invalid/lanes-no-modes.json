@@ -1,0 +1,9 @@
+{
+  "rule": "A lanes brain has one to eight modes.",
+  "layer": "schema",
+  "brain": {
+    "version": "bot-logic-lanes-v1",
+    "modes": [],
+    "shared": {}
+  }
+}

@@ -57,12 +57,12 @@ export function HudScoreboard({ blueValue, redValue, roundLabel }) {
     );
 }
 
-export function HudBudget({ actions, maxActions, conditions, maxConditions }) {
+export function HudBudget({ actions, maxActions, conditions, maxConditions, actionsLabel = "Actions" }) {
     const tone = (value, max) => (max > 0 && value / max >= 1 ? "is-full" : max > 0 && value / max >= 0.8 ? "is-near" : "");
     return (
         <dl className="hud-budget">
             <div className={tone(actions, maxActions)}>
-                <dt>Actions</dt>
+                <dt>{actionsLabel}</dt>
                 <dd><b>{actions}</b>/{maxActions}</dd>
             </div>
             <div className={tone(conditions, maxConditions)}>

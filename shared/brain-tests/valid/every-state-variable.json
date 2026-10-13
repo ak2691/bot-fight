@@ -38,17 +38,12 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.distance",
+                "left": "bot.timeInModeMs",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
-                  "value": 50
-                },
-                "selectable1": "my_bot",
-                "selectable2": "opponent_1",
-                "targetMode": "target",
-                "targetX": 0,
-                "targetY": 0
+                  "value": 0
+                }
               }
             ],
             "priority": 2,
@@ -68,13 +63,17 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.hp",
+                "left": "selectable.distance",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "leftSelectable": "opponent_1"
+                "selectable1": "my_bot",
+                "selectable2": "opponent_1",
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0
               }
             ],
             "priority": 3,
@@ -94,7 +93,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.damageTakenLastTick",
+                "left": "selectable.hp",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -120,7 +119,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.hpNetChangeLastTick",
+                "left": "selectable.damageTakenLastTick",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -146,7 +145,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.x",
+                "left": "selectable.hpNetChangeLastTick",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -172,7 +171,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.y",
+                "left": "selectable.x",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -198,11 +197,11 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.alive",
-                "comparator": "eq",
+                "left": "selectable.y",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 50
                 },
                 "leftSelectable": "opponent_1"
               }
@@ -224,11 +223,11 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.movementDirection",
-                "comparator": "lt",
+                "left": "selectable.alive",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
                 "leftSelectable": "opponent_1"
               }
@@ -250,7 +249,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.speed",
+                "left": "selectable.movementDirection",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -276,14 +275,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.approachAngle",
+                "left": "selectable.speed",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "selectable1": "opponent_1",
-                "selectable2": "my_bot"
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 11,
@@ -303,13 +301,14 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.moving",
-                "comparator": "eq",
+                "left": "selectable.approachAngle",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 50
                 },
-                "leftSelectable": "opponent_1"
+                "selectable1": "opponent_1",
+                "selectable2": "my_bot"
               }
             ],
             "priority": 12,
@@ -329,18 +328,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.inView",
+                "left": "selectable.moving",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
                   "value": true
                 },
-                "selectable1": "my_bot",
-                "selectable2": "opponent_1",
-                "targetMode": "target",
-                "targetX": 0,
-                "targetY": 0,
-                "viewArc": 360
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 13,
@@ -360,13 +354,18 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.facing",
-                "comparator": "lt",
+                "left": "selectable.inView",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
-                "leftSelectable": "opponent_1"
+                "selectable1": "my_bot",
+                "selectable2": "opponent_1",
+                "targetMode": "target",
+                "targetX": 0,
+                "targetY": 0,
+                "viewArc": 360
               }
             ],
             "priority": 14,
@@ -386,13 +385,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.count",
+                "left": "selectable.facing",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "leftSelectable": "opponent_1_grenade"
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 15,
@@ -412,7 +411,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.age",
+                "left": "selectable.count",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -438,13 +437,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.edgeDistance",
+                "left": "selectable.age",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
                   "value": 50
                 },
-                "leftSelectable": "opponent_1"
+                "leftSelectable": "opponent_1_grenade"
               }
             ],
             "priority": 17,
@@ -464,7 +463,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "selectable.dangerZoneEdgeDistance",
+                "left": "selectable.edgeDistance",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -490,14 +489,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityReady",
-                "comparator": "eq",
+                "left": "selectable.dangerZoneEdgeDistance",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 50
                 },
-                "ability": 1,
-                "leftSelectable": "my_bot"
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 19,
@@ -517,7 +515,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityActive",
+                "left": "bot.selectedAbilityReady",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
@@ -544,7 +542,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityOnCooldown",
+                "left": "bot.selectedAbilityActive",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
@@ -571,11 +569,11 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityActiveMs",
-                "comparator": "lt",
+                "left": "bot.selectedAbilityOnCooldown",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
                 "ability": 1,
                 "leftSelectable": "my_bot"
@@ -598,7 +596,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityCooldownMs",
+                "left": "bot.selectedAbilityActiveMs",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -625,7 +623,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilitySinceHit",
+                "left": "bot.selectedAbilityCooldownMs",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
@@ -652,12 +650,14 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "match.elapsedSeconds",
+                "left": "bot.selectedAbilitySinceHit",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
-                  "value": 0
-                }
+                  "value": 50
+                },
+                "ability": 1,
+                "leftSelectable": "my_bot"
               }
             ],
             "priority": 25,
@@ -677,14 +677,12 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityPreparing",
-                "comparator": "eq",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
-                },
-                "ability": 3,
-                "leftSelectable": "my_bot"
+                  "type": "number",
+                  "value": 0
+                }
               }
             ],
             "priority": 26,
@@ -704,13 +702,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityBaseRange",
-                "comparator": "lt",
+                "left": "bot.selectedAbilityPreparing",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
-                "ability": 1,
+                "ability": 3,
                 "leftSelectable": "my_bot"
               }
             ],
@@ -731,13 +729,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedAbilityPreparationMs",
+                "left": "bot.selectedAbilityBaseRange",
                 "comparator": "lt",
                 "right": {
                   "type": "number",
-                  "value": 10
+                  "value": 50
                 },
-                "ability": 3,
+                "ability": 1,
                 "leftSelectable": "my_bot"
               }
             ],
@@ -758,13 +756,14 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.anyAbilityPreparing",
-                "comparator": "eq",
+                "left": "bot.selectedAbilityPreparationMs",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 10
                 },
-                "leftSelectable": "opponent_1"
+                "ability": 3,
+                "leftSelectable": "my_bot"
               }
             ],
             "priority": 29,
@@ -784,13 +783,13 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.stamina",
-                "comparator": "lt",
+                "left": "bot.anyAbilityPreparing",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
-                "leftSelectable": "my_bot"
+                "leftSelectable": "opponent_1"
               }
             ],
             "priority": 30,
@@ -810,11 +809,11 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.fastTurning",
-                "comparator": "eq",
+                "left": "bot.stamina",
+                "comparator": "lt",
                 "right": {
-                  "type": "boolean",
-                  "value": true
+                  "type": "number",
+                  "value": 50
                 },
                 "leftSelectable": "my_bot"
               }
@@ -836,7 +835,7 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.sprinting",
+                "left": "bot.fastTurning",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
@@ -862,13 +861,12 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedStatusEffectActive",
+                "left": "bot.sprinting",
                 "comparator": "eq",
                 "right": {
                   "type": "boolean",
                   "value": true
                 },
-                "statusEffect": "burn",
                 "leftSelectable": "my_bot"
               }
             ],
@@ -889,11 +887,11 @@
             "conditions": [
               {
                 "type": "expression",
-                "left": "bot.selectedStatusEffectDurationMs",
-                "comparator": "lt",
+                "left": "bot.selectedStatusEffectActive",
+                "comparator": "eq",
                 "right": {
-                  "type": "number",
-                  "value": 50
+                  "type": "boolean",
+                  "value": true
                 },
                 "statusEffect": "burn",
                 "leftSelectable": "my_bot"
@@ -916,6 +914,33 @@
             "conditions": [
               {
                 "type": "expression",
+                "left": "bot.selectedStatusEffectDurationMs",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 50
+                },
+                "statusEffect": "burn",
+                "leftSelectable": "my_bot"
+              }
+            ],
+            "priority": 35,
+            "action": "none",
+            "selectable": "opponent_1",
+            "actions": [
+              {
+                "action": "none",
+                "selectable": "opponent_1"
+              }
+            ],
+            "branchType": "if",
+            "children": []
+          },
+          {
+            "id": "b35",
+            "conditions": [
+              {
+                "type": "expression",
                 "left": "selectable.exists",
                 "comparator": "eq",
                 "right": {
@@ -925,7 +950,7 @@
                 "leftSelectable": "opponent_1_grenade"
               }
             ],
-            "priority": 35,
+            "priority": 36,
             "action": "none",
             "selectable": "opponent_1",
             "actions": [

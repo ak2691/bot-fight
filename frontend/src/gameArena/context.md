@@ -22,13 +22,12 @@ the authenticated Node worker.
 - `coding/CodingPanel.jsx`: coding workspace composition root, toolbar,
   history, modal coordination, outer workspace layout, and read-only live
   participant snapshots.
+- `coding/lanes/`: the lanes brain editor (three sections Movement, Actions, Variables; list UI, the shared menu shell with the condition and card menus, the inline condition and action editors, attached movement, the ability details popover, pure edit ops, menu models, aim defaults, live highlight sets, starter, summaries); `coding/LogicBoard.jsx` is the legacy tree canvas, mounted only by the puzzle win/lose rules editor (`pages/puzzles/PuzzleLogicWorkspace.jsx`).
 - `coding/LogicBoard.jsx`: graph canvas interaction, node positioning, branch
   edits, selection, and search integration.
 - `coding/nodes/GraphNodes.jsx`: graph layout, condition/action node rendering,
   inspectors, operand editors, and shared coding controls.
 - `coding/controls/`: priority and toolbar icon controls used by the coding UI.
-- `coding/chains/`: action chain editor: the chain canvas, step inspector, toolbar
-  crumb/step meter, and pure step editing/limit/call-graph helpers (`chainEditing.js`).
 - `coding/modals/`: custom-variable and root-search modal implementations.
 - `coding/utils/`: coding-menu coordination and custom-variable search helpers.
 - `status/`: player-facing cooldown, charge, and ability-status presentation.

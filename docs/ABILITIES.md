@@ -224,8 +224,7 @@ new plain objects. The combat log tags every entry with the stage that produced 
 
 1. **`decide`.** Entities age and each bot's one-tick outputs clear. Each brain reads
    the start-of-tick snapshot and picks at most one action per category: movement,
-   rotation, ability, dash, cancel. A running chain claims its categories first;
-   roots fill the rest by priority (`botlogic/code/runtime/actionSelector.js`).
+   rotation, ability, dash, cancel. Roots are taken in priority order (`botlogic/code/runtime/actionSelector.js`).
    The shared engine normalizes each brain once at fight setup or a segment boundary.
 2. **`act`** (`ecs/bots/ActionExecutionSystem.applyBotAction`), per bot:
    1. stamina timers advance (regeneration happens here);

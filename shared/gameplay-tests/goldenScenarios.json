@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "Golden scenarios shared by the browser and server tests. Each bot starts at (x, y) facing `rotation`; `roots` is its bot-logic tree; `abilities` is added to the standard loadout (Dash). Both runtimes run `ticks` fixed 100 ms steps and record the combat log plus a per-tick state hash.",
+  "notes": "Golden scenarios shared by the browser and server tests. Each bot starts at (x, y) facing `rotation`; `roots` is its bot-logic tree, or `lanes` is its lanes brain (bot-logic-lanes-v1, which replaces the tree); `abilities` is added to the standard loadout (Dash). Both runtimes run `ticks` fixed 100 ms steps and record the combat log plus a per-tick state hash.",
   "arena": {
     "width": 1200,
     "height": 1200
@@ -2464,6 +2464,351 @@
           "rotation": 270,
           "abilities": [],
           "roots": []
+        }
+      ]
+    },
+    {
+      "id": "lanes-neutral-punish-escape",
+      "description": "Lanes combo (docs/LANES.md): Neutral walks in; an enemy winding up within 150 starts Punish (Slash); a Slash hit within 300 ms starts Escape (walk away, and a Dash away in Actions); each mode returns to Neutral on a timer. Shared Face card in Movement.",
+      "ticks": 80,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            1
+          ],
+          "roots": [],
+          "lanes": {
+            "version": "bot-logic-lanes-v1",
+            "modes": [
+              {
+                "id": "neutral",
+                "name": "Neutral",
+                "switches": [
+                  {
+                    "id": "neutral-to-punish",
+                    "to": "punish",
+                    "conditions": [
+                      {
+                        "type": "expression",
+                        "left": "bot.anyAbilityPreparing",
+                        "comparator": "eq",
+                        "right": {
+                          "type": "boolean",
+                          "value": true
+                        },
+                        "leftSelectable": "opponent_1"
+                      },
+                      {
+                        "type": "expression",
+                        "left": "selectable.distance",
+                        "comparator": "lte",
+                        "right": {
+                          "type": "number",
+                          "value": 150
+                        },
+                        "selectable1": "my_bot",
+                        "selectable2": "opponent_1",
+                        "targetMode": "target"
+                      }
+                    ]
+                  }
+                ],
+                "movement": [
+                  {
+                    "id": "neutral-walk-in",
+                    "conditions": [
+                      {
+                        "type": "always"
+                      }
+                    ],
+                    "action": {
+                      "action": "move_walk",
+                      "movementMode": "target",
+                      "movementDirection": 0,
+                      "selectable": "opponent_1"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "punish",
+                "name": "Punish",
+                "switches": [
+                  {
+                    "id": "punish-to-escape",
+                    "to": "escape",
+                    "conditions": [
+                      {
+                        "type": "expression",
+                        "left": "bot.selectedAbilitySinceHit",
+                        "comparator": "lt",
+                        "right": {
+                          "type": "number",
+                          "value": 0.3
+                        },
+                        "leftSelectable": "my_bot",
+                        "ability": 1
+                      }
+                    ]
+                  },
+                  {
+                    "id": "punish-to-neutral",
+                    "to": "neutral",
+                    "conditions": [
+                      {
+                        "type": "expression",
+                        "left": "bot.timeInModeMs",
+                        "comparator": "gte",
+                        "right": {
+                          "type": "number",
+                          "value": 800
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "actions": [
+                  {
+                    "id": "punish-slash",
+                    "conditions": [
+                      {
+                        "type": "always"
+                      }
+                    ],
+                    "action": {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "escape",
+                "name": "Escape",
+                "switches": [
+                  {
+                    "id": "escape-to-neutral",
+                    "to": "neutral",
+                    "conditions": [
+                      {
+                        "type": "expression",
+                        "left": "bot.timeInModeMs",
+                        "comparator": "gte",
+                        "right": {
+                          "type": "number",
+                          "value": 500
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "movement": [
+                  {
+                    "id": "escape-walk-away",
+                    "conditions": [
+                      {
+                        "type": "always"
+                      }
+                    ],
+                    "action": {
+                      "action": "move_walk",
+                      "movementMode": "target",
+                      "movementDirection": 180,
+                      "selectable": "opponent_1"
+                    }
+                  }
+                ],
+                "actions": [
+                  {
+                    "id": "escape-dash-away",
+                    "conditions": [
+                      {
+                        "type": "always"
+                      }
+                    ],
+                    "action": {
+                      "action": 19,
+                      "movementMode": "target",
+                      "movementDirection": 180,
+                      "selectable": "opponent_1"
+                    }
+                  }
+                ]
+              }
+            ],
+            "shared": {
+              "movement": [
+                {
+                  "id": "face-enemy",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "action": {
+                    "action": "rotate_toward_enemy",
+                    "selectable": "opponent_1"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "slot": 2,
+          "x": 390,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [
+            36
+          ],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": 36,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lanes-combo-slash-dash",
+      "description": "Lanes combo (docs/LANES.md): Slash an enemy within 150 while backing off (attached movement), then its follow-up Dash away on the tick after Slash ends. The opponent walks in from out of range.",
+      "ticks": 80,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [
+            1
+          ],
+          "roots": [],
+          "lanes": {
+            "version": "bot-logic-lanes-v1",
+            "modes": [
+              {
+                "id": "fight",
+                "name": "Fight",
+                "movement": [
+                  {
+                    "id": "walk-in",
+                    "conditions": [
+                      {
+                        "type": "always"
+                      }
+                    ],
+                    "action": {
+                      "action": "move_walk",
+                      "movementMode": "target",
+                      "movementDirection": 0,
+                      "selectable": "opponent_1"
+                    }
+                  }
+                ],
+                "actions": [
+                  {
+                    "id": "slash-then-dash",
+                    "conditions": [
+                      {
+                        "type": "expression",
+                        "left": "selectable.distance",
+                        "comparator": "lte",
+                        "right": {
+                          "type": "number",
+                          "value": 150
+                        },
+                        "selectable1": "my_bot",
+                        "selectable2": "opponent_1",
+                        "targetMode": "target"
+                      }
+                    ],
+                    "action": {
+                      "action": 1,
+                      "selectable": "opponent_1"
+                    },
+                    "move": {
+                      "action": "move_walk",
+                      "movementMode": "target",
+                      "movementDirection": 180,
+                      "selectable": "opponent_1"
+                    },
+                    "followUps": [
+                      {
+                        "id": "dash-away",
+                        "conditions": [
+                          {
+                            "type": "always"
+                          }
+                        ],
+                        "action": {
+                          "action": 19,
+                          "movementMode": "target",
+                          "movementDirection": 180,
+                          "selectable": "opponent_1"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "shared": {}
+          }
+        },
+        {
+          "slot": 2,
+          "x": 700,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": [
+            {
+              "priority": 1,
+              "branches": [
+                {
+                  "priority": 1,
+                  "branchType": "if",
+                  "conditions": [
+                    {
+                      "type": "always"
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "action": "move_walk",
+                      "movementMode": "target",
+                      "movementDirection": 0,
+                      "selectable": "opponent_1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
         }
       ]
     }

@@ -49,7 +49,7 @@ import {
     canonicalBotSelectableId,
 } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import { movementAngle } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
-import { CHAIN_ACTION_TYPES, MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS, SELECTABLE_OWNERS } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS, SELECTABLE_OWNERS } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 import { normalizePriority, priorityForNode } from "../../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 import { rightOperandView, rightPairUpdates } from "../../../../../shared/engine/botlogic/code/runtime/conditionEvaluator.js";
 import { isLinkId } from "../../../../../shared/engine/botlogic/code/configuration/linkedActions.js";
@@ -86,10 +86,7 @@ import { variableActionTerms } from "./actionOperandEdits.js";
 import { InfoHint, InfoIconButton } from "../controls/InfoHint.jsx";
 import { MenuSelect } from "../controls/MenuSelect.jsx";
 import { graphBranchActions, setGraphActions } from "./graphActions.js";
-import { newActionEntry } from "../chains/chainEditing.js";
-import { RunChainControls } from "../chains/RunChainControls.jsx";
 import { SegmentedToggle } from "../controls/SegmentedToggle.jsx";
-import "../chains/chainEditor.css";
 
 function clampNumber(value, min, max, fallback, step = NUMBER_STEP, roundDown = false, integerOnly = false) {
     void roundDown;
@@ -185,25 +182,40 @@ const ACTION_NODE_WIDTH = 260;
 const ACTION_CHARS_PER_LINE = 30;
 const ACTION_LINE_HEIGHT = 18;
 
-// Every action a node can show: the loadout's actions plus the chain controls, which are not loadout-bound.
+// Every action a node can show: the loadout's actions.
 function editorActionTypes(selectedLoadout) {
-    return [...actionTypesForLoadout(ACTION_TYPES, selectedLoadout), ...CHAIN_ACTION_TYPES];
+    return actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
+}
+
+// A new action entry with the defaults a fresh action gets in the editor.
+function newActionEntry(action, { customVariables = [] } = {}) {
+    return {
+        action: action.id,
+        selectable: BOT_CODE_SELECTABLES.OPPONENT,
+        ...(action.variableAction ? {
+            variableId: customVariables[0]?.id ?? "",
+            operation: "set",
+            ...(customVariables[0]?.valueType === "boolean"
+                ? { value: false }
+                : { terms: [{ operator: "set", operand: { type: "number", value: 0 } }] }),
+        } : {}),
+    };
 }
 
 function actionNodeWidth() {
     return ACTION_NODE_WIDTH;
 }
 
-function actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables, chains) {
+function actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables) {
     const definition = editorActionTypes(selectedLoadout).find((action) => action.id === entry.action);
-    const { chips, expression } = describeActionParts(entry, definition, selectableTypes, customVariables, stateVariables, chains);
+    const { chips, expression } = describeActionParts(entry, definition, selectableTypes, customVariables, stateVariables);
     const description = [chips.join(", "), expression].filter(Boolean).join(" ");
     // Label row, name row, and a description row only when the action has settings.
     const descriptionHeight = description ? 12 + Math.max(1, Math.ceil(description.length / ACTION_CHARS_PER_LINE)) * 17 : 0;
     return 24 + 30 + descriptionHeight + 6;
 }
 
-function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, selectedLoadout = null, selectableTypes = SELECTABLE_TYPES, customVariables = [], chains = []) {
+function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, selectedLoadout = null, selectableTypes = SELECTABLE_TYPES, customVariables = []) {
     const graph = { roots: [], conditions: [], actions: [], variables: [], targets: [], edges: [], width: 0, height: 0 };
     let forestX = 80;
     const summaryLookups = conditionSummaryLookups(stateVariables, selectableTypes);
@@ -265,7 +277,7 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
                 return;
             }
             const actionWidth = actionNodeWidth(entry, selectedLoadout, selectableTypes, stateVariables, customVariables);
-            const action = { id: entry.id ?? actionGraphNodeId(branch.id, actionIndex, rootId), orphan: Boolean(roots[rootIndex]?._orphan), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables, chains), parents: [], ...(isLinkId(entry.linkId) ? { linkId: entry.linkId } : {}) };
+            const action = { id: entry.id ?? actionGraphNodeId(branch.id, actionIndex, rootId), orphan: Boolean(roots[rootIndex]?._orphan), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables), parents: [], ...(isLinkId(entry.linkId) ? { linkId: entry.linkId } : {}) };
             graph.actions.push(action);
             if (isLinkId(entry.linkId) && !branch._actionOrphan) linkedNodes.set(entry.linkId, action);
             if (!branch._actionOrphan) {
@@ -383,15 +395,15 @@ function normalizeSiblingTypes(branches) {
     }));
 }
 
-function addGraphAction(branch, selectedLoadout, requestedAction = null, customVariables = [], chains = []) {
+function addGraphAction(branch, selectedLoadout, requestedAction = null, customVariables = []) {
     const actions = graphBranchActions(branch);
     const actionTypes = editorActionTypes(selectedLoadout);
     const usedHeads = new Set(actions.map((entry) => actionTypes.find((action) => action.id === entry.action)).filter(Boolean).map(actionExecutionHead));
     const next = actionTypes.find((action) => action.id === requestedAction)
-        ?? actionTypes.find((action) => action.id !== "none" && action.id !== "variable" && !action.chainAction && !usedHeads.has(actionExecutionHead(action)));
-    // Variable and chain-control actions do not use up a category, so a node can hold several.
-    if (!next || (next.id !== "variable" && !next.chainAction && usedHeads.has(actionExecutionHead(next)))) return branch;
-    return setGraphActions(branch, [...actions, newActionEntry(next, { customVariables, chains })]);
+        ?? actionTypes.find((action) => action.id !== "none" && action.id !== "variable" && !usedHeads.has(actionExecutionHead(action)));
+    // Variable actions do not use up a category, so a node can hold several.
+    if (!next || (next.id !== "variable" && usedHeads.has(actionExecutionHead(next)))) return branch;
+    return setGraphActions(branch, [...actions, newActionEntry(next, { customVariables })]);
 }
 
 function prefersFinePointer() {
@@ -459,7 +471,7 @@ function usePickerPlacement(pickerRef, onClose) {
     return anchorStyle;
 }
 
-function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "Add action", includeChainActions = false, flowOptions = [], onChooseFlow = null, flowBlockReason = () => null }) {
+function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "Add action", flowOptions = [], onChooseFlow = null, flowBlockReason = () => null, headFilter = null }) {
     const [query, setQuery] = useState("");
     const [activeIndex, setActiveIndex] = useState(-1);
     const pickerRef = useRef(null);
@@ -473,7 +485,9 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "Ad
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
     }, []);
-    const actionOptions = [...actionTypesForLoadout(ACTION_TYPES, selectedLoadout), ...(includeChainActions ? CHAIN_ACTION_TYPES : [])].filter((action) => action.id !== "none");
+    // A lanes card picks from its own lane only (headFilter is the lane's action head).
+    const actionOptions = actionTypesForLoadout(ACTION_TYPES, selectedLoadout)
+        .filter((action) => action.id !== "none" && (!headFilter || action.head === headFilter));
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const matchingActions = actionOptions.filter((action) => !normalizedQuery || `${action.label} ${action.id}`.toLocaleLowerCase().includes(normalizedQuery));
     const matchingFlow = flowOptions.filter((option) => !normalizedQuery || `${option.label} ${option.id}`.toLocaleLowerCase().includes(normalizedQuery));
@@ -728,7 +742,7 @@ function ConditionalOperandBox({ operand, condition, stateVariables, selectableT
     </div>;
 }
 
-const ACTION_CHANNEL_LABELS = Object.freeze({ movement: "MOVE", rotation: "TURN", ability: "ABILITY", dash: "DASH", cancel: "CANCEL", variable: "VARIABLE", chain: "CHAIN" });
+const ACTION_CHANNEL_LABELS = Object.freeze({ movement: "MOVE", rotation: "TURN", ability: "ABILITY", dash: "DASH", cancel: "CANCEL", variable: "VARIABLE" });
 
 // Condition text wraps onto the next row instead of being cut off.
 function summarizeConditionForNode(condition, lookups) {
@@ -979,12 +993,9 @@ function VariableActionExpression({ entry, customVariables, stateVariables, sele
 
 // Plain-language parts of an action card: the label, boxed target chips, and
 // (for custom-variable actions) the expression text.
-function describeActionParts(entry, definition, selectableTypes, customVariables = [], stateVariables = [], chains = []) {
+function describeActionParts(entry, definition, selectableTypes, customVariables = [], stateVariables = []) {
     // The ability is not in the loadout (or no longer exists): there is nothing to describe, but the node stays editable.
     if (!definition && entry?.action && entry.action !== "none") return { label: "Ability not equipped", chips: [], expression: null, missing: true };
-    if (definition?.chainAction) {
-        return { label: chains.find((chain) => chain.id === entry.chainId)?.name ?? "Choose a chain", chips: [], expression: null };
-    }
     const label = formatActionNodeLabel(definition?.label ?? "Action");
     const chips = [];
     const mode = actionTargetMode(entry, definition);
@@ -1017,12 +1028,12 @@ function describeActionParts(entry, definition, selectableTypes, customVariables
     return { label: title, chips, expression };
 }
 
-function GraphActionNode({ onInput = null, onInputPress = null, validInput = false, blockedReason = null, node, entry, disabled, selectedLoadout, selectableTypes, stateVariables = [], customVariables = [], chains = [], nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove, canRemove = true, puzzleMode = false }) {
+function GraphActionNode({ onInput = null, onInputPress = null, validInput = false, blockedReason = null, node, entry, disabled, selectedLoadout, selectableTypes, stateVariables = [], customVariables = [], nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove, canRemove = true, puzzleMode = false }) {
     const actionTypes = editorActionTypes(selectedLoadout);
     const hasAction = Boolean(entry.action) && entry.action !== "none";
     const selected = actionTypes.find((action) => action.id === entry.action) ?? (hasAction ? undefined : actionTypes[0]);
     const channel = selected ? actionExecutionHead(selected) : "none";
-    const { label, chips, expression, missing = false } = describeActionParts(entry, selected, selectableTypes, customVariables, stateVariables, chains);
+    const { label, chips, expression, missing = false } = describeActionParts(entry, selected, selectableTypes, customVariables, stateVariables);
     const channelTag = channel && channel !== "none" && <span className={`code-bt-channel code-bt-channel--${String(channel).toLowerCase()}`}>{ACTION_CHANNEL_LABELS[channel] ?? String(channel).toUpperCase()}</span>;
     return <section data-graph-node-id={node.id} onClick={onInspect} onPointerDown={(event) => beginNodeDrag(event, node.id, { fromControls: true })} className={`code-graph-node code-graph-node--action code-bt-node code-bt-task absolute ${node.orphan ? "is-orphan" : ""} ${missing ? "is-missing" : ""} ${selectedNode ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <PinBar direction="input" disabled={disabled} valid={validInput} blockedReason={blockedReason} label={node.parents?.length > 1 ? inputBarBehavior(node.parents.length).message : null} onActivate={onInput} onPress={onInputPress} />
@@ -1111,10 +1122,10 @@ function ConditionalInspectorRow({ condition, index, stateVariables, defaultVari
     </div>;
 }
 
-function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, chains = [], onNewChain = null, onOpenChain = null, disabled, canRemove, canAddAction, defaultVariable = null, onClose, updateBranch, onPickConditionOperand, onChangeAction, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, onSelectParent = null, onDeleteNode = null, className = "", focusEnabled = true, orderInfo = null }) {
+function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, disabled, canRemove, canAddAction, defaultVariable = null, onClose, updateBranch, onPickConditionOperand, onChangeAction, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, onSelectParent = null, onDeleteNode = null, className = "", focusEnabled = true, orderInfo = null }) {
     const dialogRef = useRef(null);
     useDialogFocus(dialogRef, { onClose, enabled: focusEnabled });
-    // The same panel as the chain editor: flat rows in the settings column, then a quiet footer.
+    // Flat rows in the settings column, then a quiet footer.
     const panel = (eyebrow, title, body, removeLabel = "", onRemove = null, showOrder = false) => <aside ref={dialogRef} className={`code-inspector ${className}`} data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
         <header className="code-inspector-header"><div><span>{eyebrow}</span><h2 className="code-inspector-title">{title}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close inspector"><span aria-hidden="true">×</span></button></header>
         <div className="code-inspector-body" onClick={(event) => { if (event.target === event.currentTarget) onDismissOperandPicker?.(); }}>
@@ -1202,7 +1213,6 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         return panel(channelLabel || "ACTION", "Action", <>
             {onChangeAction && !definition?.variableAction && <div className="code-inspector-field"><span>Action</span><button type="button" className="code-cond-variable" disabled={disabled} onClick={() => onChangeAction(node.rootIndex, node.path, node.actionIndex)} aria-label="Change action"><span className="code-cond-variable-label">{definition?.label ?? (missingAction ? "Ability not equipped" : "Action")}</span><span className="code-cond-change" aria-hidden="true">▾</span></button></div>}
             {needsTarget && <ActionTargetControls entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} showSprint={definition.id === BOT_CODE_ACTIONS.MOVE_WALK} showFastTurn={definition.id === BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET} leadAbilityOptions={actionTypes.filter((action) => (action.head === "ability" || action.head === "dash") && action.abilityId != null)} />}
-            {definition?.id === BOT_CODE_ACTIONS.RUN_CHAIN && <RunChainControls entry={entry} chains={chains} disabled={disabled} onChange={update} onNewChain={() => onNewChain?.(node.rootIndex, node.path, node.actionIndex)} onOpenChain={onOpenChain} />}
             {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={false} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => {}} />}
             {definition?.orientationConfig && <PhaseOrientationControls entry={entry} disabled={disabled} onChange={update} />}
             {shared && <UsedByRows parents={node.parents} roots={roots} onSelect={onSelectParent} />}
@@ -1729,36 +1739,8 @@ function sanitizeConfigurationConditions(configuration, conditionTypes, defaultC
         })
         : configuration?.roots;
 
-    // Chain steps hold conditions too (If, "until" and "while"), so a loadout change cleans them the same way.
-    const sanitizeSteps = (steps) => {
-        let stepsChanged = false;
-        const next = steps.map((step) => {
-            const updates = {};
-            for (const field of ["conditions", "untilConditions", "whileConditions"]) {
-                const conditions = sanitizeConditions(step?.[field]);
-                if (conditions !== step?.[field]) updates[field] = conditions;
-            }
-            for (const field of ["then", "else", "steps"]) {
-                if (!Array.isArray(step?.[field])) continue;
-                const children = sanitizeSteps(step[field]);
-                if (children !== step[field]) updates[field] = children;
-            }
-            if (!Object.keys(updates).length) return step;
-            stepsChanged = true;
-            return { ...step, ...updates };
-        });
-        return stepsChanged ? next : steps;
-    };
-    const chains = Array.isArray(configuration?.chains)
-        ? configuration.chains.map((chain) => {
-            const steps = Array.isArray(chain?.steps) ? sanitizeSteps(chain.steps) : chain?.steps;
-            if (steps === chain?.steps) return chain;
-            changed = true;
-            return { ...chain, steps };
-        })
-        : configuration?.chains;
 
-    return changed ? { ...configuration, roots: roots, ...(chains ? { chains } : {}) } : configuration;
+    return changed ? { ...configuration, roots: roots } : configuration;
 }
 
 function sanitizeExpressionSelectable(condition, field, definition, selectableTypes) {
@@ -2146,6 +2128,7 @@ export {
     PhaseOrientationControls,
     ConditionalInspectorRow,
     InfoHint,
+    describeActionParts,
     conditionSummaryLookups,
     formatSelectableLabel,
     summarizeConditionForNode,

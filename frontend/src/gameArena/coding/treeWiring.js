@@ -1,5 +1,4 @@
 import { ACTION_TYPES, actionExecutionHead } from "../../../../shared/engine/botlogic/code/BotCode.js";
-import { CHAIN_ACTION_TYPES } from "../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 import { isLinkId, linkContentKey } from "../../../../shared/engine/botlogic/code/configuration/linkedActions.js";
 import { createEditorNodeId } from "../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 
@@ -76,10 +75,10 @@ export function linkedCopies(roots, linkId) {
 }
 
 const actionHead = (entry) => {
-    const definition = [...ACTION_TYPES, ...CHAIN_ACTION_TYPES].find((candidate) => candidate.id === entry?.action);
+    const definition = ACTION_TYPES.find((candidate) => candidate.id === entry?.action);
     return definition ? actionExecutionHead(definition) : null;
 };
-const sharesCategory = (head, other) => head && !["variable", "chain"].includes(head) && actionHead(other) === head;
+const sharesCategory = (head, other) => head && head !== "variable" && actionHead(other) === head;
 
 function detach(roots, node) {
     const owner = at(roots, node);
@@ -140,7 +139,7 @@ export function wireBlockReason(roots, parent, child) {
             && (target === current || (isLinkId(action?.linkId) && validEntries(target).some((entry) => entry.linkId === action.linkId)))) {
             return "Already connected to this node";
         }
-        if (head && !["variable", "chain"].includes(head) && validEntries(target).some((entry) => entry !== action && sharesCategory(head, entry))) {
+        if (head && head !== "variable" && validEntries(target).some((entry) => entry !== action && sharesCategory(head, entry))) {
             return `This ${parent.path ? "conditional" : "root"} already has a ${HEAD_LABELS[head] ?? "matching"} action`;
         }
     }
@@ -278,7 +277,7 @@ export function syncLinkedActions(previous, roots) {
 // Why changing the action in `copy` to `replacement` would break one of its other parents, or null when it can.
 export function linkedChangeBlockReason(roots, copy, replacement) {
     const head = actionHead(replacement);
-    if (!isLinkId(copy?.linkId) || !head || ["variable", "chain"].includes(head)) return null;
+    if (!isLinkId(copy?.linkId) || !head || head === "variable") return null;
     for (const other of linkedCopies(roots, copy.linkId)) {
         if (other.entry.id === copy.id) continue;
         if (validEntries(other.branch).some((entry) => entry.id !== copy.id && entry !== other.entry && sharesCategory(head, entry))) {

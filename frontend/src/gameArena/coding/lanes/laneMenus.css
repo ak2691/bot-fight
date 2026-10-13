@@ -1,0 +1,259 @@
+/* The lanes menus (condition menu, card menu): one shell, rendered into document.body. Desktop: a fixed 300 px
+   panel under its button. Under 600 px: a bottom sheet with the rail as a sideways-scrolling chip row. */
+.lane-menu2 {
+    box-sizing: border-box;
+    z-index: 80;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid #2f3a43;
+    border-radius: 10px;
+    background: #181e24;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+    color: #e6edf3;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+}
+.lane-menu2.is-sheet {
+    border: 0;
+    border-top: 1px solid #2f3a43;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, .5);
+}
+
+/* The search row has no box of its own: the input is unstyled and shares the menu's background. */
+.lane-menu2__search {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 12px;
+    border-bottom: 1px solid #262f37;
+}
+.lane-menu2__search-icon { flex: none; color: #6b7782; }
+.lane-menu2__search input {
+    all: unset;
+    flex: 1;
+    min-width: 0;
+    height: 38px;
+    background: transparent;
+    border: 0;
+    color: #e6edf3;
+    font-size: 13.5px;
+}
+.lane-menu2__search input::placeholder { color: #6b7782; }
+
+.lane-menu2__body { display: flex; flex: 1; min-height: 0; }
+.lane-menu2__rail {
+    flex: none;
+    width: 128px;
+    overflow-y: auto;
+    padding: 6px;
+    border-right: 1px solid #262f37;
+}
+.lane-menu2__main {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+/* The list is the one scroller: its sticky headers and the rail's active category follow it. */
+.lane-menu2__list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 6px;
+}
+
+.lane-menu2__cat {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #aab6c2;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.lane-menu2__cat:hover { background: rgba(255, 255, 255, .05); }
+.lane-menu2__cat.is-on { background: rgba(255, 255, 255, .07); color: #e6edf3; }
+.lane-menu2__cat.is-faded { opacity: .35; }
+/* Rail labels are never cut off: a long one ("Other abilities") wraps inside the rail. */
+.lane-menu2__cat-name { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+.lane-menu2__dot { flex: none; width: 8px; height: 8px; border-radius: 2px; }
+.lane-menu2__cnt { margin-left: auto; color: #5d6873; font-family: monospace; font-size: 11px; }
+
+.lane-menu2__sec {
+    position: sticky;
+    top: -4px;
+    z-index: 1;
+    padding: 8px 8px 4px;
+    background: #181e24;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .05em;
+}
+.lane-menu2__sec--top { top: -4px; }
+
+.lane-menu2__item {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.lane-menu2__item.is-hi,
+.lane-menu2__item:hover { background: rgba(95, 212, 240, .09); }
+.lane-menu2__item-icon { flex: none; align-self: center; color: #9fdcf2; }
+.lane-menu2__item-name { flex: none; white-space: nowrap; }
+.lane-menu2__item-desc {
+    min-width: 0;
+    overflow: hidden;
+    color: #7b8792;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lane-menu2__tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 8px;
+    max-height: 180px;
+    padding: 10px;
+    overflow-y: auto;
+}
+.lane-menu2__tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 6px;
+    border: 1px solid #2a3239;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+}
+.lane-menu2__tile.is-hi,
+.lane-menu2__tile:hover {
+    border-color: #f0a03c;
+    background: rgba(240, 160, 60, .07);
+}
+.lane-menu2__tile-name { color: #e6edf3; font-family: 'Chakra Petch', sans-serif; font-size: 13px; font-weight: 700; }
+
+.lane-menu2__group-label {
+    padding: 8px 8px 4px;
+    color: #8b98a5;
+    font-size: 12px;
+}
+.lane-menu2__empty { padding: 10px 8px; color: #8b98a5; }
+.lane-menu2__link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #5fd4f0;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.lane-menu2__foot {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 9px 12px;
+    border-top: 1px solid #262f37;
+    color: #aab6c2;
+}
+.lane-menu2__foot strong { color: #e6edf3; font-weight: 500; }
+
+/* Bottom sheet: search on top, categories as a chip row, the list fills the rest. */
+.lane-menu2.is-sheet .lane-menu2__body { flex-direction: column; }
+.lane-menu2.is-sheet .lane-menu2__search input { font-size: 16px; }
+.lane-menu2.is-sheet .lane-menu2__rail {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    width: auto;
+    padding: 6px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid #262f37;
+}
+.lane-menu2.is-sheet .lane-menu2__cat {
+    flex: none;
+    width: auto;
+    border: 1px solid #2a3239;
+    border-radius: 999px;
+}
+.lane-menu2.is-sheet .lane-menu2__main { flex: 1; }
+.lane-menu2.is-sheet .lane-menu2__item { padding: 10px 8px; }
+
+/* Ability details popover (mockup section 7): menu colours, one line of text, mono stats. Portal, fixed position. */
+.lane-details {
+    z-index: 60;
+    box-sizing: border-box;
+    padding: 12px;
+    background: #181e24;
+    border: 1px solid #2f3a43;
+    border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+    color: #e6edf3;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13px;
+}
+.lane-details.is-sheet {
+    width: auto;
+    padding: 14px 16px 16px;
+    border-radius: 14px 14px 0 0;
+    overflow-y: auto;
+}
+.lane-details__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.lane-details__name {
+    font-family: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+}
+.lane-details__text {
+    margin: 0 0 10px;
+    color: #8b98a5;
+    line-height: 1.45;
+}
+.lane-details__stats {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 14px;
+    margin: 0;
+}
+.lane-details__stat { display: contents; }
+.lane-details__stat dt { color: #8b98a5; }
+.lane-details__stat dd {
+    margin: 0;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+}
+.lane-details__unit { color: #8b98a5; }

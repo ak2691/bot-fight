@@ -34,7 +34,7 @@ public final class WorkerReplayFixtures {
         Integer team = winner == null ? null : session.players().stream().filter(p -> p.userId().equals(winner))
                 .map(p -> p.teamNumber()).findFirst().orElseThrow();
         var end = session.players().stream().map(p -> new WorkerReplay.EndBotState(p.slot(),100,100,0.0,
-                team != null && p.teamNumber()!=team ? 0 : 150, p.teamNumber(),100,false,null)).toList();
+                team != null && p.teamNumber()!=team ? 0 : 150, p.teamNumber(),100,false)).toList();
         return replay(outcome, winner, team, team == null ? "SEGMENT_END" : "KO", end, times);
     }
     public static List<Integer> elapsed(MatchReplayDTO replay) {

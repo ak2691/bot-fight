@@ -130,6 +130,11 @@ export function createStatePayloadFactory(currentShapes) {
                 role: "self",
                 botIndex: 0,
                 combatLoadout: actor.combatLoadout ?? selectedLoadout,
+                // Lanes runtime state (self only); tree bots have no mode and read 0.
+                modeId: actor.modeId ?? null,
+                timeInModeMs: Math.max(0, Math.round(Number(actor.timeInModeMs ?? 0))),
+                comboStepId: actor.comboStepId ?? null,
+                runningActionCardId: actor.runningActionCardId ?? null,
             };
             return freeze({
                 selectedLoadout,
@@ -172,7 +177,6 @@ function botCore(shape) {
         statusEffects: statusEffectsPayload(shape),
         matchElapsedMs: Math.max(0, Number(shape.matchElapsedMs ?? 0)),
         customVariables: { ...(shape.customVariables ?? {}) },
-        chainStack: (shape.chainStack ?? []).map((frame) => ({ ...frame, path: [...frame.path], loops: frame.loops.map((loop) => ({ ...loop })) })),
         abilityState: cloneAbilityState(shape.abilityState),
         abilityLastHitAgeMs: { ...(shape.abilityLastHitAgeMs ?? {}) },
         ...staminaPayload(shape),

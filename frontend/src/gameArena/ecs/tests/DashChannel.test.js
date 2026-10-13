@@ -9,7 +9,6 @@ import { ACTION_BY_ID } from "../../../../../shared/engine/botlogic/code/contrac
 import { actionExecutionHead } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
 import { buildStatePayload } from "../../../../../shared/engine/modelPayloads/strategyStatePayload.js";
-import { traceScenario } from "../../botlogic/code/tests/chainScenarioRunner.js";
 import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 import { applyBotAction } from "../../testing/pureTicks.js";
 import { activeRemainingMs, pendingCooldownMs, preparingAbilityId, preparingRemainingMs, cooldownRemainingMs } from "../../../../../shared/engine/gameconfig/AbilityState.js";
@@ -72,7 +71,7 @@ const state = (shape) => buildStatePayload(asBots([shape, { id: "opponent-model"
 const plan = (configuration, shape) => buildDeterministicLogicAction(configuration, state(shape));
 const rootOf = (priority, actions, conditions = [{ type: "always" }]) => ({ priority, branches: [{ priority: 1, branchType: "if", conditions, actions, children: [] }] });
 
-test("a dash and an attack are planned together from two roots, from one conditional, and from a chain", () => {
+test("a dash and an attack are planned together from two roots and from one conditional", () => {
     const attack = { action: SLASH, selectable: "opponent_1" };
     const dashRoot = { action: DASH_ABILITY_ID, selectable: "opponent_1" };
     const fromRoots = plan({ version: "bot-logic-tree-v1", roots: [rootOf(1, [attack]), rootOf(2, [dashRoot])] }, bot());
@@ -85,14 +84,6 @@ test("a dash and an attack are planned together from two roots, from one conditi
         assert.ok(activeRemainingMs(started, SLASH) > 0 && activeRemainingMs(started, DASH_ABILITY_ID) > 0, `${name} starts both`);
     }
 
-    const chain = { id: "chain.both", name: "both", steps: [
-        { type: "action", action: SLASH, selectable: "opponent_1", continue: "now" },
-        { type: "action", action: DASH_ABILITY_ID, selectable: "opponent_1", continue: "now" },
-    ] };
-    const fromChain = plan({ version: "bot-logic-tree-v1", chains: [chain], roots: [rootOf(1, [{ action: "run_chain", chainId: chain.id }])] }, bot());
-    assert.equal(fromChain.abilityAction?.action, SLASH);
-    assert.equal(fromChain.dashAction?.action, DASH_ABILITY_ID);
-    assert.equal(fromChain.runningChain, null, "both steps ran in the one tick");
 });
 
 test("a dash starts during another ability's wind-up and active phase, and the wind-up carries on", () => {
@@ -202,14 +193,6 @@ test("parity trace: sprint in, swing, run dry", () => {
     ]);
 });
 
-test("chain scenarios print a dash beside the ability that starts with it", () => {
-    const lines = traceScenario({
-        name: "dash and swing", abilities: [SLASH, DASH_ABILITY_ID], defenderX: 380, ticks: 2,
-        roots: [rootOf(1, [{ action: SLASH, selectable: "opponent_1" }, { action: DASH_ABILITY_ID, selectable: "opponent_1" }])], chains: [],
-    });
-    assert.match(lines[0], /\| 1\+19 /);
-});
-
 test("a conditional may hold one Dash and one ability, but not two of the same", async () => {
     const { editorRootsFor, wireBlockReason } = await import("../../coding/treeWiring.js");
     const brain = { roots: [{ id: "r", branches: [
@@ -229,7 +212,7 @@ test("a conditional may hold one Dash and one ability, but not two of the same",
     assert.equal(wireBlockReason(roots, onB3, node("a1", [0], 0)), null);
 });
 
-test("the picker, node label and chain label read DASH", async () => {
+test("the picker and node label read DASH", async () => {
     const { ACTION_HEAD_TONES, groupedActionPickerOptions } = await import("../../coding/nodes/pickerSupport.js");
     const { ACTION_TYPES } = await import("../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js");
     const groups = groupedActionPickerOptions(ACTION_TYPES);
@@ -241,7 +224,6 @@ test("the picker, node label and chain label read DASH", async () => {
     const { readFileSync } = await import("node:fs");
     const nodes = readFileSync(new URL("../../coding/nodes/GraphNodes.jsx", import.meta.url), "utf8");
     assert.match(nodes, /dash: "DASH"/);
-    assert.match(readFileSync(new URL("../../coding/chains/chainStepPresentation.js", import.meta.url), "utf8"), /\[ACTION_HEADS\.DASH\]: "DASH"/);
 });
 
 test("sprint help no longer says attacking ends it", async () => {

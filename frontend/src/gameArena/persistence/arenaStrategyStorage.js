@@ -1,6 +1,8 @@
 import { BOT_CODE_SELECTABLES, createDefaultAbilityStrategyConfiguration, normalizeAbilityStrategyConfiguration } from "../../../../shared/engine/botlogic/code/BotCode.js";
 import { actionIdsForLoadoutConfiguration } from "../gameconfig/CombatLoadouts.js";
-import { CHAIN_ACTION_TYPES } from "../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { isLanesBrain } from "../coding/lanes/laneEdits.js";
+import { LANE_SECTIONS } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
+import { mapLaneCards } from "../../../../shared/engine/botlogic/code/configuration/laneCardTree.js";
 
 const STRATEGY_STORAGE_PREFIXES = Object.freeze([
     "arena-testing-strategy-v1-",
@@ -38,11 +40,8 @@ export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId
         ? configuration
         : createDefaultAbilityStrategyConfiguration();
     const source = normalizeAbilityStrategyConfiguration(sourceConfiguration);
-    // Chain controls belong to the brain, independent of equipped abilities.
-    const allowedActionIds = new Set([
-        ...actionIdsForLoadoutConfiguration(loadoutId),
-        ...CHAIN_ACTION_TYPES.map((action) => action.id),
-    ]);
+    const allowedActionIds = new Set(actionIdsForLoadoutConfiguration(loadoutId));
+    if (isLanesBrain(source)) return sanitizeLanesForLoadout(source, allowedActionIds);
     const sanitizeAction = (action) => {
         if (!action || typeof action !== "object") return action;
         const actionId = allowedActionIds.has(action.action) ? action.action : "none";
@@ -70,6 +69,23 @@ export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId
         })) : [],
         ...(Array.isArray(source.orphans) ? { orphans: source.orphans.map((node) => node.kind === "action" ? sanitizeAction(node) : sanitizeBlock(node)) } : {}),
     };
+}
+
+/**
+ * Lanes brains are saved as they are. The one change is that a card whose action is not allowed by the loadout
+ * (an unequipped ability) is dropped, as the tree sanitizer drops such actions; switches and other cards stay.
+ */
+function sanitizeLanesForLoadout(source, allowedActionIds) {
+    const keepAllowed = (card) => (allowedActionIds.has(card.action?.action) ? [card] : []);
+    const sanitizeSet = (set) => Object.fromEntries([
+        ...Object.entries(set).filter(([key]) => !LANE_SECTIONS.includes(key)),
+        ...LANE_SECTIONS.map((section) => [section, mapLaneCards(set[section], keepAllowed)]),
+    ]);
+    return normalizeAbilityStrategyConfiguration({
+        ...source,
+        modes: (source.modes ?? []).map(sanitizeSet),
+        shared: sanitizeSet(source.shared ?? {}),
+    });
 }
 
 export function saveStoredStrategyConfiguration(key, configuration) {

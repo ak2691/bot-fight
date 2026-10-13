@@ -5,14 +5,10 @@ import "./SearchRootNodes.css";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
 import { priorityForNode } from "../../../../../shared/engine/botlogic/code/configuration/identifiers.js";
-import { countChainSteps } from "../chains/chainEditing.js";
 
 const FILTER_MIN_ITEMS = 6;
 
 export default function SearchRootNodesModal({
-    chains = null,
-    onOpenChain = null,
-    onRemoveChain = null,
     roots,
     nodes,
     disabled,
@@ -26,9 +22,6 @@ export default function SearchRootNodesModal({
     quick = false,
 }) {
     const [query, setQuery] = useState("");
-    // The Chains tab exists only where the workspace can open a chain.
-    const [tab, setTab] = useState("roots");
-    const showingChains = Boolean(chains) && tab === "chains";
     const [activeIndex, setActiveIndex] = useState(-1);
     const [menuRowId, setMenuRowId] = useState(null);
     const [popoverStyle, setPopoverStyle] = useState(null);
@@ -75,43 +68,24 @@ export default function SearchRootNodesModal({
         return !normalizedQuery
             || `${name} ${label} ${priorityLabel} root-${priority} ${priority}`.toLocaleLowerCase().includes(normalizedQuery);
     });
-    const normalizedChainQuery = query.trim().toLocaleLowerCase();
-    const matchingChains = (chains ?? []).filter((chain) => !normalizedChainQuery || chain.name.toLocaleLowerCase().includes(normalizedChainQuery));
-    // Keyboard navigation and Enter work on whichever list the tab shows.
-    const matchingItems = showingChains ? matchingChains : matchingNodes;
+    const matchingItems = matchingNodes;
     // Short lists are read at a glance, so the filter box only appears once there is something to filter.
-    const itemCount = showingChains ? (chains ?? []).length : roots.length;
-    const showFilter = itemCount > FILTER_MIN_ITEMS || query !== "";
+    const showFilter = roots.length > FILTER_MIN_ITEMS || query !== "";
     // Without the filter box the arrow keys start on the first row.
     useEffect(() => {
         if (showFilter || !matchingItems.length) return;
         setActiveIndex(0);
         optionRefs.current[0]?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [showFilter, tab]);
+    }, [showFilter]);
     const selectNode = (node) => {
         onSelect(node);
         onClose();
     };
-    const selectItem = (item) => {
-        if (!showingChains) {
-            selectNode(item);
-            return;
-        }
-        onOpenChain?.(item.id);
-        onClose();
-    };
-    const changeTab = (next) => {
-        setTab(next);
-        setActiveIndex(-1);
-        setMenuRowId(null);
-        optionRefs.current = [];
-        searchInputRef.current?.focus();
-    };
     const moveFromSearch = (event) => {
         if (event.key === "Enter") {
             event.preventDefault();
-            if (matchingItems[0]) selectItem(matchingItems[0]);
+            if (matchingItems[0]) selectNode(matchingItems[0]);
             return;
         }
         if (event.key === "ArrowDown") {
@@ -144,7 +118,7 @@ export default function SearchRootNodesModal({
         if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             const item = matchingItems[index];
-            if (item) selectItem(item);
+            if (item) selectNode(item);
         }
     };
     // ---- Dragging a root to a new place in the order --------------------------------------------
@@ -153,7 +127,7 @@ export default function SearchRootNodesModal({
     // row drops it after that row. Mouse and pen only (a touch drag would fight scrolling), and only while unfiltered.
     const [drag, setDrag] = useState(null);
     const swallowClickRef = useRef(false);
-    const canDragRoots = Boolean(onMoveRoot) && !disabled && !showingChains && query.trim() === "";
+    const canDragRoots = Boolean(onMoveRoot) && !disabled && query.trim() === "";
     const gapIndexFor = (topEdge, fromIndex) => {
         const rows = optionRefs.current.slice(0, matchingNodes.length);
         const gaps = [];
@@ -202,32 +176,12 @@ export default function SearchRootNodesModal({
         window.addEventListener("pointerup", end);
         window.addEventListener("pointercancel", end);
     };
-    return <aside ref={dialogRef} onWheel={(event) => event.stopPropagation()} style={popoverStyle} className={`code-rs ${quick ? "code-rs--quick" : ""}`} role="dialog" aria-modal="true" aria-label={showingChains ? "Chains" : "Roots"}>
+    return <aside ref={dialogRef} onWheel={(event) => event.stopPropagation()} style={popoverStyle} className={`code-rs ${quick ? "code-rs--quick" : ""}`} role="dialog" aria-modal="true" aria-label="Roots">
         <div className="code-rs-top">
-            {showFilter ? <label className="code-rs-search"><SearchGlyph /><span className="sr-only">{showingChains ? "Filter chains" : "Filter roots"}</span><input ref={searchInputRef} aria-label={showingChains ? "Filter chains" : "Filter roots"} name="root-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); setMenuRowId(null); optionRefs.current = []; }} onKeyDown={moveFromSearch} placeholder={showingChains ? "Filter chains" : "Filter roots"} autoComplete="off" /><kbd className="code-rs-kbd">{readWorkspaceShortcut("search").toUpperCase()}</kbd></label> : <strong className="code-rs-title">{showingChains ? "Chains" : "Roots"}</strong>}
+            {showFilter ? <label className="code-rs-search"><SearchGlyph /><span className="sr-only">Filter roots</span><input ref={searchInputRef} aria-label="Filter roots" name="root-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); setMenuRowId(null); optionRefs.current = []; }} onKeyDown={moveFromSearch} placeholder="Filter roots" autoComplete="off" /><kbd className="code-rs-kbd">{readWorkspaceShortcut("search").toUpperCase()}</kbd></label> : <strong className="code-rs-title">Roots</strong>}
             <button type="button" className="code-rs-cancel" onClick={onClose}>Cancel</button>
         </div>
-        {chains && <div className="code-rs-tabs" role="tablist" aria-label="Roots or chains">
-            <button type="button" role="tab" aria-selected={!showingChains} className={!showingChains ? "is-active" : ""} onClick={() => changeTab("roots")}>Roots <span className="code-rs-mono">{roots.length}</span></button>
-            <button type="button" role="tab" aria-selected={showingChains} className={showingChains ? "is-active" : ""} onClick={() => changeTab("chains")}>Chains <span className="code-rs-mono">{chains.length}</span></button>
-        </div>}
-        {showingChains ? <div className="code-rs-results" role="list">{matchingChains.length ? matchingChains.map((chain, index) => {
-            const steps = countChainSteps(chain);
-            return <div
-                key={chain.id}
-                ref={(element) => { optionRefs.current[index] = element; }}
-                role="button"
-                tabIndex={index === activeIndex ? 0 : -1}
-                onKeyDown={(event) => moveFromOption(event, index)}
-                onClick={() => selectItem(chain)}
-                className={`code-rs-row code-rs-row--chain ${index === activeIndex ? "is-keyboard-active" : ""}`}
-                aria-label={`Open ${chain.name}, ${steps} ${steps === 1 ? "step" : "steps"}`}
-            >
-                <div className="code-rs-label"><strong>{chain.name}</strong><small>{steps} {steps === 1 ? "step" : "steps"}</small></div>
-                <button type="button" disabled={!canRemove || !onRemoveChain} tabIndex={index === activeIndex ? 0 : -1} onClick={(event) => { event.stopPropagation(); onRemoveChain(chain.id); }} onKeyDown={(event) => event.stopPropagation()} aria-label={`Delete ${chain.name}`} title={`Delete ${chain.name}`} className="code-rs-trash"><TrashGlyph /></button>
-            </div>;
-        }) : <p className="code-rs-empty">{chains.length ? "No matching chains" : "No chains yet"}</p>}</div>
-        : <div className="code-rs-results" role="list">{drag && drag.lineY != null && <div className="code-rs-drop-line" style={{ top: drag.lineY }} />}{drag && <div className="code-rs-ghost" style={{ top: drag.top, left: drag.left, width: drag.width, height: drag.height }}>{drag.label}</div>}{matchingNodes.length ? matchingNodes.map((node, index) => {
+        <div className="code-rs-results" role="list">{drag && drag.lineY != null && <div className="code-rs-drop-line" style={{ top: drag.lineY }} />}{drag && <div className="code-rs-ghost" style={{ top: drag.top, left: drag.left, width: drag.width, height: drag.height }}>{drag.label}</div>}{matchingNodes.length ? matchingNodes.map((node, index) => {
             const root = roots[node.rootIndex];
             const priority = priorityForNode(root, node.rootIndex + 1);
             const label = `Root ${priority}`;
@@ -253,13 +207,13 @@ export default function SearchRootNodesModal({
                     {menuRowId === node.id && <div className="code-rs-menu" role="menu"><button type="button" role="menuitem" disabled={!canRemove} onClick={() => { setMenuRowId(null); onRemove(node.rootIndex); }}>Delete</button></div>}
                 </div>
             </div>;
-        }) : <p className="code-rs-empty">No matching roots</p>}</div>}
+        }) : <p className="code-rs-empty">No matching roots</p>}</div>
         <footer className="code-rs-footer">
             <div className="code-rs-footer-row">
-                <span className="code-rs-hints"><kbd className="code-rs-kbd">↑</kbd><kbd className="code-rs-kbd">↓</kbd> move <kbd className="code-rs-kbd">↵</kbd> {showingChains ? "open" : "jump"}</span>
-                <span className="code-rs-count code-rs-mono">{matchingItems.length} of {showingChains ? chains.length : roots.length}</span>
+                <span className="code-rs-hints"><kbd className="code-rs-kbd">↑</kbd><kbd className="code-rs-kbd">↓</kbd> move <kbd className="code-rs-kbd">↵</kbd> jump</span>
+                <span className="code-rs-count code-rs-mono">{matchingItems.length} of {roots.length}</span>
             </div>
-            {!showingChains && !query.trim() && <button type="button" disabled={disabled || !roots.length} onClick={onDeleteAll} className="code-rs-delete-all" aria-label="Delete all roots">Delete all roots</button>}
+            {!query.trim() && <button type="button" disabled={disabled || !roots.length} onClick={onDeleteAll} className="code-rs-delete-all" aria-label="Delete all roots">Delete all roots</button>}
         </footer>
     </aside>;
 }
