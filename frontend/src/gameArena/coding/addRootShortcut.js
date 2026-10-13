@@ -33,3 +33,35 @@ export function isAddRootShortcutKeydown(event, shortcut) {
     if (event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return false;
     return typeof event.key === "string" && event.key.toLowerCase() === shortcut;
 }
+
+// Workspace shortcuts: one letter or number each, saved on this browser. No two actions share a key.
+export const WORKSPACE_SHORTCUTS = Object.freeze({
+    addRoot: { storageKey: ADD_ROOT_SHORTCUT_STORAGE_KEY, fallback: DEFAULT_ADD_ROOT_SHORTCUT, label: "Add root key", hint: "Adds a root when nothing is selected in the code workspace." },
+    addNode: { storageKey: "botfight.workspace.addNodeShortcut", fallback: "f", label: "Add node key", hint: "Adds a node under the selected root or conditional." },
+    search: { storageKey: "botfight.workspace.searchShortcut", fallback: "s", label: "Search key", hint: "Opens the root search, even when the code workspace is closed." },
+});
+
+export function readWorkspaceShortcut(action, storage) {
+    const { storageKey, fallback } = WORKSPACE_SHORTCUTS[action];
+    try {
+        return normalizeAddRootShortcut((storage ?? globalThis.localStorage).getItem(storageKey)) ?? fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+// Returns null on success, otherwise the reason it was refused.
+export function saveWorkspaceShortcut(action, value, storage) {
+    const normalized = normalizeAddRootShortcut(value);
+    if (!normalized) return "Choose one letter or number (A–Z, 0–9).";
+    const clash = Object.keys(WORKSPACE_SHORTCUTS).find((other) => other !== action && readWorkspaceShortcut(other, storage) === normalized);
+    if (clash) return `${normalized.toUpperCase()} is already used by "${WORKSPACE_SHORTCUTS[clash].label}".`;
+    try {
+        (storage ?? globalThis.localStorage).setItem(WORKSPACE_SHORTCUTS[action].storageKey, normalized);
+        return null;
+    } catch {
+        return "This browser could not save the shortcut.";
+    }
+}
+
+export const isWorkspaceShortcutKeydown = isAddRootShortcutKeydown;

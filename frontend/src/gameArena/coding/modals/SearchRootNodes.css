@@ -328,3 +328,67 @@
         display: none;
     }
 }
+
+/* Roots | Chains tabs and chain rows */
+.code-rs-tabs {
+    display: flex;
+    flex: none;
+    gap: 4px;
+    padding: 0 8px 8px;
+}
+
+.code-rs-tabs button {
+    display: inline-flex;
+    height: 28px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #8b98a5;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.code-rs-tabs button:hover:not(.is-active) {
+    background: rgba(255, 255, 255, .06);
+    color: #fff;
+}
+
+.code-rs-tabs button.is-active {
+    background: #1b3a45;
+    color: #e6edf3;
+}
+
+.code-rs-row--chain {
+    grid-template-columns: minmax(0, 1fr) 30px;
+}
+
+@media (max-width: 640px) {
+    .code-rs-row--chain {
+        grid-template-columns: minmax(0, 1fr) 34px;
+    }
+
+    .code-rs-row--chain .code-rs-trash {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        opacity: 1;
+    }
+
+    .code-rs-tabs button {
+        height: 34px;
+    }
+}
+
+/* Short lists skip the filter box and show a plain heading instead. */
+.code-rs-title { flex: 1; min-width: 0; padding: 0 4px; color: #e6edf3; font-size: 13px; letter-spacing: .02em; }
+
+/* Dragging a root to a new place in the order: the row follows the pointer, a cyan line marks where it lands. */
+.code-rs-results { position: relative; }
+.code-rs-row.is-draggable { cursor: grab; }
+.code-rs-row.is-dragged { opacity: .35; }
+.code-rs-drop-line { position: absolute; left: 8px; right: 8px; height: 2px; margin-top: -1px; border-radius: 1px; background: #5fd4f0; box-shadow: 0 0 0 2px rgba(95, 212, 240, .25); pointer-events: none; z-index: 2; }
+.code-rs-ghost { position: fixed; z-index: 80; box-sizing: border-box; display: flex; align-items: center; padding: 0 16px; border: 1px solid #5fd4f0; border-radius: 6px; background: #1b2a33; color: #e6edf3; font-size: 14px; font-weight: 600; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); pointer-events: none; opacity: .95; }

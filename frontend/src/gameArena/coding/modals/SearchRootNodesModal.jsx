@@ -1,9 +1,12 @@
+import { readWorkspaceShortcut } from "../addRootShortcut.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import RootNodePriorityInput from "../controls/RootNodePriorityInput.jsx";
 import "./SearchRootNodes.css";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
 import { priorityForNode } from "../../botlogic/code/configuration/identifiers.js";
+
+const FILTER_MIN_ITEMS = 6;
 
 export default function SearchRootNodesModal({
     roots,
@@ -12,6 +15,7 @@ export default function SearchRootNodesModal({
     canRemove,
     onSelect,
     onPriorityChange,
+    onMoveRoot = null,
     onRemove,
     onDeleteAll,
     onClose,
@@ -33,7 +37,8 @@ export default function SearchRootNodesModal({
             if (!button) { setPopoverStyle(null); return; }
             const rect = button.getBoundingClientRect();
             const width = Math.min(Math.max(330, rect.width), window.innerWidth - 16);
-            setPopoverStyle({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)), width });
+            const bar = (button.closest("header") ?? button).getBoundingClientRect();
+            setPopoverStyle({ top: Math.max(rect.bottom, bar.bottom) + 8, left: Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8)), width });
         };
         place();
         window.addEventListener("resize", place);
@@ -63,6 +68,17 @@ export default function SearchRootNodesModal({
         return !normalizedQuery
             || `${name} ${label} ${priorityLabel} root-${priority} ${priority}`.toLocaleLowerCase().includes(normalizedQuery);
     });
+    const matchingItems = matchingNodes;
+    // Short lists are read at a glance, so the filter box only appears once there is something to filter.
+    const itemCount = roots.length;
+    const showFilter = itemCount > FILTER_MIN_ITEMS || query !== "";
+    // Without the filter box the arrow keys start on the first row.
+    useEffect(() => {
+        if (showFilter || !matchingItems.length) return;
+        setActiveIndex(0);
+        optionRefs.current[0]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showFilter]);
     const selectNode = (node) => {
         onSelect(node);
         onClose();
@@ -70,12 +86,12 @@ export default function SearchRootNodesModal({
     const moveFromSearch = (event) => {
         if (event.key === "Enter") {
             event.preventDefault();
-            if (matchingNodes[0]) selectNode(matchingNodes[0]);
+            if (matchingItems[0]) selectNode(matchingItems[0]);
             return;
         }
         if (event.key === "ArrowDown") {
             event.preventDefault();
-            if (!matchingNodes.length) return;
+            if (!matchingItems.length) return;
             setActiveIndex(0);
             optionRefs.current[0]?.focus();
         }
@@ -83,7 +99,7 @@ export default function SearchRootNodesModal({
     const moveFromOption = (event, index) => {
         if (event.key === "ArrowDown") {
             event.preventDefault();
-            const nextIndex = (index + 1) % matchingNodes.length;
+            const nextIndex = (index + 1) % matchingItems.length;
             setActiveIndex(nextIndex);
             optionRefs.current[nextIndex]?.focus();
             return;
@@ -102,16 +118,71 @@ export default function SearchRootNodesModal({
         }
         if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            const node = matchingNodes[index];
-            if (node) selectNode(node);
+            const item = matchingItems[index];
+            if (item) selectNode(item);
         }
     };
-    return <aside ref={dialogRef} onWheel={(event) => event.stopPropagation()} style={popoverStyle} className={`code-rs ${quick ? "code-rs--quick" : ""}`} role="dialog" aria-modal="true" aria-label="Search roots">
+    // ---- Dragging a root to a new place in the order --------------------------------------------
+    // Press and hold a row, then move: the row follows the pointer and a line shows where it will land. The gap nearest
+    // the dragged row's top edge wins, so putting its top edge above the first row's drops it first, and just under a
+    // row drops it after that row. Mouse and pen only (a touch drag would fight scrolling), and only while unfiltered.
+    const [drag, setDrag] = useState(null);
+    const swallowClickRef = useRef(false);
+    const canDragRoots = Boolean(onMoveRoot) && !disabled && query.trim() === "";
+    const gapIndexFor = (topEdge, fromIndex) => {
+        const rows = optionRefs.current.slice(0, matchingNodes.length);
+        const gaps = [];
+        rows.forEach((row, index) => {
+            if (!row || index === fromIndex) return;
+            const rect = row.getBoundingClientRect();
+            if (!gaps.length) gaps.push({ y: rect.top, slot: index });
+            gaps.push({ y: rect.bottom, slot: index + 1 });
+        });
+        if (!gaps.length) return null;
+        return gaps.reduce((best, gap) => (Math.abs(gap.y - topEdge) < Math.abs(best.y - topEdge) ? gap : best));
+    };
+    const beginRowDrag = (event, index) => {
+        if (!canDragRoots || event.button !== 0 || event.pointerType === "touch" || event.target.closest?.("button,input,.code-rs-order,.code-rs-more-wrap")) return;
+        const rowRect = event.currentTarget.getBoundingClientRect();
+        const start = { x: event.clientX, y: event.clientY };
+        const grabY = event.clientY - rowRect.top;
+        const node = matchingNodes[index];
+        let active = false;
+        let landing = null;
+        const move = (next) => {
+            if (!active) {
+                if (Math.hypot(next.clientX - start.x, next.clientY - start.y) < 5) return;
+                active = true;
+            }
+            landing = gapIndexFor(next.clientY - grabY, index);
+            const gap = landing ? optionRefs.current.slice(0, matchingNodes.length)[Math.max(0, Math.min(matchingNodes.length - 1, landing.slot))] : null;
+            const container = gap?.parentElement.getBoundingClientRect();
+            setDrag({ index, label: roots[node.rootIndex]?.name ?? "Root", top: next.clientY - grabY, left: rowRect.left, width: rowRect.width, height: rowRect.height, lineY: landing && container ? landing.y - container.top + gap.parentElement.scrollTop : null });
+        };
+        const end = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", end);
+            window.removeEventListener("pointercancel", end);
+            if (!active) return;
+            swallowClickRef.current = true;
+            window.setTimeout(() => { swallowClickRef.current = false; }, 60);
+            setDrag(null);
+            // `slot` counts rows with the dragged one removed from the list's order, so after removal it is the new index.
+            if (landing) {
+                const slot = landing.slot > index ? landing.slot - 1 : landing.slot;
+                if (slot !== index) onMoveRoot(node.rootIndex, slot);
+            }
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
+    };
+    return <aside ref={dialogRef} onWheel={(event) => event.stopPropagation()} style={popoverStyle} className={`code-rs ${quick ? "code-rs--quick" : ""}`} role="dialog" aria-modal="true" aria-label="Roots">
         <div className="code-rs-top">
-            <label className="code-rs-search"><SearchGlyph /><span className="sr-only">Search roots</span><input ref={searchInputRef} aria-label="Search roots" name="root-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); setMenuRowId(null); optionRefs.current = []; }} onKeyDown={moveFromSearch} placeholder="Search roots" autoComplete="off" /><kbd className="code-rs-kbd">/</kbd></label>
+            {showFilter ? <label className="code-rs-search"><SearchGlyph /><span className="sr-only">Filter roots</span><input ref={searchInputRef} aria-label="Filter roots" name="root-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); setMenuRowId(null); optionRefs.current = []; }} onKeyDown={moveFromSearch} placeholder="Filter roots" autoComplete="off" /><kbd className="code-rs-kbd">{readWorkspaceShortcut("search").toUpperCase()}</kbd></label> : <strong className="code-rs-title">"Roots"</strong>}
             <button type="button" className="code-rs-cancel" onClick={onClose}>Cancel</button>
         </div>
-        <div className="code-rs-results" role="list">{matchingNodes.length ? matchingNodes.map((node, index) => {
+        <div className="code-rs-results" role="list">{drag && drag.lineY != null && <div className="code-rs-drop-line" style={{ top: drag.lineY }} />}{drag && <div className="code-rs-ghost" style={{ top: drag.top, left: drag.left, width: drag.width, height: drag.height }}>{drag.label}</div>}{matchingNodes.length ? matchingNodes.map((node, index) => {
             const root = roots[node.rootIndex];
             const priority = priorityForNode(root, node.rootIndex + 1);
             const label = `Root ${priority}`;
@@ -122,8 +193,9 @@ export default function SearchRootNodesModal({
                 role="button"
                 tabIndex={index === activeIndex ? 0 : -1}
                 onKeyDown={(event) => moveFromOption(event, index)}
-                onClick={() => selectNode(node)}
-                className={`code-rs-row ${index === activeIndex ? "is-keyboard-active" : ""}`}
+                onPointerDown={(event) => beginRowDrag(event, index)}
+                onClick={() => { if (!swallowClickRef.current) selectNode(node); }}
+                className={`code-rs-row ${index === activeIndex ? "is-keyboard-active" : ""} ${canDragRoots ? "is-draggable" : ""} ${drag?.index === index ? "is-dragged" : ""}`}
                 aria-label={`Go to ${name}, ${label}`}
             >
                 <div className="code-rs-order" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
@@ -140,7 +212,7 @@ export default function SearchRootNodesModal({
         <footer className="code-rs-footer">
             <div className="code-rs-footer-row">
                 <span className="code-rs-hints"><kbd className="code-rs-kbd">↑</kbd><kbd className="code-rs-kbd">↓</kbd> move <kbd className="code-rs-kbd">↵</kbd> jump</span>
-                <span className="code-rs-count code-rs-mono">{matchingNodes.length} of {roots.length}</span>
+                <span className="code-rs-count code-rs-mono">{matchingItems.length} of {roots.length}</span>
             </div>
             {!query.trim() && <button type="button" disabled={disabled || !roots.length} onClick={onDeleteAll} className="code-rs-delete-all" aria-label="Delete all roots">Delete all roots</button>}
         </footer>

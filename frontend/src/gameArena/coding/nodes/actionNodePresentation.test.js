@@ -103,5 +103,5 @@ test("custom variable summaries lead with the term when setting and with the var
         { operator: SET, operand: { type: "variable", value: "selectable.hp" } },
         { operator: SUBTRACT, operand: num(20) },
     ] }), "HP - 20");
-    assert.equal(variableActionSummary({ target, stateVariables, terms: [{ operator: SET, operand: { type: "boolean", value: true } }] }), "true");
+    assert.equal(variableActionSummary({ target, stateVariables, terms: [{ operator: SET, operand: { type: "boolean", value: true } }] }), "True");
 });

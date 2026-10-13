@@ -22,7 +22,8 @@ import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide from "../../tutorial/TutorialGuide.jsx";
 import Toast, { ToastStack } from "../../components/Toast.jsx";
-import { BudgetMeter, ToolbarBracesIcon, ToolbarCloseIcon } from "./controls/WorkspaceToolbarBits.jsx";
+import { BudgetMeter, PhoneBarButton, SheetRow, ToolbarBracesIcon, ToolbarCloseIcon, ToolbarMoreMenu, ToolbarNodeIcon, WorkspaceSheet } from "./controls/WorkspaceToolbarBits.jsx";
+import { clearAllCounts, clearAllMessage, clearedConfiguration } from "./clearAll.js";
 import {
     captureTutorialNavigationScrollPosition,
     tutorialLessonNavigationForArena,
@@ -41,7 +42,7 @@ import {
 } from "./nodes/GraphNodes.jsx";
 import { TreeLogicBoard } from "./LogicBoard.jsx";
 import { HudBudget, HudButton, HudScoreboard, HudSwitchRow } from "./HudControls.jsx";
-import { readAddRootShortcut } from "./addRootShortcut.js";
+import { isWorkspaceShortcutKeydown, readAddRootShortcut, readWorkspaceShortcut } from "./addRootShortcut.js";
 import { BOT_LOGIC_TREE_VERSION } from "../botlogic/code/configuration/constants.js";
 import { upgradeStoredStrategyCoordinates } from "../persistence/arenaStrategyStorage.js";
 
@@ -261,6 +262,11 @@ export default function CodingPanel({
     const [isCustomVariablesOpen, setIsCustomVariablesOpen] = useState(false);
     const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
     const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
+    // Layout stage from the workspace's own width (not the viewport): full above 1100px, mid 640-1100px, phone below.
+    const [stage, setStage] = useState("full");
+    const [phoneSheet, setPhoneSheet] = useState(null);
+    // The selected node on a phone (reported by the board); it swaps the bottom bar's actions.
+    const [phoneSelection, setPhoneSelection] = useState(null);
     const [activeCode, setActiveCode] = useState("player");
     const [confirmingSurrender, setConfirmingSurrender] = useState(false);
     const [isToolsSheetOpen, setIsToolsSheetOpen] = useState(false);
@@ -285,7 +291,22 @@ export default function CodingPanel({
         observer.observe(toolbar);
         return () => observer.disconnect();
     }, [isLogicOpen]);
+    useEffect(() => {
+        const element = logicDialogRef.current;
+        if (!isLogicOpen || !element) return undefined;
+        const measure = () => {
+            const width = element.getBoundingClientRect().width;
+            setStage(width > 1100 ? "full" : width >= 640 ? "mid" : "phone");
+        };
+        measure();
+        if (typeof ResizeObserver === "undefined") return undefined;
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [isLogicOpen]);
     const closeTopLogicLayer = () => {
+        // Escape first cancels a wire being drawn on the board.
+        if (logicBoardRef.current?.cancelWire()) return;
         if (isNodeSearchOpen) {
             setIsNodeSearchOpen(false);
             setIsQuickSearchOpen(false);
@@ -475,7 +496,7 @@ export default function CodingPanel({
     useEffect(() => {
         const handleWorkspaceShortcut = (event) => {
             const textEntry = event.target?.closest?.("input,textarea,select,[contenteditable=\"true\"]");
-            if (isBotCodeLocked || textEntry || event.ctrlKey || event.metaKey || event.altKey || event.key !== "/") return;
+            if (isBotCodeLocked || textEntry || event.ctrlKey || event.metaKey || event.altKey || !isWorkspaceShortcutKeydown(event, readWorkspaceShortcut("search"))) return;
             event.preventDefault();
             if (isLogicOpen) {
                 if (!isNodeSearchOpen && !isCustomVariablesOpen) {
@@ -825,6 +846,38 @@ export default function CodingPanel({
             {surrenderControl}
         </>
     );
+    // Workspace layout stage from the workspace's own width: full above 1100px, mid 640-1100px, phone below.
+    const canEditWorkspace = !isCodeEditingLocked && !isTesting && viewingCurrentRound;
+    const canUndoNow = !isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0;
+    const canRedoNow = !isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0;
+    const clearAllDisabled = !canEditWorkspace || !clearAllMessage(clearAllCounts(activeConfiguration));
+    const clearAll = () => {
+        const message = clearAllMessage(clearAllCounts(activeConfiguration));
+        if (!message || !window.confirm(message)) return;
+        updateActiveConfiguration(clearedConfiguration(activeConfiguration));
+    };
+    const openSearch = () => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); };
+    const closeWorkspace = () => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setPhoneSheet(null); setIsLogicOpen(false); };
+    const zoomToFit = () => zoomToFitRef.current?.();
+    // "⋯ More" at mid width; the same tools live in the phone More sheet.
+    const moreItems = [
+        { label: "+ Node", kbd: readWorkspaceShortcut("addNode").toUpperCase(), onClick: () => logicBoardRef.current?.addNode(), disabled: !canEditWorkspace },
+        { label: "Tidy layout", onClick: () => logicBoardRef.current?.tidy(), disabled: !canEditWorkspace },
+        { label: "Zoom to fit", onClick: zoomToFit },
+        { divider: true },
+        { label: "Clear all", danger: true, onClick: clearAll, disabled: clearAllDisabled },
+    ];
+    const inSheet = (action) => () => { setPhoneSheet(null); action(); };
+    const budgetRows = [
+        { label: "Roots", value: `${totalRootNodes} of ${MAX_ROOT_NODES}` },
+        { label: "Actions", value: `${totalActiveBlocks} of ${maxActionNodes}` },
+        { label: "Conditions", value: `${totalActiveConditions} of ${maxConditionNodes}` },
+    ];
+    // A "Used in" entry from the Variables dialog: select the node on the board.
+    const jumpToUse = (target) => {
+        setIsCustomVariablesOpen(false);
+        logicBoardRef.current?.selectNode(target.nodeId);
+    };
     return (
         <aside className={`arena-toolbar-panel hud-panel ${usesArenaResponsiveLimits ? "arena-right-toolbar" : ""} h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 p-4`}>
             <div className="hud-stack">
@@ -967,38 +1020,40 @@ export default function CodingPanel({
                                 <BudgetMeter label="Actions" value={totalActiveBlocks} max={maxActionNodes} />
                                 <BudgetMeter label="Conditions" value={totalActiveConditions} max={maxConditionNodes} />
                             </div>
-                            <div className="code-tb-chips" role="group" aria-label="Code budget">
+                            <div className="code-tb-chips" role="group" aria-label="Code budget" onClick={stage === "phone" ? () => setPhoneSheet("counts") : undefined}>
                                 <BudgetMeter label="R" title="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} compact />
                                 <BudgetMeter label="A" title="Actions" value={totalActiveBlocks} max={maxActionNodes} compact />
                                 <BudgetMeter label="C" title="Conditions" value={totalActiveConditions} max={maxConditionNodes} compact />
                             </div>
                             <span className="code-tb-break" aria-hidden="true" />
                             <span className="code-tb-spacer" />
-                            <button type="button" onClick={() => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); }} className="code-tb-search" aria-label="Search roots" title="Search roots">
+                            <button type="button" onClick={openSearch} className="code-tb-search" aria-label="Search roots" title="Search roots">
                                 <ToolbarSearchIcon />
-                                <span className="code-tb-search-text">Search roots</span>
-                                <kbd className="code-tb-kbd">/</kbd>
+                                <span className="code-tb-search-text">Search</span>
+                                <kbd className="code-tb-kbd">{readWorkspaceShortcut("search").toUpperCase()}</kbd>
                             </button>
-                            <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className="code-tb-btn" aria-label="Custom variables" title="Custom variables">
+                            {stage !== "phone" && <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className="code-tb-btn" aria-label="Custom variables" title="Custom variables">
                                 <ToolbarBracesIcon />
                                 <span className="code-tb-label">Variables</span>
-                            </button>
-                            <button
+                            </button>}
+                            {stage !== "phone" && <button
                                 type="button"
-                                disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound
-                                    || totalRootNodes >= MAX_ROOT_NODES}
+                                disabled={!canEditWorkspace || totalRootNodes >= MAX_ROOT_NODES}
                                 onClick={addRootNode}
                                 className="code-tb-btn is-primary"
                                 aria-label="Add root"
                                 title="Add root"
                             >
                                 <AddIcon className="code-toolbar-icon" /> <span className="code-tb-label">Add root</span> <kbd className="code-tb-kbd">{readAddRootShortcut().toUpperCase()}</kbd>
-                            </button>
+                            </button>}
+                            {stage !== "phone" && <button type="button" className="code-tb-btn" aria-label="Add node" title="Add a node under the selected root or conditional" disabled={!canEditWorkspace} onClick={() => logicBoardRef.current?.addNode()}><span className="code-tb-icon-compact"><ToolbarNodeIcon /></span><span className="code-tb-label">+ Node</span> <kbd className="code-tb-kbd">{readWorkspaceShortcut("addNode").toUpperCase()}</kbd></button>}
+                            {stage === "full" && <button type="button" className="code-tb-btn code-tb-clear" aria-label="Clear all" title="Delete every root, variable and node position" disabled={clearAllDisabled} onClick={clearAll}>Clear all</button>}
+                            {stage === "mid" && <ToolbarMoreMenu items={moreItems} />}
                             <button
                                 type="button"
                                 aria-label="Close bot code workspace"
                                 title="Close"
-                                onClick={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setIsLogicOpen(false); }}
+                                onClick={closeWorkspace}
                                 className="code-tb-close"
                             >
                                 <ToolbarCloseIcon />
@@ -1051,6 +1106,8 @@ export default function CodingPanel({
                             </div>
                         )}
                         <TreeLogicBoard
+                                phone={stage === "phone"}
+                                onSelectionChange={setPhoneSelection}
                                 ref={logicBoardRef}
                                 configuration={activeConfiguration}
                                 disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}
@@ -1081,7 +1138,34 @@ export default function CodingPanel({
                                 maxLogicBlocks={maxActionNodes}
                                 maxTotalConditions={maxConditionNodes}
                             />
-                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal configuration={activeConfiguration} currentValues={activeCustomVariableValues} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
+                        {stage === "phone" && phoneSelection && <nav className="code-phone-bar" aria-label="Selection actions">
+                            {phoneSelection.kind !== "action" && <PhoneBarButton primary icon="+" label="Add" disabled={!canEditWorkspace} aria-label="Add node under selection" onClick={() => logicBoardRef.current?.addNode()} />}
+                            <PhoneBarButton icon="✎" label="Edit" disabled={!canEditWorkspace || phoneSelection.canEdit === false} aria-label="Edit" onClick={() => logicBoardRef.current?.editSelection()} />
+                            <PhoneBarButton icon="↑" label="Up" disabled={!canEditWorkspace || !phoneSelection.canUp} aria-label="Move up" onClick={() => logicBoardRef.current?.nudgeSelection(-1)} />
+                            <PhoneBarButton icon="↓" label="Down" disabled={!canEditWorkspace || !phoneSelection.canDown} aria-label="Move down" onClick={() => logicBoardRef.current?.nudgeSelection(1)} />
+                            <PhoneBarButton icon="🗑" label="Delete" disabled={!canEditWorkspace || phoneSelection.canDelete === false} aria-label="Delete" onClick={() => logicBoardRef.current?.deleteSelection()} />
+                            <PhoneBarButton icon="✓" label="Done" aria-label="Done" onClick={() => logicBoardRef.current?.clearSelection()} />
+                        </nav>}
+                        {stage === "phone" && !phoneSelection && <nav className="code-phone-bar" aria-label="Workspace actions">
+                            <PhoneBarButton icon="↶" label="Undo" disabled={!canUndoNow} onClick={() => travelHistory("undo")} aria-label="Undo code edit" />
+                            <PhoneBarButton icon="↷" label="Redo" disabled={!canRedoNow} onClick={() => travelHistory("redo")} aria-label="Redo code edit" />
+                            <PhoneBarButton primary icon="+" label="Add" disabled={!canEditWorkspace} aria-label="Add" onClick={() => setPhoneSheet("add")} />
+                            <PhoneBarButton icon="{ }" label="Vars" aria-label="Custom variables" onClick={() => setIsCustomVariablesOpen(true)} />
+                            <PhoneBarButton icon="⋯" label="More" aria-label="More tools" onClick={() => setPhoneSheet("more")} />
+                        </nav>}
+                        {stage === "phone" && phoneSheet === "add" && <WorkspaceSheet title="Add" onClose={() => setPhoneSheet(null)}>
+                            <SheetRow tag="ROOT" tone="root" label="Add root" disabled={!canEditWorkspace || totalRootNodes >= MAX_ROOT_NODES} onClick={inSheet(addRootNode)} />
+                            <SheetRow tag="NODE" tone="action" label="Node…" disabled={!canEditWorkspace} onClick={inSheet(() => logicBoardRef.current?.addNode())} />
+                        </WorkspaceSheet>}
+                        {stage === "phone" && phoneSheet === "more" && <WorkspaceSheet title="More" onClose={() => setPhoneSheet(null)}>
+                            <SheetRow label="Tidy layout" disabled={!canEditWorkspace} onClick={inSheet(() => logicBoardRef.current?.tidy())} />
+                            <SheetRow label="Zoom to fit" onClick={inSheet(zoomToFit)} />
+                            <SheetRow label="Clear all" danger disabled={clearAllDisabled} onClick={inSheet(clearAll)} />
+                        </WorkspaceSheet>}
+                        {stage === "phone" && phoneSheet === "counts" && <WorkspaceSheet title="Counts" onClose={() => setPhoneSheet(null)}>
+                            {budgetRows.map((row) => <SheetRow key={row.label} label={row.label} value={row.value} />)}
+                        </WorkspaceSheet>}
+                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal onJumpToUse={jumpToUse} configuration={activeConfiguration} currentValues={activeCustomVariableValues} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
                     </section>
                 </div>,
                 document.body

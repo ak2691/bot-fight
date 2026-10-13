@@ -45,7 +45,7 @@ export const VARIABLE_CATEGORY_LABELS = Object.freeze({
     "Abilities & Status": { chip: "Abilities", title: "Abilities and status" },
     "Position & Movement": { chip: "Position", title: "Position and movement" },
     Rotation: { chip: "Rotation", title: "Rotation" },
-    "Ability Entity": { chip: "Entities", title: "Ability entities" },
+    "Ability Entity": { chip: "Objects", title: "Objects" },
     Match: { chip: "Match", title: "Match" },
     "Custom Variables": { chip: "Custom", title: "Custom variables" },
     Basic: { chip: "Basic", title: "Basic" },
@@ -58,7 +58,7 @@ export const VARIABLE_CATEGORY_TONES = Object.freeze({
     "Abilities & Status": "purple",
     "Position & Movement": "cyan",
     Rotation: "blue",
-    "Ability Entity": "purple",
+    "Ability Entity": "pink",
     "Custom Variables": "amber",
     Match: "neutral",
     Basic: "neutral",
@@ -69,7 +69,10 @@ export const ACTION_HEAD_TONES = Object.freeze({
     movement: "green",
     rotation: "blue",
     ability: "purple",
+    cancel: "red",
+    dash: "green",
     variable: "amber",
+    flow: "blue",
 });
 
 export function variableCategoryTone(category) {
@@ -80,32 +83,32 @@ export function variableCategoryLabel(category) {
     return VARIABLE_CATEGORY_LABELS[category] ?? { chip: category, title: category };
 }
 
-export function matchCountLabel(count) {
-    return `${count} ${count === 1 ? "match" : "matches"}`;
-}
-
 const ACTION_HEAD_GROUPS = Object.freeze([
     { head: "movement", title: "Movement" },
     { head: "rotation", title: "Rotation" },
     { head: "ability", title: "Abilities", hint: "your loadout" },
+    { head: "dash", title: "Dash" },
+    { head: "cancel", title: "Cancel" },
     { head: "variable", title: "Variables" },
 ]);
 
 const ACTION_DESCRIPTIONS = Object.freeze({
     movement: "Move toward a target or point",
     rotation: "Turn toward a target or angle",
+    dash: "Starts alongside any ability, and is never blocked by one",
     variable: "Set, add or subtract",
 });
 
 // Rows are named by their group now, so the "Ability: / Movement: / Rotate: / Variable:" prefixes go.
 export function actionPickerLabel(action) {
     return String(action?.label ?? "")
-        .replace(/^(Ability|Movement|Rotate|Variable):\s*/i, "")
+        .replace(/^(Ability|Movement|Rotate|Cancel|Variable):\s*/i, "")
         .replace(/^Modify Custom Variable$/i, "Modify custom variable")
         .replace(/^Face Target$/i, "Face target");
 }
 
 export function actionPickerDescription(action) {
+    if (action?.id === "cancel_windup") return "Works from any root while you're winding up";
     return ACTION_DESCRIPTIONS[action?.head] ?? "";
 }
 

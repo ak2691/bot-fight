@@ -3,10 +3,12 @@ import test from "node:test";
 import {
     applyPositionOrder,
     mismatchedGroups,
+    moveRootToIndex,
     nudgeNode,
     positionRanks,
     priorityRanks,
     sortTreeByPriority,
+    swapNodePlaces,
 } from "./siblingOrder.js";
 
 // A minimal built graph: one root with three conditionals (the last is ELSE).
@@ -65,10 +67,13 @@ test("ELSE stays last even when dragged to the far left", () => {
     assert.equal(next[0].branches[2].priority, 3);
 });
 
-test("roots reorder by position too", () => {
+test("roots never take their order from their position", () => {
     const { roots, graph } = fixture();
-    const next = applyPositionOrder(roots, graph, { "root:r2": { x: -1200, y: 0 } }, new Set(["roots"]));
-    assert.deepEqual(next.map((root) => root.priority), [2, 1]);
+    const offsets = { "root:r2": { x: -1200, y: 0 } };
+    const next = applyPositionOrder(roots, graph, offsets, new Set(["roots"]));
+    assert.deepEqual(next.map((root) => root.priority), [1, 2]);
+    assert.equal(mismatchedGroups(graph, offsets, roots).has("roots"), false);
+    assert.equal(positionRanks(graph, offsets, roots).has("root:r1"), false);
 });
 
 test("nudging swaps order and moves each subtree with its node", () => {
@@ -99,4 +104,18 @@ test("tidy sorts sibling lists by priority without changing behavior", () => {
     ] }]);
     assert.equal(misplacedElse[0].branches[0].branchType, "if", "an ELSE that is not last becomes an always-true IF");
     assert.deepEqual(misplacedElse[0].branches[0].conditions, []);
+});
+
+test("moving a root drops it in place and shifts the roots between, instead of swapping", () => {
+    const roots = [1, 2, 3, 4].map((priority) => ({ id: `r${priority}`, priority, branches: [] }));
+    const graph = { roots: roots.map((root, index) => ({ id: `root:${root.id}`, rootIndex: index, x: index * 400, y: 0, width: 300 })), conditions: [], actions: [] };
+    const order = (result) => result.roots.map((root) => `${root.id}:${root.priority}`).join(" ");
+    const down = moveRootToIndex(roots, graph, {}, graph.roots[0], 2);
+    assert.equal(order(down), "r1:3 r2:1 r3:2 r4:4");
+    // Roots only change priority; none of them moves on the board.
+    assert.deepEqual(down.offsets, {});
+    assert.deepEqual(nudgeNode(roots, graph, {}, graph.roots[0], 1).offsets, {});
+    assert.equal(order(moveRootToIndex(roots, graph, {}, graph.roots[3], 0)), "r1:2 r2:3 r3:4 r4:1");
+    assert.equal(moveRootToIndex(roots, graph, {}, graph.roots[1], 1), null);
+    assert.equal(order(swapNodePlaces(roots, graph, {}, graph.roots[0], graph.roots[2])), "r1:3 r2:2 r3:1 r4:4");
 });

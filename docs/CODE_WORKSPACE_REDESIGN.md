@@ -1,122 +1,82 @@
-# Code Workspace Redesign
+# Code Workspace
 
-Status: in progress. The brain format (`roots -> branches -> actions`, priorities, IF/ELSE-IF/ELSE, one movement/rotation/ability per tick) is unchanged except that conditions are now AND-only (section 7). This is mostly an editor redesign. Puzzle outcome conditions are untouched.
+How the bot code workspace works (main brain only). Superseded designs and finished prompts were removed; git history has them. Design conventions live in the `botfight-ui-design` skill.
 
-An earlier "lanes" restructure was prototyped and backed out: it changed the model the tutorial teaches and dropped the tree visual.
+This is the editor side of the port from `8d46135`, without chains, shared (linked) actions, unconnected nodes, stamina / sprint / fast turn, or lead aim. Those need brain-format or engine work that main does not have.
 
-## 1. Execution order (done)
+## 1. Brain format and execution order
 
-Modelled on Unreal Engine's behavior tree editor: nodes can be placed anywhere, and siblings run **left to right**.
+- **Tree:** `roots -> branches (conditionals) -> children / actions`. One movement, rotation, ability and cancel action per tick; variable writes all apply.
+- **Order is left to right** (modelled on Unreal's behavior tree editor). Roots are ordered among roots; conditionals that share a parent form an IF / ELSE IF / ELSE chain where the first match wins. ELSE always counts as last. The stored `priority` fields are what the runtime uses; the editor writes them from horizontal positions, and badges update live while dragging. Older brains whose layout disagrees with their stored order keep their order and get an amber ring on the group's badges; dragging applies left-to-right order, Tidy fixes the layout.
+- **Actions inside a branch are not ordered:** a matched branch runs all its actions, one per category.
+- **Every node has one parent.** A root or conditional takes one wire; an action sits in one conditional. Wiring a connected conditional moves it. An action that already has a parent is not wired from a new output: lift its input bar to move it instead.
+- **Conditions are AND-only.** OR is a sibling ELSE IF with the same action.
+- **Comparing two pair values** (distance, bearing): each side has its own entities and target (`rightSelectable1`, `rightSelectable2`, `rightTargetMode`, `rightTargetX/Y`, `rightTargetAngle`).
+- **Saved brains** keep main's fields. The editor adds nothing to them beyond the layout in `nodePositions`.
 
-- **What is ordered:** roots among roots (who claims a channel first), and conditionals that share a parent (the if / else-if chain). Actions are not ordered; a branch runs all of its actions, one per channel.
-- **Dragging** a root or conditional reorders its sibling group by horizontal position when you drop it. Badges show the new order live while dragging. Vertical position does not matter.
-- **ELSE stays last** in its group wherever it is dragged, because it always matches.
-- **Arrows** (◀ ▶) are large tabs sticking out of the top-left and top-right corners of a selected root or conditional. They swap it with its neighbour, and both subtrees move with their nodes. The order number stays in the node body, and the IF / ELSE IF tab is centred on top of conditionals.
-- **Labels**: the first conditional in a group reads IF, later ones ELSE IF, and the fallback ELSE.
-- **No typed priority boxes** on nodes. The `priority` fields are still stored and are what the runtime uses; the editor writes them from positions. The root search list can still set a root's priority, and it swaps positions to match.
-- **Older brains** whose layout disagrees with their stored order are not changed on load. The badges of those groups get an amber ring. Dragging one of those nodes applies left-to-right order to its group; Tidy fixes the layout instead.
+## 2. Main brain canvas: nodes, pins and wires
 
-Code: `frontend/src/gameArena/coding/siblingOrder.js` (+ `siblingOrder.test.js`), wired in `LogicBoard.jsx`, badges and labels in `GraphNodes.jsx` (`ExecutionOrderControls`, `conditionalKindLabel`).
+- **Nodes are plain rectangles in a thin frame.** Pins are wide bars flush on the frame edges: input along the top, output along the bottom (about 16 px, hit area at least 24 px, at least 34 px on touch). Root: output only. Conditional: both. Action: input only.
+- **Wires** start exactly on the parent frame's bottom edge and end exactly on the child frame's top edge (bar centres), from measured frame geometry at every zoom (`coding/graphEdgeGeometry.js`).
+- **Connecting:**
+  - Click an output bar to arm it (a preview wire follows the cursor), then click a valid input bar. Nothing connects on hover or pass-over.
+  - Or press an output bar and move more than about 4 px: the held wire connects when released over any part of a valid node and drops when released elsewhere.
+  - Lift an input bar and move it to a valid output to re-parent the node. Released on empty canvas, it stays where it was.
+  - Click empty canvas or press Escape to cancel.
+- **Touch:** no wire follows the finger. Tap an output bar to arm it, then tap the target's input bar. A still tap on empty canvas disarms.
+- **Rules:** roots and conditionals take one wire; an action sits in one conditional. No cycles. A conditional and an action category cannot repeat under one conditional. A refused target turns red with the reason as its tooltip ("That would create a loop", "This conditional already has a Move action", "Already connected to a node. Lift its input bar to move it."), and clicking it shows the reason as a toast. A conditional wired under a parent is inserted by X position (ELSE last).
+- **Selecting vs opening:** pressing a node and moving it more than 4 px is a drag and never selects or opens. An action: one tap selects it and opens its panel. A conditional: the first click selects it; once selected, clicking a condition strip opens that condition. Ctrl/Cmd-click adds to the selection without opening.
+- **Order controls:** the side panel header shows "IF, 1 of 3" with the order arrows for keyboard and precise moves.
+- **Action node (both editors):** up to three rows: (1) the yellow category label (ABILITY, MOVE, TURN...) with the × on the right, (2) the action name on a darker green, (3) a description of its settings on the darkest green, only for actions that have settings.
+- **Ability not equipped:** an action whose ability isn't in the loadout renders as a muted "Ability not equipped" node that can still be wired or deleted.
+- **Phones:** a tap only selects. While something is selected the bottom bar becomes contextual: Edit, Up, Down, Delete, Done. Done clears the selection and restores the normal bar.
 
-## 2. Layout helpers (done)
+## 3. Conditional node (main brain)
 
-In the left rail of the canvas:
+- Light blue body (`#286583`, border `#43a6d1`) with one darker blue strip per condition (`#0d2f50`, border `rgba(125,211,252,.56)`), inside its pin frame.
+- Header row: the yellow (`#facc15`) IF / ELSE IF / ELSE label, "all must be true" (two or more conditions), then the action count and order badge on the right.
+- Strips: × on each, a white outline when selected, truncated with a full-text tooltip.
+- A small dashed "+ Condition" button under the last strip adds a strip and opens it (hidden on read-only canvases).
 
-- **Zoom to fit** frames the whole tree (minimum zoom lowered to 25%).
-- **Tidy** sorts every sibling list by execution order and re-runs the default layout. Behavior does not change: an ELSE that is not last becomes an IF with no conditions, which also always matches. It is recorded in undo.
+## 4. Side panels (both editors)
 
-## 3. Mobile zoom fix (done)
+On phones the panel is a bottom sheet.
 
-Search boxes in the pickers only autofocus with a mouse (`pointer: fine`), and inputs in the workspace use 16px text on touch screens. Mobile browsers zoom the page when a smaller input is focused.
+- **Flat rows, no indentation:** label left (muted), control right.
+- **Controls are only as wide as their content**, right-aligned, truncating at about 200 px with a tooltip. Numbers are a fixed 5-digit box (about 72 px, monospace) with the unit outside. Segmented controls show only the options that exist.
+- **Condition:** header (yellow kind label, "Condition 2 of 3", ×); **Value** and its rows (Entity, To, X / Y, Ability, Status...); a hairline, **Compare**, a hairline; **With** (Num | Var); **Value** again and, for a variable, its own rows; footer with Up / Down and a quiet red remove.
+- **Action:** header (yellow category label, title, ×); **Action**; **Target** (Entity | Point | Angle, only supported modes) and its rows; then the action's own rows (Direction, Continue, For / Until...); footer as above.
+- Help text sits behind an ⓘ; units follow values.
 
-## 4. Direction A visuals (done)
+## 5. Toolbar, dialogs and helpers
 
-Chosen from three mocked-up directions ("Unreal stack").
+- **Toolbar** (`CodingPanel.jsx`, `code-tb-*`): bot switcher, budget meters (amber from 85%, red at the limit), Search roots (`S` by default), Variables, Add root (the one filled button, with its shortcut), Clear all (quiet red, one confirmation listing counts, one undo restores everything) and Close.
+- **Canvas rail and zoom:** undo, redo, Zoom to fit (minimum zoom 25%) and Tidy (sorts every sibling list by execution order and re-runs the layout; recorded in undo). Zoom (−, %, +, fit) floats at the canvas's bottom-right.
+- **Variables dialog** (`CustomVariablesModal.jsx`, `code-cv-*`): header "Variables", a slot meter and ×. The list shows each variable's name, a type tag (Number, True/false) and its live value; "+ New variable" is the one filled button. The detail is compact rows, label left and control right: Name; Type; Starts at; a hairline; Live value; then "Used in N places" with one row per use. Clicking a use closes the dialog and selects that node. Uses are found by `coding/variableUsage.js`, which walks the roots. Deleting a variable (after a confirmation when it is used) and changing its type rewrite the same places.
+- **Movement direction guide** (`AngleGuideDialog.jsx`, `angleGuideMath.js`): one dialog with a Relative | Absolute toggle. The Direction ⓘ on a relative move opens it on Relative; the Angle ⓘ opens it on Absolute.
+- **Search roots popover** (`SearchRootNodesModal.jsx`, `code-rs-*`): anchored under the toolbar button, own search input, rows with order badge, name and counts, footer hints and a quiet red "Delete all roots" while the query is empty. Phones: a full-width sheet.
+- **Mobile input zoom:** picker search boxes only autofocus with a fine pointer, and workspace inputs use 16 px text on touch screens.
 
-- **Conditional nodes** are read-only: one blue strip per condition (the sentence; once the node is selected, click a strip to open that condition's panel, with a x to remove it), and an IF / ELSE IF tab centred on top. Removing the last condition leaves the conditional as "Always". A body row has the title, action/branch count, the order number and a x to remove the node. While the node is selected, a green **+** tab at the far right of its bottom edge opens a menu with Add conditional and Add action, and a small **+** tab hanging from the bottom edge of the lowest condition (right of centre) adds a condition immediately.
-- **Action nodes** are green, fixed-width text cards: a MOVE / TURN / ABILITY / VARIABLE label, the action name and boxed chips for its target (for example `90° from Opponent 1`), with no icons. There is no Edit button: tap to select, tap again (or double-click) to open the panel. The action panel uses the same row design as a condition: a Change action button, then the settings fields. Movement, zone and target actions pick their target with the same **To: Entity | Point | Angle** toggle used by conditions.
-- **Roots** are a compact pill with the name, order badge, + Conditional and x.
-- **Side panel** (a bottom sheet on phones): see section 8. The action panel has CHANGE ACTION.
-- Text uses IBM Plex Sans; small labels and numbers stay Cousine.
-- Code: `CompactConditionNode`, `GraphRootNode`, `GraphActionNode` and the `conditional` kind of `LogicNodeInspector` in `GraphNodes.jsx`; sentences from `nodes/conditionSummary.js`. The puzzle outcome editor's standalone condition node keeps the old inline editing.
+## 6. Toolbar overflow and phones
 
-## 5. Selecting versus opening (done)
+Three stages, decided by the workspace element's width, not the device.
 
-Pressing a node and moving it more than 4px is a drag: it never selects the node or opens a panel (`LogicBoard.jsx` sets `dragClickSuppressedRef` when the drag ends and the click handlers swallow the click that follows).
+- **Full (above 1100 px):** the whole toolbar.
+- **Mid (640-1100 px):** icon-only secondaries and a **⋯ More** menu holding Tidy layout, Zoom to fit and Clear all last in quiet red below a divider.
+- **Phone (under 640 px):** the budget chips open a counts sheet, Search is an icon, and a bottom action bar (about 52 px) holds Undo, Redo, **Add** (the only filled primary, opening a sheet with Add root), Vars and More. The More sheet has Tidy layout, Zoom to fit and Clear all.
+- **Canvas:** no left rail on phones; a small floating cluster at the canvas's bottom-right keeps Zoom to fit, − and +.
 
-- **Action node**: one tap selects it and opens its panel. There is no Edit button.
-- **Conditional node**: it has no panel of its own. The first click anywhere on the node only selects it (so you can change priorities or use the + buttons without a menu in the way); once it is selected, clicking a condition strip opens that condition's panel.
-- **Panels** hold only input boxes (no surrounding container) and have no remove buttons; remove things with the x on the strip or node.
-- Choosing "Change action" from an action panel keeps that panel open. Tapping a different node selects it and closes any open panel. Ctrl/Cmd-click still adds to the selection and never opens a panel.
+## 7. Not on main (dropped from the 8d design)
 
-## 6. Next steps
+- **Unconnected nodes** (`orphans`), the "+ Node" button, double-click on empty canvas to add a node, and disconnecting a wire to leave its node unconnected. Main's brain has no place to save an unconnected node; a node can only be added under a parent.
+- **Root actions** (an action wired straight to a root). Use a conditional whose condition is Always instead.
+- **Shared actions** (one action under several parents, `linkId`) and the "Used by" list. Main keeps one parent per node.
+- **Chains** (Run chain, the chain editor, step meter, NewChainDialog).
+- **Stamina, Sprint, Fast turn, lead aim, and the Move Direction "Toward a target" measure** with their readings (Approach Angle, Is Moving, In View, Stamina).
 
-1. **Pickers** (variable/action lists) restyled with categories, descriptions and type badges; the action picker should hide actions whose channel the branch already uses.
-2. **Channel chips on roots** (move / turn / ability / variable) and a note on actions that a higher root already claims.
-3. **Outline view** of the same tree, the default on phones.
-4. **Debug**: highlight the path each root took on the last tick in practice mode.
-5. Optional: named conditions (reusable condition groups) if the tree still repeats checks.
+## 8. Backlog
 
-## 7. AND-only conditions (done)
-
-A conditional's conditions are all ANDed: every condition must be true. `join: "or"` no longer exists in bot conditions.
-
-- **Express OR** as a sibling ELSE IF (or another IF) with the same actions.
-- **UI**: the AND / OR toggle and the "Add condition (OR)" menu item are gone; the panel shows a static AND between conditions, the add button reads "+ And another condition", and a note says "All conditions must be true."
-- **Frontend contract and evaluator**: `CONDITION_JOINS` and the OR grouping in `runtime/conditionEvaluator.js` are removed, as is the enumerated-angle-variant path in `BotCode.js` (only the all-AND angle grouping remains). `normalizeConditions` drops any `join` field, so old saved brains with OR load as AND. Convert those by hand into sibling branches.
-- **Server**: `BotSubmissionValidationService` rejects any `join` other than `"and"` (`... .join is not supported; all conditions must be true (AND)`). `BotLogicContracts.JOIN_OR`, `ConditionEvaluationService.evaluateJoined`, the `Condition.join` component and the angle-variant enumeration in `ConditionResolutionService` are removed, so the simulator can only AND.
-- **Presets**: `TutorialPresets.js` lessons 10 and 11 used OR and now use two sibling branches with the same action.
-- **Not changed**: puzzle outcome (win / lose) conditions are a separate system (`puzzles/puzzleConditions.js`, `PuzzleService`) and still support OR. `PuzzleLogicWorkspace.jsx` keeps their `join` when normalizing.
-
-## 8. Conditional panel redesign (done)
-
-The conditional panel (`LogicNodeInspector`, `ConditionalInspectorRow` in `GraphNodes.jsx`) reads top to bottom as a sentence.
-
-- **Header title** is the rule's sentence (for example "Distance (My Bot -> Opponent 1) < 50 and ..."), from `nodes/conditionSummary.js`.
-- **Rows** that are not being edited collapse to a one-line summary; one row is expanded at a time (the first when the panel opens, and a newly added one).
-- **Expanded order**: variable, then comparison (comparator and value), then smaller settings fields (entity, target, ability, status effect).
-- **Comparators are words** ("is less than", "is at most", "equals", "is at least", ...; "is" / "is not" for true/false) and units follow the value.
-- **Variable buttons** show "Change v" so they look clickable.
-- **To: Entity / Point** is a two-option toggle instead of the Target mode dropdown (Angle appears only for variables that support an absolute angle).
-- **Help text** sits behind an info button; numbered badges are gone; labels use sentence case.
-- The comparison row wraps so the panel still works as a phone bottom sheet.
-
-## 9. Layout at scale
-
-Canvas stays 10,000 × 6,000. Large sibling groups are the author's to arrange (as in Unreal), helped by Zoom to fit, Tidy and later collapse. Auto-stacking wide groups vertically was considered and deferred.
-
-## 10. Separate targets when comparing two pair variables (done)
-
-Distance and bearing variables carry an entity plus a target (entity, point, or angle). When one is compared to another, each side now has its own configuration, so choosing Point for one no longer changes the other.
-
-- **Fields**: the compared-to side stores `rightSelectable1`, `rightSelectable2`, `rightTargetMode`, `rightTargetX`, `rightTargetY` and `rightTargetAngle` next to the left side's `selectable1`, `selectable2`, `targetMode`, ... Only present when the right variable is a pair variable.
-- **Older brains** without those fields fall back to the left configuration, so their behavior is unchanged; the editor writes the right fields the next time the condition is normalized.
-- **Frontend**: `rightOperandView` in `runtime/conditionEvaluator.js` gives the resolver the right side's configuration; `BotCode.js` normalizes it; the condition panel edits it through `rightPairUpdates`.
-- **Server**: `ConditionResolutionService` builds a `rightView` condition and resolves the right variable from it; `BotSubmissionValidationService` validates the right* fields (same rules as the left side, and rejects them when the right side is not a pair variable).
-
-## 11. Toolbar: one calm bar (done)
-
-The workspace toolbar in `CodingPanel.jsx` (`code-tb-*` styles) is one row: bot switcher (arrows, team dot, name, "Blue team · Sandbox · 1 of 2"), a divider, Roots / Actions / Conditions meters (3px bars, amber from 85%, red at the limit), a spacer, a Search roots button with a `/` hint, Variables, the only filled button (Add root, with its shortcut key), and a plain close icon. The old title block and mode box are gone (a visually hidden heading keeps `aria-labelledby`).
-
-- **Zoom** (−, %, +, fit) is a floating cluster at the bottom-right of the canvas; fit calls the board's own `zoomToFit` through `zoomToFitRef`.
-- **Match testing:** a teammate gets a Sandbox | Real toggle next to the name; otherwise the mode is meta text (Sandbox, Real code, Read-only snapshot, Opponent code is private). The snapshot and error banners sit under the bar.
-- **Responsive:** under 900px the meters collapse to one `2/300 C` summary with a tooltip and Variables is icon-only; on phones Search and Add root are icon-only.
-- The puzzle workspace keeps its own older toolbar.
-
-## 12. Custom variables dialog (done)
-
-`CustomVariablesModal.jsx` (`code-cv-*` styles) was redesigned; data handling (`rewriteVariableActions`, limits, name validation) is unchanged.
-
-- **Header:** braces icon, "Custom variables", muted `n / max` count and a close icon. The header Add button is gone.
-- **List (230px):** search, rows with the name, a Number (cyan) or True/false (purple) tag and the live value in mono, a left accent bar on the selected row, and a "New variable" row at the bottom (empty state: "No variables yet" plus one line of explanation).
-- **Detail:** a larger Name input, a Number | True / false toggle, "Starts at" (number input or a False | True toggle), a live-value line with "Used in N nodes", and a quiet red "Delete variable" that confirms first when the variable is used.
-- **Phones (under 640px):** the list and the detail are separate screens; tapping a row opens the detail with a back arrow, and New variable is a full-width primary button.
-- **Fonts:** `.testing-mono` forces Cousine on everything in the workspace, so the toolbar, zoom cluster and this dialog opt back into IBM Plex Sans with more specific selectors (monospace only for numbers and `kbd`).
-
-## 13. Search roots popover (done)
-
-`SearchRootNodesModal.jsx` (`code-rs-*` styles in `SearchRootNodes.css`) is a popover anchored under the toolbar search button (at least 330px wide) instead of a boxed panel. It has its own search input with a `/` hint, and no header or close button; Escape and clicking outside close it (the toolbar search button just reopens it). Quick search uses the same layout.
-
-- **Rows:** an order badge (the existing `RootNodePriorityInput`, styled as a badge until focused), the root name, and a muted "3 conditionals · 2 actions" (or "Empty") line. The hovered or keyboard-active row gets a left accent bar and a trash icon.
-- **Footer:** ↑↓ move and ↵ jump hints, "3 of 12", and a quiet red "Delete all roots" only while the query is empty (same confirmation as before). The root count lives in the toolbar meter.
-- **Phones (under 640px):** a full-width sheet from the top with a Cancel button, 44px rows, and a ⋯ menu per row with Delete.
+1. Pickers restyled with categories, descriptions and type badges; the action picker hides actions whose category the branch already uses.
+2. Category chips on roots and a note on actions a higher root already claims.
+3. An outline view of the same tree, the default on phones.
+4. Debug: highlight the path each root took on the last tick in practice mode.

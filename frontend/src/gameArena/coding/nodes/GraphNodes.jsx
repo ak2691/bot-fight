@@ -1,8 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useRef, useState } from "react";
+import { TrashIcon } from "../controls/WorkspaceToolbarBits.jsx";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { describeCondition, summarizeCondition } from "./conditionSummary.js";
 import AddIcon from "../controls/AddIcon.jsx";
-import { createPortal } from "react-dom";
 import {
     ACTION_TYPES,
     SELECTABLE_TYPES,
@@ -11,7 +11,6 @@ import {
     STATE_VARIABLES,
     VISIBLE_STATE_VARIABLES,
     actionExecutionHead,
-    actionSupportsTarget,
     createLogicBlock as createConditional,
     createExpressionCondition,
     defaultSelectableForVariable,
@@ -39,7 +38,7 @@ import {
     countConditionSlots,
     canonicalBotSelectableId,
 } from "../../botlogic/code/BotCode.js";
-import { absoluteMovementAngle, relativeMovementAngle } from "../../botlogic/planner/arenaAngles.js";
+import { relativeMovementAngle as movementAngle } from "../../botlogic/planner/arenaAngles.js";
 import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS, SELECTABLE_OWNERS } from "../../botlogic/code/contracts/BotLogicContracts.js";
 import { normalizePriority, priorityForNode } from "../../botlogic/code/configuration/identifiers.js";
 import { rightOperandView, rightPairUpdates } from "../../botlogic/code/runtime/conditionEvaluator.js";
@@ -51,25 +50,32 @@ import {
     decodeBotLoadout,
     decodeSandboxLoadout,
 } from "../../loadout/BotLoadout.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION, coordinateLimitsFor } from "../../botlogic/code/configuration/constants.js";
+import { ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { getAbilityCatalogueIcon } from "../../../abilityCatalogueIcons.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
-import ArenaDegreesCompass from "../../../components/ArenaDegreesCompass.jsx";
+import AngleGuideDialog, { PhaseStrikeLandingModal } from "../modals/AngleGuideDialog.jsx";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
 import { fallbackAbilityText } from "../../status/abilityStatusPresentation.js";
 import { ACTION_HEAD_TONES, actionPickerDescription, actionPickerLabel, groupedActionPickerOptions, readRecentVariableIds, rememberVariableId, splitMatch, variableCategoryLabel, variableCategoryTone } from "./pickerSupport.js";
 import MatchToolIcon from "../controls/MatchToolIcon.jsx";
+import { HudSwitchRow } from "../HudControls.jsx";
 import { VariableOperatorGlyph, VariableOperatorPicker } from "../controls/VariableOperatorGlyph.jsx";
 import { variableOperatorPresentation } from "../controls/variableOperatorPresentation.js";
 import {
     ACTION_NODE_HORIZONTAL_SPACE,
     actionSelectablePickerModel,
+    actionTargetMode, relativeMovementPhrase,
     encodeSelectableReplacement,
     resolveSelectableTarget,
     UNAVAILABLE_TARGET_LABEL,
     variableActionSummary,
 } from "./actionNodePresentation.js";
+import { variableActionTerms } from "./actionOperandEdits.js";
+import { InfoHint, InfoIconButton } from "../controls/InfoHint.jsx";
+import { MenuSelect } from "../controls/MenuSelect.jsx";
+import { graphBranchActions, setGraphActions } from "./graphActions.js";
+import { SegmentedToggle } from "../controls/SegmentedToggle.jsx";
 
 function clampNumber(value, min, max, fallback, step = NUMBER_STEP, roundDown = false, integerOnly = false) {
     void roundDown;
@@ -113,55 +119,26 @@ function DeferredNumberInput({ value, onCommit, min = CUSTOM_NUMBER_MIN, max = C
 }
 
 const GRAPH_NODE_WIDTH = 340;
-// Strip text column: node width minus border, strip padding, the 84px join
-// column, grid gaps and the remove button. Character widths are deliberately generous.
-const CONDITION_TEXT_WIDTH = 210;
-const CONDITION_TEXT_GAP = 5;
-const CONDITION_TEXT_CHAR_WIDTH = 7.6;
-const CONDITION_CHIP_CHAR_WIDTH = 6.8;
-const CONDITION_LINE_HEIGHT = 17;
-const CONDITION_LINE_GAP = 3;
-const CONDITION_STRIP_PADDING = 14;
-const CONDITION_STRIP_HEIGHT = 30;
+// Condition rows are plain wrapping text. This estimate only places the node's children in the initial layout;
+// the rendered rows never take it as a minimum height, so a row grows only when its text really wraps.
+const CONDITION_TEXT_WIDTH = 230;
+const CONDITION_TEXT_CHAR_WIDTH = 7.4;
+const CONDITION_LINE_HEIGHT = 18;
+const CONDITION_ROW_PADDING = 6;
+const CONDITION_STRIP_HEIGHT = 24;
 const CONDITION_BODY_HEIGHT = 46;
 const ROOT_NODE_WIDTH = 260;
 const GRAPH_NODE_GAP = 72;
 const ROOT_NODE_HEIGHT = 84;
 
-// Height of one condition strip. The strip's text is a wrapping flex row of
-// separate items (subject, entity chips, comparator, value), so simulate that
-// wrap: items that do not fit start a new line, and an oversized item wraps
-// within itself. Shared by buildLogicGraph and the rendered strip so the edges
-// meet the node; the strip itself only uses this as a minimum height.
+// Height of one condition row from its wrapped text.
 function conditionStripHeight(summary) {
-    if (!summary) return CONDITION_STRIP_HEIGHT;
-    const items = [
-        { text: summary.subject, charWidth: CONDITION_TEXT_CHAR_WIDTH, padding: 0 },
-        ...(summary.entities ?? []).map((text) => ({ text, charWidth: CONDITION_CHIP_CHAR_WIDTH, padding: 10 })),
-        { text: summary.comparator, charWidth: CONDITION_TEXT_CHAR_WIDTH, padding: 0 },
-        { text: summary.value, charWidth: CONDITION_TEXT_CHAR_WIDTH, padding: 0 },
-        ...(summary.valueEntities ?? []).map((text) => ({ text, charWidth: CONDITION_CHIP_CHAR_WIDTH, padding: 10 })),
-    ].filter((item) => item.text);
-    let lines = 1;
-    let used = 0;
-    for (const item of items) {
-        const width = String(item.text).length * item.charWidth + item.padding;
-        if (width > CONDITION_TEXT_WIDTH) {
-            if (used > 0) lines += 1;
-            const own = Math.ceil(width / CONDITION_TEXT_WIDTH);
-            lines += own - 1;
-            used = width - (own - 1) * CONDITION_TEXT_WIDTH;
-        } else if (used > 0 && used + CONDITION_TEXT_GAP + width > CONDITION_TEXT_WIDTH) {
-            lines += 1;
-            used = width;
-        } else {
-            used += (used > 0 ? CONDITION_TEXT_GAP : 0) + width;
-        }
-    }
-    return Math.max(CONDITION_STRIP_HEIGHT, CONDITION_STRIP_PADDING + lines * CONDITION_LINE_HEIGHT + (lines - 1) * CONDITION_LINE_GAP);
+    const lines = Math.max(1, Math.ceil(conditionPlainText(summary).length * CONDITION_TEXT_CHAR_WIDTH / CONDITION_TEXT_WIDTH));
+    return Math.max(CONDITION_STRIP_HEIGHT, CONDITION_ROW_PADDING + lines * CONDITION_LINE_HEIGHT);
 }
 
-function RootNameInput({ value, disabled, ariaLabel, onCommit }) {
+// The name is plain text until the root is selected, so a press on it drags the node; once selected it is an input.
+function RootNameInput({ value, disabled, ariaLabel, onCommit, selected = false }) {
     const committedValue = String(value ?? "Root");
     const [draft, setDraft] = useState(committedValue);
 
@@ -169,6 +146,7 @@ function RootNameInput({ value, disabled, ariaLabel, onCommit }) {
         setDraft(committedValue);
     }, [committedValue]);
 
+    if (!selected || disabled) return <span className="code-root-name code-root-name--static" aria-label={ariaLabel} title={disabled ? undefined : "Select the root, then click to rename"}>{committedValue}</span>;
     return <input
         type="text"
         maxLength={MAX_ROOT_NAME_LENGTH}
@@ -193,19 +171,25 @@ const ACTION_NODE_WIDTH = 260;
 const ACTION_CHARS_PER_LINE = 30;
 const ACTION_LINE_HEIGHT = 18;
 
+// Every action a node can show: the loadout's actions.
+function editorActionTypes(selectedLoadout) {
+    return actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
+}
+
 function actionNodeWidth() {
     return ACTION_NODE_WIDTH;
 }
 
-function actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables, coordinateVersion) {
-    const definition = actionTypesForLoadout(ACTION_TYPES, selectedLoadout).find((action) => action.id === entry.action);
-    const { label, chips, expression } = describeActionParts(entry, definition, selectableTypes, coordinateVersion, customVariables, stateVariables);
-    const text = [label, ...chips, expression].filter(Boolean).join("  ");
-    const lines = Math.max(1, Math.ceil(text.length / ACTION_CHARS_PER_LINE));
-    return 52 + lines * ACTION_LINE_HEIGHT;
+function actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables) {
+    const definition = editorActionTypes(selectedLoadout).find((action) => action.id === entry.action);
+    const { chips, expression } = describeActionParts(entry, definition, selectableTypes, customVariables, stateVariables);
+    const description = [chips.join(", "), expression].filter(Boolean).join(" ");
+    // Label row, name row, and a description row only when the action has settings.
+    const descriptionHeight = description ? 12 + Math.max(1, Math.ceil(description.length / ACTION_CHARS_PER_LINE)) * 17 : 0;
+    return 24 + 30 + descriptionHeight + 6;
 }
 
-function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, selectedLoadout = null, selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION, customVariables = []) {
+function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, selectedLoadout = null, selectableTypes = SELECTABLE_TYPES, customVariables = []) {
     const graph = { roots: [], conditions: [], actions: [], variables: [], targets: [], edges: [], width: 0, height: 0 };
     let forestX = 80;
     const summaryLookups = conditionSummaryLookups(stateVariables, selectableTypes);
@@ -213,20 +197,20 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
         const actions = graphBranchActions(branch);
         const childWidth = (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
         const nodeWidth = GRAPH_NODE_WIDTH;
-        const actionWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion, stateVariables, customVariables) + GRAPH_NODE_GAP, 0);
+        const actionWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, stateVariables, customVariables) + GRAPH_NODE_GAP, 0);
         return Math.max(nodeWidth + GRAPH_NODE_GAP, actionWidth + childWidth);
     };
     const measureLevel = (branches) => Math.max(GRAPH_NODE_WIDTH + GRAPH_NODE_GAP, (branches ?? []).reduce((sum, branch) => sum + measureBranch(branch), 0));
     const addBranch = (branch, rootIndex, rootId, path, left, y, parent) => {
         const width = measureBranch(branch);
         const actions = graphBranchActions(branch);
-        const descendantsWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion, stateVariables, customVariables) + GRAPH_NODE_GAP, 0)
+        const descendantsWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, stateVariables, customVariables) + GRAPH_NODE_GAP, 0)
             + (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
         const branchConditions = Array.isArray(branch.conditions) ? branch.conditions : [];
         const stripsHeight = branch.branchType === "else" || branchConditions.length === 0
             ? CONDITION_STRIP_HEIGHT
             : branchConditions.reduce((sum, entry) => sum + conditionStripHeight(summarizeConditionForNode(entry, summaryLookups)), 0);
-        const conditionHeight = stripsHeight + CONDITION_BODY_HEIGHT;
+        const conditionHeight = stripsHeight + CONDITION_BODY_HEIGHT + 66;
         const nodeWidth = GRAPH_NODE_WIDTH;
         const condition = { id: conditionGraphNodeId(branch.id, rootId), rootId, branchId: branch.id, rootIndex, path, x: left + width / 2 - nodeWidth / 2, y, width: nodeWidth, height: conditionHeight, priority: priorityForNode(branch, (path[path.length - 1] ?? 0) + 1) };
         graph.conditions.push(condition);
@@ -236,9 +220,10 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
         let childX = left + Math.max(0, (width - descendantsWidth) / 2);
         const childY = y + conditionHeight + 70;
         actions.forEach((entry, actionIndex) => {
-            const actionWidth = actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion, stateVariables, customVariables);
-            const action = { id: actionGraphNodeId(branch.id, actionIndex, rootId), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables, coordinateVersion) };
+            const actionWidth = actionNodeWidth(entry, selectedLoadout, selectableTypes, stateVariables, customVariables);
+            const action = { id: actionGraphNodeId(branch.id, actionIndex, rootId), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables), parents: [] };
             graph.actions.push(action);
+            action.parents.push({ edgeId: `${condition.id}->${action.id}`, fromId: condition.id });
             graph.edges.push({ id: `${condition.id}->${action.id}`, fromId: condition.id, toId: action.id, x1: condition.x + condition.width / 2, y1: condition.y + condition.height, x2: action.x + action.width / 2, y2: action.y });
             childX += actionWidth + GRAPH_NODE_GAP;
         });
@@ -289,44 +274,39 @@ function ExecutionOrderControls({ rank, label, mismatch = false }) {
     </span>;
 }
 
-// Large arrow tabs sticking out of the top-left and top-right of a selected node;
-// they swap the node with its neighbour so it runs earlier or later.
-function OrderNudgeTabs({ label, selected, disabled, canNudgeBack = true, canNudgeForward = true, onNudge }) {
-    if (!selected || !onNudge) return null;
-    const tab = (direction, side, symbol, enabled, text) => <button type="button" data-node-drag-ignore="true" className={`code-order-tab code-order-tab--${side}`} disabled={disabled || !enabled} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onNudge(direction); }} aria-label={`Run ${label} ${text}`} title={`Run ${text} (move ${side})`}><span aria-hidden="true">{symbol}</span></button>;
-    return <>
-        {tab(-1, "left", "◀", canNudgeBack, "earlier")}
-        {tab(1, "right", "▶", canNudgeForward, "later")}
-    </>;
-}
-
 function puzzleRootLabel(kind) {
     if (kind === "win") return "WIN RULE";
     if (kind === "lose") return "LOSE RULE";
     return kind === "modify" ? "MODIFY" : "RULE";
 }
 
-function GraphRootNode({ node, rootNode, nodeOffsets, disabled, canRemove, puzzleMode = false, graphConditionCount = 0, maxTotalConditions = 0, selected = false, tutorialFocus, rank = null, siblingCount = 1, orderMismatch = false, onNudge = null, onSelect = () => {}, onPointerDown = () => {}, onNameChange = () => {}, onAddConditional = () => {}, onRemove = () => {} }) {
+export function PinBar({ direction = "output", onActivate, disabled, armed = false, valid = false, blockedReason = null, onPress = null, className = "", label = null }) {
+    const pointerType = useRef("mouse");
+    return <button type="button" data-node-drag-ignore="true" className={`code-pin-bar code-pin-bar--${direction} ${armed ? "is-armed" : ""} ${valid ? "is-valid" : ""} ${blockedReason ? "is-blocked" : ""} ${className}`} disabled={disabled} aria-label={blockedReason ?? label ?? (direction === "input" ? "Connect input or re-parent" : "Connect output")} title={blockedReason ?? label ?? (direction === "input" ? "Connect input or re-parent" : "Connect output")} aria-pressed={armed} onPointerDown={(event) => { pointerType.current = event.pointerType; if (onPress) { event.stopPropagation(); onPress(event); } }} onClick={(event) => { event.stopPropagation(); onActivate?.(event, pointerType.current); }}><span /></button>;
+}
+
+function GraphRootNode({ onOutput = null, onOutputPress = null, armed = false, node, rootNode, nodeOffsets, disabled, canRemove, puzzleMode = false, selected = false, tutorialFocus, rank = null, orderMismatch = false, onSelect = () => {}, onPointerDown = () => {}, onNameChange = () => {}, onRemove = () => {} }) {
     const order = rank ?? priorityForNode(rootNode, node.rootIndex + 1);
     const label = `Root ${order}`;
     return <section
+        data-graph-node-id={node.id}
         onClick={onSelect}
         onPointerDown={onPointerDown}
         className={`code-graph-node code-graph-node--root code-bt-node code-bt-root ${puzzleMode && rootNode?.kind ? `code-bt-root--${rootNode.kind}` : ""} absolute ${selected ? "is-selected" : ""}`}
         style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}
     >
-        {!puzzleMode && <OrderNudgeTabs label={label} selected={selected} disabled={disabled} canNudgeBack={order > 1} canNudgeForward={order < siblingCount} onNudge={onNudge} />}
+
+        <div className="code-bt-core code-bt-core--root">
         <div className="code-bt-root-top">
             <span className="code-bt-root-label">{puzzleMode ? puzzleRootLabel(rootNode?.kind) : "ROOT"}</span>
             {puzzleMode
                 ? <span className="code-bt-root-name code-root-name--puzzle" aria-label={`Name for ${label}`}>{rootNode?.name ?? "Puzzle Rule"}</span>
-                : <RootNameInput value={rootNode?.name} disabled={disabled} ariaLabel={`Name for ${label}`} onCommit={onNameChange} />}
+                : <RootNameInput selected={selected} value={rootNode?.name} disabled={disabled} ariaLabel={`Name for ${label}`} onCommit={onNameChange} />}
             {!puzzleMode && <ExecutionOrderControls rank={order} label={label} mismatch={orderMismatch} />}
-            <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(event); }} className="code-bt-x" aria-label="Remove root" title="Remove root">×</button>
+            <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(event); }} className="code-bt-x" aria-label="Remove root" title="Remove root"><TrashIcon /></button>
         </div>
-        {!puzzleMode && <div className="code-bt-root-bottom">
-            <button type="button" data-node-drag-ignore="true" aria-label="Add conditional" disabled={disabled || graphConditionCount >= maxTotalConditions} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => onAddConditional(event, node, rootNode)} className={`code-bt-add-conditional ${tutorialFocus === "add-condition" && !rootNode?.branches?.length ? "tutorial-control-focus" : ""}`}>+ Conditional</button>
-        </div>}
+        </div>
+        {!puzzleMode && <PinBar direction="output" disabled={disabled} armed={armed} onActivate={onOutput} onPress={onOutputPress} className={tutorialFocus === "add-condition" ? "tutorial-control-focus" : ""} />}
     </section>;
 }
 
@@ -356,22 +336,13 @@ function normalizeSiblingTypes(branches) {
     }));
 }
 
-function graphBranchActions(branch) {
-    if (Array.isArray(branch?.actions)) return branch.actions.filter((entry) => entry.action && entry.action !== "none");
-    return branch?.action && branch.action !== "none" ? [{ action: branch.action, selectable: branch.selectable ?? BOT_CODE_SELECTABLES.OPPONENT }] : [];
-}
-
-function setGraphActions(branch, actions) {
-    const first = actions[0] ?? { action: "none", selectable: BOT_CODE_SELECTABLES.OPPONENT };
-    return { ...branch, actions, ...first };
-}
-
 function addGraphAction(branch, selectedLoadout, requestedAction = null, customVariables = []) {
     const actions = graphBranchActions(branch);
-    const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
+    const actionTypes = editorActionTypes(selectedLoadout);
     const usedHeads = new Set(actions.map((entry) => actionTypes.find((action) => action.id === entry.action)).filter(Boolean).map(actionExecutionHead));
     const next = actionTypes.find((action) => action.id === requestedAction)
         ?? actionTypes.find((action) => action.id !== "none" && action.id !== "variable" && !usedHeads.has(actionExecutionHead(action)));
+    // Variable actions do not use up a category, so a node can hold several.
     if (!next || (next.id !== "variable" && usedHeads.has(actionExecutionHead(next)))) return branch;
     return setGraphActions(branch, [...actions, {
         action: next.id,
@@ -410,12 +381,54 @@ function PickerHints({ verb }) {
     return <span className="pk-hints"><kbd>↑</kbd><kbd>↓</kbd> move <kbd>↵</kbd> {verb} <kbd>esc</kbd></span>;
 }
 
-function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "Add action" }) {
+// The node list opens centred under the toolbar's "+ Node" button, a little below the toolbar (like the search popover),
+// so the cursor stays near the toolbar instead of crossing the board from the left edge. Fixed positioning keeps it clear
+// of the board's own scrolling. Phones keep the bottom sheet.
+function useAnchorUnderAddNode(pickerRef) {
+    const [style, setStyle] = useState(null);
+    useLayoutEffect(() => {
+        const place = () => {
+            const picker = pickerRef.current;
+            const workspace = picker?.closest(".code-workspace");
+            const button = workspace?.querySelector('.code-tb-btn[aria-label="Add node"]');
+            if (!picker || !button || window.matchMedia("(max-width: 639px)").matches) { setStyle(null); return; }
+            const anchor = button.getBoundingClientRect();
+            const bar = (button.closest("header") ?? button).getBoundingClientRect();
+            const bounds = workspace.getBoundingClientRect();
+            const width = picker.offsetWidth;
+            const left = Math.max(bounds.left + 8, Math.min(anchor.left + anchor.width / 2 - width / 2, bounds.right - width - 8));
+            setStyle({ position: "fixed", top: Math.max(anchor.bottom, bar.bottom) + 8, left, maxHeight: `min(460px, ${Math.max(160, window.innerHeight - bar.bottom - 24)}px)` });
+        };
+        place();
+        window.addEventListener("resize", place);
+        return () => window.removeEventListener("resize", place);
+    }, [pickerRef]);
+    return style;
+}
+
+// Placement plus dismissal shared by the node list and the variable picker: under "+ Node", closing on any press elsewhere
+// (the config menu, the board); the toolbar button reopens it itself.
+function usePickerPlacement(pickerRef, onClose) {
+    const anchorStyle = useAnchorUnderAddNode(pickerRef);
+    useEffect(() => {
+        const closeOutside = (event) => {
+            const target = event.target;
+            if (!(target instanceof Element) || pickerRef.current?.contains(target) || target.closest('.code-tb-btn[aria-label="Add node"]')) return;
+            onClose();
+        };
+        document.addEventListener("pointerdown", closeOutside, true);
+        return () => document.removeEventListener("pointerdown", closeOutside, true);
+    }, [pickerRef, onClose]);
+    return anchorStyle;
+}
+
+function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, onChooseConditional = null, title = "Add action" }) {
     const [query, setQuery] = useState("");
     const [activeIndex, setActiveIndex] = useState(-1);
     const pickerRef = useRef(null);
     const searchInputRef = useRef(null);
     const optionRefs = useRef([]);
+    const anchorStyle = usePickerPlacement(pickerRef, onCancel);
     useExclusiveSearchMenu(pickerRef, true, onCancel);
     useEffect(() => {
         // Touch screens: opening the keyboard zooms the page, so only focus with a mouse.
@@ -426,13 +439,20 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "Ad
     const actionOptions = actionTypesForLoadout(ACTION_TYPES, selectedLoadout).filter((action) => action.id !== "none");
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const matchingActions = actionOptions.filter((action) => !normalizedQuery || `${action.label} ${action.id}`.toLocaleLowerCase().includes(normalizedQuery));
-    const groupedActions = groupedActionPickerOptions(matchingActions);
+    // Flow nodes (a conditional) are offered only where a node can be added, never when changing an action.
+    const flowOptions = onChooseConditional ? [{ id: "conditional", label: "Conditional", description: "A condition and the actions it runs", head: "flow", flow: true }] : [];
+    const matchingFlow = flowOptions.filter((option) => !normalizedQuery || `${option.label} ${option.id}`.toLocaleLowerCase().includes(normalizedQuery));
+    const groupedActions = [
+        ...(matchingFlow.length ? [{ head: "flow", title: "Flow", options: matchingFlow }] : []),
+        ...groupedActionPickerOptions(matchingActions),
+    ];
     // Keyboard navigation walks the rows in the order they are drawn.
     const filteredActions = groupedActions.flatMap((group) => group.options);
+    const choose = (option) => (option.flow ? onChooseConditional?.() : onChooseAction(option.id));
     const moveFromSearch = (event) => {
         if (event.key === "Enter" && filteredActions.length) {
             event.preventDefault();
-            onChooseAction(filteredActions[0].id);
+            choose(filteredActions[0]);
             return;
         }
         if (event.key !== "ArrowDown" || !filteredActions.length) return;
@@ -462,22 +482,23 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "Ad
         }
         if (event.key === "Enter") {
             event.preventDefault();
-            const action = filteredActions[index];
-            if (action) onChooseAction(action.id);
+            const option = filteredActions[index];
+            if (option) choose(option);
         }
     };
-    return <div ref={pickerRef} className="pk pk--action" role="dialog" aria-label={title} data-node-drag-ignore="true" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } }} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
+    return <div ref={pickerRef} style={anchorStyle ?? undefined} className="pk pk--action" role="dialog" aria-label={title} data-node-drag-ignore="true" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } }} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
         <div className="pk-search"><label className="pk-search__field"><PickerSearchIcon /><span className="sr-only">Search actions</span><input ref={searchInputRef} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); optionRefs.current = []; }} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } else moveFromSearch(event); }} placeholder="Search actions…" /></label><button type="button" className="pk-close" aria-label="Close" title="Close" onClick={onCancel}>×</button></div>
         <div className="pk-list">{groupedActions.map((group) => <section className={`pk-group pk-tone--${ACTION_HEAD_TONES[group.head] ?? "neutral"}`} data-category={group.head} key={group.head}>
             <h3 className="pk-group-title"><span>{group.title}</span><span className="pk-group-hint">{group.hint ?? group.options.length}</span></h3>
             {group.options.map((action) => {
                 const index = filteredActions.indexOf(action);
-                const isAbility = action.head === "ability";
+                const isAbility = action.head === "ability" || action.head === "dash";
                 const label = actionPickerLabel(action);
-                const description = actionPickerDescription(action);
-                return <button ref={(element) => { optionRefs.current[index] = element; }} key={action.id} tabIndex={index === activeIndex ? 0 : -1} className={`pk-row ${index === activeIndex ? "is-active" : ""}`} type="button" onKeyDown={(event) => moveFromOption(event, index)} onClick={() => onChooseAction(action.id)}>
+                const description = action.flow ? action.description : actionPickerDescription(action);
+                const blocked = null;
+                return <button ref={(element) => { optionRefs.current[index] = element; }} key={action.id} tabIndex={index === activeIndex ? 0 : -1} className={`pk-row ${index === activeIndex ? "is-active" : ""}`} type="button" aria-disabled={blocked ? "true" : undefined} title={blocked ?? undefined} data-blocked={blocked ? "true" : undefined} onKeyDown={(event) => moveFromOption(event, index)} onClick={() => choose(action)}>
                     {isAbility && <PickerAbilityIcon abilityId={action.abilityId} label={label} />}
-                    <span className="pk-row__text"><strong className="pk-row__name">{label}</strong>{description && <small className="pk-row__desc">{description}</small>}</span>
+                    <span className="pk-row__text"><strong className="pk-row__name">{label}</strong>{(blocked || description) && <small className="pk-row__desc">{blocked ?? description}</small>}</span>
                     {isAbility && BASE_ABILITY_ID_SET.has(action.abilityId) && <span className="pk-tag pk-tag--base">Base</span>}
                 </button>;
             })}
@@ -494,6 +515,7 @@ function VariableOperandPicker({ operand, stateVariables, numericOnly = false, v
     const pickerRef = useRef(null);
     const searchInputRef = useRef(null);
     const optionRefs = useRef([]);
+    const anchorStyle = usePickerPlacement(pickerRef, onClose);
     useExclusiveSearchMenu(pickerRef, true, onClose);
     useEffect(() => {
         // Touch screens: opening the keyboard zooms the page, so only focus with a mouse.
@@ -564,7 +586,7 @@ function VariableOperandPicker({ operand, stateVariables, numericOnly = false, v
     };
     const title = "Add variable";
     let rowIndex = -1;
-    return <div ref={pickerRef} className="pk pk--variable" role="dialog" aria-label={title} data-node-drag-ignore="true" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
+    return <div ref={pickerRef} style={anchorStyle ?? undefined} className="pk pk--variable" role="dialog" aria-label={title} data-node-drag-ignore="true" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
         <div className="pk-search"><label className="pk-search__field"><PickerSearchIcon /><span className="sr-only">Search variables</span><input ref={searchInputRef} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); optionRefs.current = []; }} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } else moveFromSearch(event); }} placeholder="Search variables…" /></label><button type="button" className="pk-close" aria-label="Close" title="Close" onClick={onClose}>×</button></div>
         {availableCategories.length > 1 && <div className="pk-chips" role="group" aria-label="Variable categories">
             {["all", ...availableCategories].map((id) => <button key={id} type="button" className={`pk-chip ${id === activeCategory ? "is-active" : ""}`} aria-pressed={id === activeCategory} onClick={() => { setCategory(id); setActiveIndex(-1); optionRefs.current = []; }}>{id === "all" ? "All" : variableCategoryLabel(id).chip}</button>)}
@@ -613,8 +635,7 @@ function coordinateCenter(version) {
     return version === BOT_LOGIC_TREE_V1 ? ARENA_WIDTH_UNITS / 2 : 0;
 }
 
-function CoordinateToken({ x, y, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
-    void coordinateVersion;
+function CoordinateToken({ x, y }) {
     return <span className="code-config-token code-config-token--coordinate"><span aria-hidden="true">⌖</span>{Number(x)}, {Number(y)}</span>;
 }
 
@@ -627,7 +648,7 @@ function AbilityToken({ abilityId, label = "Ability" }) {
     return iconPath ? <span className="code-config-ability" title={label}><img src={iconPath} alt="" aria-hidden="true" /></span> : null;
 }
 
-function VariableConfigurationSignature({ definition, condition: sourceCondition, operand, selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
+function VariableConfigurationSignature({ definition, condition: sourceCondition, operand, selectableTypes = SELECTABLE_TYPES }) {
     if (!definition) return null;
     const condition = operand === 2 && definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR ? rightOperandView(sourceCondition) : sourceCondition;
     const parts = [];
@@ -640,7 +661,7 @@ function VariableConfigurationSignature({ definition, condition: sourceCondition
         parts.push(<SelectableToken key="first" value={condition.selectable1 ?? defaults[0]} selectableTypes={selectableTypes} />);
         parts.push(<span key="arrow" className="code-config-relation" aria-hidden="true">→</span>);
         const mode = conditionTargetMode(condition, definition);
-        if (mode === TARGET_MODES.COORDINATES) parts.push(<CoordinateToken key="coordinates" x={condition.targetX ?? coordinateCenter(coordinateVersion)} y={condition.targetY ?? coordinateCenter(coordinateVersion)} coordinateVersion={coordinateVersion} />);
+        if (mode === TARGET_MODES.COORDINATES) parts.push(<CoordinateToken key="coordinates" x={condition.targetX ?? 0} y={condition.targetY ?? 0} />);
         else if (mode === TARGET_MODES.ANGLE) parts.push(<AngleToken key="angle" value={condition.targetAngle ?? 0} absolute />);
         else parts.push(<SelectableToken key="second" value={condition.selectable2 ?? condition.selectable ?? defaults[1]} selectableTypes={selectableTypes} />);
     } else if (definition.supportsSelectable) {
@@ -650,7 +671,7 @@ function VariableConfigurationSignature({ definition, condition: sourceCondition
     return parts.length ? <span className="code-variable-signature">{parts}</span> : null;
 }
 
-function ConditionalOperandBox({ operand, condition, stateVariables, selectableTypes = SELECTABLE_TYPES, disabled, selected, onPickVariable, onInspectVariable, onOpenVariablePicker, onNumberChange, onBooleanChange, numberDefinition = null, tutorialFocus = false, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
+function ConditionalOperandBox({ operand, condition, stateVariables, selectableTypes = SELECTABLE_TYPES, disabled, selected, onPickVariable, onInspectVariable, onOpenVariablePicker, onNumberChange, onBooleanChange, numberDefinition = null, tutorialFocus = false }) {
     const variableDefinition = operand === 1
         ? stateVariables.find((variable) => variable.id === condition.left)
             ?? STATE_VARIABLES.find((variable) => variable.id === condition.left)
@@ -668,28 +689,25 @@ function ConditionalOperandBox({ operand, condition, stateVariables, selectableT
     const numberStep = numberDefinition?.step ?? NUMBER_STEP;
     const integerNumber = numberStep >= 1;
     return <div className={`code-condition-input ${variableLabel ? "is-variable" : "is-raw"} ${tutorialFocus ? "tutorial-control-focus" : ""}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-        {variableLabel ? <button type="button" className={`code-condition-input-value ${selected ? "is-selected" : ""}`} onClick={onOpenVariablePicker ?? onInspectVariable} aria-label={`Configure ${variableLabel}`}><span className="code-condition-input-copy"><span className="code-condition-input-label">{variableLabel}{operand === 2 && variableDefinition.suffix && <span className="code-condition-input-unit">{variableDefinition.suffix}</span>}</span><VariableConfigurationSignature definition={variableDefinition} condition={condition} operand={operand} selectableTypes={selectableTypes} coordinateVersion={coordinateVersion} /></span></button>
-            : rawBoolean ? <select data-node-drag-ignore="true" aria-label={`Input ${operand} boolean value`} disabled={disabled} value={String(condition.right.value)} onChange={(event) => onBooleanChange(event.target.value === "true")} className="code-operator-socket code-condition-boolean-input"><option value="true">TRUE</option><option value="false">FALSE</option></select>
+        {variableLabel ? <button type="button" className={`code-condition-input-value ${selected ? "is-selected" : ""}`} onClick={onOpenVariablePicker ?? onInspectVariable} aria-label={`Configure ${variableLabel}`}><span className="code-condition-input-copy"><span className="code-condition-input-label">{variableLabel}{operand === 2 && variableDefinition.suffix && <span className="code-condition-input-unit">{variableDefinition.suffix}</span>}</span><VariableConfigurationSignature definition={variableDefinition} condition={condition} operand={operand} selectableTypes={selectableTypes} /></span></button>
+            : rawBoolean ? <select data-node-drag-ignore="true" aria-label={`Input ${operand} boolean value`} disabled={disabled} value={String(condition.right.value)} onChange={(event) => onBooleanChange(event.target.value === "true")} className="code-operator-socket code-condition-boolean-input"><option value="true">True</option><option value="false">False</option></select>
             : rawNumber ? <><DeferredNumberInput digitsOnly={integerNumber && !signedNumber} integerOnly={integerNumber} data-node-drag-ignore="true" aria-label={`Input ${operand} number`} disabled={disabled} min={numberDefinition?.min ?? CUSTOM_NUMBER_MIN} max={numberDefinition?.max ?? CUSTOM_NUMBER_MAX} step={numberStep} value={condition.right.value} onCommit={onNumberChange} />{numberSuffix && <span className="code-condition-input-unit">{numberSuffix}</span>}</>
             : <span className="code-condition-input-placeholder">INPUT {operand}</span>}
         <button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={onPickVariable} aria-label={`Edit input ${operand}`} title="Edit input"><span aria-hidden="true">✎</span></button>
     </div>;
 }
 
-const ACTION_CHANNEL_LABELS = Object.freeze({ movement: "MOVE", rotation: "TURN", ability: "ABILITY", variable: "VARIABLE" });
+const ACTION_CHANNEL_LABELS = Object.freeze({ movement: "MOVE", rotation: "TURN", ability: "ABILITY", dash: "DASH", cancel: "CANCEL", variable: "VARIABLE" });
 
-// Variable names on conditional nodes are capped so a strip stays compact; the
-// full sentence is still in the strip tooltip and the config panel.
-const CONDITION_NODE_LABEL_LIMIT = 20;
-
-function truncateNodeLabel(text) {
-    const value = String(text ?? "");
-    return value.length > CONDITION_NODE_LABEL_LIMIT ? `${value.slice(0, CONDITION_NODE_LABEL_LIMIT - 1).trimEnd()}…` : value;
+// Condition text wraps onto the next row instead of being cut off.
+function summarizeConditionForNode(condition, lookups) {
+    return summarizeCondition(condition, lookups);
 }
 
-function summarizeConditionForNode(condition, lookups) {
-    const summary = summarizeCondition(condition, lookups);
-    return { ...summary, subject: truncateNodeLabel(summary.subject), value: truncateNodeLabel(summary.value) };
+/** One line of plain text for a condition summary ("Distance My Bot → Opp 1 < 50"). */
+function conditionPlainText(summary) {
+    if (!summary) return "Always";
+    return [summary.subject, ...(summary.entities ?? []), summary.comparator, summary.value, ...(summary.valueEntities ?? [])].filter(Boolean).join(" ");
 }
 
 function conditionSummaryLookups(stateVariables, selectableTypes) {
@@ -709,101 +727,53 @@ function conditionSummaryLookups(stateVariables, selectableTypes) {
     };
 }
 
-function actionCountLabel(count, singular, plural = `${singular}s`) {
-    return `${count} ${count === 1 ? singular : plural}`;
-}
-
-// "1 action", "2 actions · 1 branch", "no actions"; zero branches are omitted.
-function conditionalCountText(actionCount, childCount) {
-    if (actionCount === 0 && childCount === 0) return "no actions";
-    const parts = [];
-    if (actionCount > 0) parts.push(actionCountLabel(actionCount, "action"));
-    if (childCount > 0) parts.push(actionCountLabel(childCount, "branch", "branches"));
-    return parts.join(" · ");
-}
-
 // Compact, read-only conditional: one decorator strip per condition row and a
 // body row holding the title, counts, order controls and the "+" menu. All
 // editing happens in the side panel.
-function CompactConditionNode({ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, puzzleMode = false, puzzleLabel = "Conditional", rank = null, siblingCount = 1, orderMismatch = false, onNudge = null, onSelect, onRemoveCondition, onChange, onRemove, onAddChildConditional, onAddAction, onEditCondition, activeConditionIndex = null, tutorialFocus }) {
+function CompactConditionNode({ onRemoveCondition = null, onInput = null, onInputPress = null, onOutput = null, onOutputPress = null, armed = false, validInput = false, blockedReason = null, node, branch, disabled, canRemove, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, puzzleMode = false, puzzleLabel = "Conditional", rank = null, orderMismatch = false, onSelect, onChange, onRemove, onEditCondition, activeConditionIndex = null, tutorialFocus }) {
     const conditions = Array.isArray(branch.conditions) ? branch.conditions : [];
     const isElse = branch.branchType === "else";
-    const [menuOpen, setMenuOpen] = useState(false);
     const rootRef = useRef(null);
     const lookups = conditionSummaryLookups(stateVariables, selectableTypes);
     const order = rank ?? priorityForNode(branch, (node.path?.[node.path.length - 1] ?? 0) + 1);
     const kindWord = puzzleMode ? "IF" : conditionalKindLabel(branch, order);
-    const actionCount = graphBranchActions(branch).length;
-    const childCount = (branch.children ?? []).length;
     const addCondition = () => onChange({ conditions: [...conditions, createExpressionCondition(defaultVariable, selectableTypes)] });
-    const title = puzzleMode ? puzzleLabel : "Conditional";
-    const addActionFocus = tutorialFocus === "add-action" && actionCount === 0;
     // Puzzle conditionals only take conditions, so they get no child / action plus.
-    const hideAddBelow = puzzleMode;
     const canAddJoined = !disabled && canAddCondition && conditions.length < maxConditions;
 
-    useEffect(() => {
-        if (!menuOpen) return undefined;
-        const onPointerDown = (event) => { if (!rootRef.current?.contains(event.target)) setMenuOpen(false); };
-        const onKeyDown = (event) => { if (event.key === "Escape") setMenuOpen(false); };
-        document.addEventListener("pointerdown", onPointerDown, true);
-        document.addEventListener("keydown", onKeyDown);
-        return () => {
-            document.removeEventListener("pointerdown", onPointerDown, true);
-            document.removeEventListener("keydown", onKeyDown);
-        };
-    }, [menuOpen]);
-
-    const stopDrag = (event) => event.stopPropagation();
-    const menuItem = (label, onActivate, itemDisabled = false) => <button type="button" role="menuitem" data-node-drag-ignore="true" className="code-bt-menu-item" disabled={itemDisabled} onPointerDown={stopDrag} onClick={(event) => { event.stopPropagation(); setMenuOpen(false); onActivate(); }}>{label}</button>;
-    const strips = isElse
-        ? [{ key: "else", body: <span className="code-bt-strip-muted">Otherwise</span>, muted: true }]
+    const rows = isElse
+        ? [{ key: "else", kw: kindWord, text: "Otherwise", muted: true }]
         : conditions.length === 0
-            ? [{ key: "always", body: <span className="code-bt-subject">Always</span> }]
+            ? [{ key: "always", kw: kindWord, text: "Always" }]
             : conditions.map((condition, index) => {
                 const summary = summarizeConditionForNode(condition, lookups);
-                return {
-                    key: `${index}-${condition.type}`,
-                    index,
-                                        title: describeCondition(condition, lookups),
-                    height: conditionStripHeight(summary),
-                    body: <>
-                            <span className="code-bt-subject">{summary.subject}</span>
-                        {summary.entities.map((entity, entityIndex) => <span className="code-bt-entity" key={entityIndex}>{entity}</span>)}
-                        {summary.comparator && <span className="code-bt-comparator">{summary.comparator}</span>}
-                        {summary.value && <span className="code-bt-value">{summary.value}</span>}
-                        {summary.valueEntities.map((entity, entityIndex) => <span className="code-bt-entity" key={`value-${entityIndex}`}>{entity}</span>)}
-                    </>,
-                };
+                return { key: `${index}-${condition.type}`, index, kw: index === 0 ? kindWord : "AND", text: conditionPlainText(summary), title: describeCondition(condition, lookups) };
             });
 
-    return <section ref={rootRef} onClick={onSelect} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--conditional code-bt-node code-bt-cond ${menuOpen ? "is-menu-open" : ""} absolute ${selected ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
-        <span className="code-bt-kind-tab">{kindWord}</span>
-        <OrderNudgeTabs label={`Conditional ${order}`} selected={selected} disabled={disabled} canNudgeBack={!isElse && order > 1} canNudgeForward={!isElse && order < siblingCount} onNudge={onNudge} />
-        {strips.map((strip, stripPosition) => <div key={strip.key} className={`code-bt-strip ${strip.muted ? "is-else" : ""} ${strip.index != null && onEditCondition && selected ? "is-clickable" : ""} ${strip.index != null && activeConditionIndex === strip.index ? "is-active" : ""} ${tutorialFocus === "add-condition" && stripPosition === 0 ? "tutorial-control-focus" : ""}`} title={strip.title} onClick={strip.index != null && onEditCondition && selected ? (event) => onEditCondition(event, strip.index) : undefined} style={strip.height ? { minHeight: strip.height } : undefined}>
-            <span className="code-bt-strip-text">{strip.body}</span>
-            {strip.index != null && !disabled && <button type="button" data-node-drag-ignore="true" className="code-bt-x" onPointerDown={stopDrag} onClick={(event) => { event.stopPropagation(); onRemoveCondition(strip.index); }} aria-label={`Remove condition ${strip.index + 1}`} title="Remove condition">×</button>}
-        </div>)}
-        {selected && !isElse && !disabled && <div className="code-bt-add-condition" data-node-drag-ignore="true"><button type="button" data-node-drag-ignore="true" className="code-bt-add-condition-button" disabled={!canAddJoined} onPointerDown={stopDrag} onClick={(event) => { event.stopPropagation(); addCondition(); }} aria-label="Add condition" title="Add a condition">+</button></div>}
-        <div className="code-bt-body">
-            <span className="code-bt-title">{title}</span>
-            {!puzzleMode && <span className="code-bt-count">{conditionalCountText(actionCount, childCount)}</span>}
-            <ExecutionOrderControls rank={order} label={`Conditional ${order}`} mismatch={orderMismatch} />
-            <span className="code-bt-body-actions">
-                <button type="button" data-node-drag-ignore="true" className="code-bt-x" disabled={!canRemove || disabled} onPointerDown={stopDrag} onClick={(event) => { event.stopPropagation(); onRemove(); }} aria-label="Remove conditional node" title="Remove conditional node">×</button>
-            </span>
+    return <section ref={rootRef} data-graph-node-id={node.id} onClick={onSelect} onPointerDown={(event) => beginNodeDrag(event, node.id, { fromControls: true })} className={`code-graph-node code-graph-node--conditional code-bt-node code-bt-cond ${node.orphan ? "is-orphan" : ""} absolute ${selected ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
+        <PinBar direction="input" disabled={disabled} valid={validInput} blockedReason={blockedReason} onActivate={onInput} onPress={onInputPress} />
+        <div className="code-bt-core code-bt-core--cond">
+            <div className="code-bt-cond-head">
+                <span className="code-bt-kw">{kindWord}</span>
+                <span className="code-bt-cond-meta">
+                    {puzzleMode && <span className="code-bt-count">{puzzleLabel}</span>}
+                    <ExecutionOrderControls rank={order} label={`Conditional ${order}`} mismatch={orderMismatch} />
+                    <button type="button" data-node-drag-ignore="true" className="code-bt-x" disabled={!canRemove || disabled} onClick={(event) => { event.stopPropagation(); onRemove(); }} aria-label="Remove conditional node" title="Remove conditional node"><TrashIcon /></button>
+                </span>
+            </div>
+            <div className="code-bt-cond-rows">
+                {rows.map((row, position) => <div key={row.key} data-cond-row={row.index ?? undefined} className={`code-bt-cond-row ${row.muted ? "is-else" : ""} ${row.index != null && onEditCondition ? "is-clickable" : ""} ${row.index != null && activeConditionIndex === row.index ? "is-active" : ""} ${tutorialFocus === "add-condition" && position === 0 ? "tutorial-control-focus" : ""}`} title={row.title} onClick={row.index != null && onEditCondition ? (event) => onEditCondition(event, row.index) : undefined}>
+                    <span className="code-bt-cond-text">{row.text}</span>
+                    {row.index != null && !disabled && onRemoveCondition && <button type="button" data-node-drag-ignore="true" className="code-bt-x code-bt-row-x" onClick={(event) => { event.stopPropagation(); onRemoveCondition(row.index); }} aria-label={`Remove condition ${row.index + 1}`} title="Remove condition">×</button>}
+                </div>)}
+            </div>
+        {!isElse && !disabled && <button type="button" data-node-drag-ignore="true" className="code-pin-add-condition" disabled={!canAddJoined} onClick={(event) => { event.stopPropagation(); addCondition(); onEditCondition?.(event, conditions.length, true); }} aria-label="Add condition">+ Condition</button>}
         </div>
-        {selected && !hideAddBelow && <div className="code-bt-add-below" data-node-drag-ignore="true">
-            <button type="button" data-node-drag-ignore="true" className={`code-bt-plus ${addActionFocus ? "tutorial-control-focus" : ""}`} aria-label="Add to conditional" aria-haspopup="menu" aria-expanded={menuOpen} disabled={disabled} onPointerDown={stopDrag} onClick={(event) => { event.stopPropagation(); setMenuOpen((open) => !open); }}>+</button>
-            {menuOpen && <div className="code-bt-menu" role="menu" data-node-drag-ignore="true" onPointerDown={stopDrag} onClick={(event) => event.stopPropagation()}>
-                {menuItem("Add conditional", () => onAddChildConditional(), disabled || !canAddCondition)}
-                {menuItem("Add action", () => onAddAction(), disabled || !canAddAction)}
-            </div>}
-        </div>}
+        {!puzzleMode && <PinBar direction="output" disabled={disabled} armed={armed} onActivate={onOutput} onPress={onOutputPress} className={tutorialFocus === "add-action" ? "tutorial-control-focus" : ""} />}
     </section>;
 }
 
-function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, standalone = false, puzzleMode = false, puzzleLabel = "Conditional", rank = null, siblingCount = 1, orderMismatch = false, onNudge = null, onSelect, onPickVariable, onOpenVariablePicker, onInspectVariable, onRemoveCondition, onEditCondition, activeConditionIndex, inspectedVariable, onChange, onRemove, onAddChildConditional, onAddAction, tutorialFocus, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
+function GraphConditionNode({ onInput = null, onInputPress = null, onOutput = null, onOutputPress = null, armed = false, validInput = false, blockedReason = null, node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, standalone = false, puzzleMode = false, puzzleLabel = "Conditional", rank = null, siblingCount = 1, orderMismatch = false, onNudge = null, onSelect, onPickVariable, onOpenVariablePicker, onInspectVariable, onRemoveCondition, onEditCondition, activeConditionIndex, inspectedVariable, onChange, onRemove, onAddChildConditional, onAddAction, tutorialFocus }) {
     const conditions = Array.isArray(branch.conditions) ? branch.conditions : [];
     const updateCondition = (rowIndex, updater) => onChange({ conditions: conditions.map((condition, index) => index === rowIndex ? updater(condition) : condition) });
     const toggleConditionJoin = (rowIndex) => updateCondition(rowIndex, (current) => {
@@ -813,7 +783,7 @@ function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, c
         return next;
     });
     const addJoinedCondition = (join) => onChange({ conditions: [...conditions, { ...createExpressionCondition(defaultVariable, selectableTypes), ...(join === "or" ? { join: "or" } : {}) }] });
-    if (!standalone) return <CompactConditionNode {...{ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, puzzleMode, puzzleLabel, rank, siblingCount, orderMismatch, onNudge, onSelect, onRemoveCondition, onChange, onRemove, onAddChildConditional, onAddAction, onEditCondition, activeConditionIndex, tutorialFocus }} />;
+    if (!standalone) return <CompactConditionNode {...{ onInput, onInputPress, onOutput, onOutputPress, armed, validInput, blockedReason }} {...{ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, puzzleMode, puzzleLabel, rank, siblingCount, orderMismatch, onNudge, onSelect, onRemoveCondition, onChange, onRemove, onAddChildConditional, onAddAction, onEditCondition, activeConditionIndex, tutorialFocus }} />;
     return <section onClick={onSelect} onPointerDown={(event) => { if (!standalone) beginNodeDrag(event, node.id); }} className={`code-graph-node code-graph-node--conditional ${standalone ? "relative w-full" : "absolute"} rounded-sm border bg-zinc-950 shadow-2xl ${selected ? "is-inspected" : ""}`} style={standalone ? { width: "100%" } : { ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <header className="code-compact-header code-node-header--conditional">
             {standalone || puzzleMode ? <span className="min-w-0 flex-1 truncate text-sky-100">{puzzleLabel}</span> : <><span className="code-node-badge">{node.path.length}</span><span className="min-w-0 flex flex-1 items-center gap-1 truncate text-sky-100">{<span className={`code-branch-kind ${branch.branchType === "else" ? "is-else" : ""}`}>{conditionalKindLabel(branch, rank ?? priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1))}</span>} <ExecutionOrderControls rank={rank ?? priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1)} label={`Conditional ${rank ?? priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1)}`} selected={selected} disabled={disabled} mismatch={orderMismatch} canNudgeBack={branch.branchType !== "else" && (rank ?? 1) > 1} canNudgeForward={branch.branchType !== "else" && (rank ?? 1) < siblingCount} onNudge={onNudge} /></span></>}
@@ -830,7 +800,7 @@ function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, c
                     {index === 0
                         ? <span data-node-drag-ignore="true" className="code-condition-prefix font-mono text-[9px] text-amber-200">IF</span>
                         : <button type="button" data-node-drag-ignore="true" disabled={disabled} className="code-condition-prefix code-condition-join-toggle font-mono text-[9px] text-amber-200" aria-label={`Change ${condition.join === "or" ? "OR" : "AND"} to ${condition.join === "or" ? "AND" : "OR"}`} title="Toggle AND / OR" onClick={(event) => { event.stopPropagation(); toggleConditionJoin(index); }}>{condition.join === "or" ? "OR" : "AND"}</button>}
-                    {condition.type === "always" ? <div className="code-condition-input is-variable col-span-3" data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><button type="button" className="code-condition-input-value" disabled={disabled} onClick={() => onPickVariable(index, 1)} aria-label={`Configure ALWAYS for condition ${index + 1}`}><span className="code-condition-input-copy"><span className="code-condition-input-label">ALWAYS</span></span></button><button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={() => onPickVariable(index, 1)} aria-label={`Edit input 1 for condition ${index + 1}`} title="Edit input"><span aria-hidden="true">✎</span></button></div> : <><ConditionalOperandBox operand={1} condition={condition} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 1} onPickVariable={() => onPickVariable(index, 1)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 1) : null} onInspectVariable={() => onInspectVariable(index, 1)} tutorialFocus={tutorialFocus === "add-condition" && index === 0} coordinateVersion={coordinateVersion} /><select data-node-drag-ignore="true" aria-label="Comparator" disabled={disabled} value={comparator} onClick={(event) => event.stopPropagation()} onChange={(event) => updateCondition(index, (current) => ({ ...current, comparator: event.target.value }))} className="code-operator-socket">{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select><ConditionalOperandBox operand={2} condition={condition} stateVariables={stateVariables} selectableTypes={selectableTypes} numberDefinition={leftDefinition} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 2} onPickVariable={() => onPickVariable(index, 2)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 2) : null} onInspectVariable={() => onInspectVariable(index, 2)} onNumberChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "number", value } }))} onBooleanChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "boolean", value } }))} coordinateVersion={coordinateVersion} /></>}
+                    {condition.type === "always" ? <div className="code-condition-input is-variable col-span-3" data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><button type="button" className="code-condition-input-value" disabled={disabled} onClick={() => onPickVariable(index, 1)} aria-label={`Configure ALWAYS for condition ${index + 1}`}><span className="code-condition-input-copy"><span className="code-condition-input-label">ALWAYS</span></span></button><button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={() => onPickVariable(index, 1)} aria-label={`Edit input 1 for condition ${index + 1}`} title="Edit input"><span aria-hidden="true">✎</span></button></div> : <><ConditionalOperandBox operand={1} condition={condition} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 1} onPickVariable={() => onPickVariable(index, 1)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 1) : null} onInspectVariable={() => onInspectVariable(index, 1)} tutorialFocus={tutorialFocus === "add-condition" && index === 0} /><select data-node-drag-ignore="true" aria-label="Comparator" disabled={disabled} value={comparator} onClick={(event) => event.stopPropagation()} onChange={(event) => updateCondition(index, (current) => ({ ...current, comparator: event.target.value }))} className="code-operator-socket">{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select><ConditionalOperandBox operand={2} condition={condition} stateVariables={stateVariables} selectableTypes={selectableTypes} numberDefinition={leftDefinition} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 2} onPickVariable={() => onPickVariable(index, 2)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 2) : null} onInspectVariable={() => onInspectVariable(index, 2)} onNumberChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "number", value } }))} onBooleanChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "boolean", value } }))} /></>}
                     <button type="button" data-node-drag-ignore="true" className="code-condition-row-remove" disabled={disabled} onClick={(event) => { event.stopPropagation(); onRemoveCondition(index); }} aria-label={`Remove condition ${index + 1}`} title="Remove condition">×</button>
                     </div>
                 </div>;
@@ -841,7 +811,7 @@ function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, c
             <button type="button" data-node-drag-ignore="true" aria-label="Add OR condition" disabled={disabled || !canAddCondition || conditions.length >= maxConditions} onClick={(event) => { event.stopPropagation(); addJoinedCondition("or"); }}><AddIcon /> OR</button>
             {!standalone && !puzzleMode && <><button type="button" data-node-drag-ignore="true" aria-label="Add IF child conditional" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddChildConditional(); }}><AddIcon /> IF</button>
                 <button type="button" data-node-drag-ignore="true" aria-label="Add action" className={`code-action-add-button ${tutorialFocus === "add-action" && !graphBranchActions(branch).length ? "tutorial-control-focus" : ""}`} disabled={disabled || !canAddAction} onClick={(event) => { event.stopPropagation(); onAddAction(); }}><AddIcon /> ACTION</button>
-                <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-condition-node-remove" aria-label="Remove conditional node" title="Remove conditional node">×</button></>}
+                <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-condition-node-remove" aria-label="Remove conditional node" title="Remove conditional node"><TrashIcon /></button></>}
             {!standalone && puzzleMode && <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-condition-node-remove" aria-label="Remove puzzle condition" title="Remove puzzle condition">×</button>}
         </footer></>
     </section>;
@@ -977,16 +947,18 @@ function VariableActionExpression({ entry, customVariables, stateVariables, sele
 
 // Plain-language parts of an action card: the label, boxed target chips, and
 // (for custom-variable actions) the expression text.
-function describeActionParts(entry, definition, selectableTypes, coordinateVersion, customVariables = [], stateVariables = []) {
+function describeActionParts(entry, definition, selectableTypes, customVariables = [], stateVariables = []) {
+    // The ability is not in the loadout (or no longer exists): there is nothing to describe, but the node stays editable.
+    if (!definition && entry?.action && entry.action !== "none") return { label: "Ability not equipped", chips: [], expression: null, missing: true };
     const label = formatActionNodeLabel(definition?.label ?? "Action");
     const chips = [];
     const mode = actionTargetMode(entry, definition);
     const targetText = () => mode === "coordinates"
-        ? `(${Number(entry.targetX ?? coordinateCenter(coordinateVersion))}, ${Number(entry.targetY ?? coordinateCenter(coordinateVersion))})`
+        ? `(${Number(entry.targetX ?? 0)}, ${Number(entry.targetY ?? 0)})`
         : formatSelectableLabel(entry.selectable ?? BOT_CODE_SELECTABLES.OPPONENT, selectableTypes);
-    if (mode === "absolute" && definition?.movementConfig) chips.push(`${absoluteMovementAngle(entry.movementDirection)}° absolute`);
+    if (mode === "absolute" && definition?.movementConfig) chips.push(`${movementAngle(entry.movementDirection)}° absolute`);
     else if (mode === "angle") chips.push(`${Number(entry.targetAngle ?? 0)}° absolute`);
-    else if (mode) chips.push(definition?.movementConfig ? `${relativeMovementAngle(entry.movementDirection)}° from ${targetText()}` : targetText());
+    else if (mode) chips.push(definition?.movementConfig ? relativeMovementPhrase(movementAngle(entry.movementDirection), targetText()) : targetText());
     let expression = null;
     let title = label;
     if (definition?.variableAction) {
@@ -1002,28 +974,29 @@ function describeActionParts(entry, definition, selectableTypes, coordinateVersi
     return { label: title, chips, expression };
 }
 
-function GraphActionNode({ node, entry, disabled, selectedLoadout, selectableTypes, stateVariables = [], customVariables = [], nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove, canRemove = true, puzzleMode = false, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
-    const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
-    const selected = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
+function GraphActionNode({ onInput = null, onInputPress = null, validInput = false, blockedReason = null, node, entry, disabled, selectedLoadout, selectableTypes, stateVariables = [], customVariables = [], nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove, canRemove = true, puzzleMode = false }) {
+    const actionTypes = editorActionTypes(selectedLoadout);
+    const hasAction = Boolean(entry.action) && entry.action !== "none";
+    const selected = actionTypes.find((action) => action.id === entry.action) ?? (hasAction ? undefined : actionTypes[0]);
     const channel = selected ? actionExecutionHead(selected) : "none";
-    const { label, chips, expression } = describeActionParts(entry, selected, selectableTypes, coordinateVersion, customVariables, stateVariables);
-    return <section onClick={onInspect} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--action code-bt-node code-bt-task absolute ${selectedNode ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
-        <div className="code-bt-task-body">
-            {channel && channel !== "none" && <span className={`code-bt-channel code-bt-channel--${String(channel).toLowerCase()}`}>{ACTION_CHANNEL_LABELS[channel] ?? String(channel).toUpperCase()}</span>}
-            <span className="code-bt-task-line">
-                <span className="code-action-label" title={label}>{label}</span>
-                {chips.map((chip, index) => <span className="code-bt-entity" key={index}>{chip}</span>)}
-                {expression && <span className="code-bt-value code-bt-value--summary" title={expression}>{expression}</span>}
-            </span>
+    const { label, chips, expression, missing = false } = describeActionParts(entry, selected, selectableTypes, customVariables, stateVariables);
+    const channelTag = channel && channel !== "none" && <span className={`code-bt-channel code-bt-channel--${String(channel).toLowerCase()}`}>{ACTION_CHANNEL_LABELS[channel] ?? String(channel).toUpperCase()}</span>;
+    return <section data-graph-node-id={node.id} onClick={onInspect} onPointerDown={(event) => beginNodeDrag(event, node.id, { fromControls: true })} className={`code-graph-node code-graph-node--action code-bt-node code-bt-task absolute ${node.orphan ? "is-orphan" : ""} ${missing ? "is-missing" : ""} ${selectedNode ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
+        <PinBar direction="input" disabled={disabled} valid={validInput} blockedReason={blockedReason} onActivate={onInput} onPress={onInputPress} />
+        <div className="code-bt-task-core code-an">
+            <div className="code-an-r1">
+                {channelTag}
+                {(!puzzleMode || canRemove) && <button type="button" data-node-drag-ignore="true" disabled={disabled || (puzzleMode && !canRemove)} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-bt-x" aria-label="Remove action" title="Remove action"><TrashIcon /></button>}
+            </div>
+            <div className="code-an-r2" title={missing ? `${label}: ${entry.action}` : label}>{label}</div>
+            {(chips.length > 0 || expression) && <div className="code-an-r3">{[chips.join(", "), expression].filter(Boolean).join(" ")}</div>}
         </div>
-        {(!puzzleMode || canRemove) && <button type="button" data-node-drag-ignore="true" disabled={disabled || (puzzleMode && !canRemove)} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-bt-x code-bt-x--corner" aria-label="Remove action" title="Remove action">×</button>}
     </section>;
 }
 
 function selectablePairConfigurationNote(definition) {
-    if (definition.id === "selectable.distance") return "Distance compares the first entity to either a selected entity or an absolute arena coordinate.";
-    if (definition.id === "selectable.absoluteBearing") return "Direction To is the arena heading, as a signed angle, from the first entity toward the target.";
-    return "Angle To is how far off the first entity's facing is from the target, from 0 to 180 degrees. Near 0 means it is facing the target.";
+    if (definition.id === "selectable.distance") return "Distance compares From to either a selected entity or a point in the arena.";
+    return "";
 }
 
 const COMPARATOR_SYMBOLS = Object.freeze({ lt: "<", lte: "≤", eq: "=", neq: "≠", gte: "≥", gt: ">" });
@@ -1034,19 +1007,9 @@ function conditionVariableDefinition(stateVariables, id) {
         ?? null;
 }
 
-// Small info-icon toggle that keeps explanatory paragraphs out of the way until asked for.
-function InfoHint({ text, label = "About this setting" }) {
-    const [open, setOpen] = useState(false);
-    if (!text) return null;
-    return <span className="code-info-hint">
-        <button type="button" className="code-info-hint-button" aria-label={label} aria-expanded={open} title={label} onClick={() => setOpen((current) => !current)}><img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="info-circle-icon code-info-hint-icon" /></button>
-        {open && <small className="code-info-hint-text">{text}</small>}
-    </span>;
-}
-
 // One condition, opened from its strip on the node. It reads top to bottom:
 // the variable, the comparator, what it is compared to, then the settings fields.
-function ConditionalInspectorRow({ condition, index, stateVariables, defaultVariable, selectableTypes, selectableAbilityIds, disabled, coordinateVersion, onPickOperand, onRowChange }) {
+function ConditionalInspectorRow({ coordinateVersion = BOT_LOGIC_TREE_VERSION, condition, index, stateVariables, defaultVariable, selectableTypes, selectableAbilityIds, disabled, onPickOperand, onRowChange }) {
     const isAlways = condition.type === "always";
     const leftDefinition = isAlways ? null : conditionVariableDefinition(stateVariables, condition.left) ?? defaultVariable;
     const rightDefinition = condition.right?.type === "variable" ? conditionVariableDefinition(stateVariables, condition.right.value) : null;
@@ -1075,50 +1038,49 @@ function ConditionalInspectorRow({ condition, index, stateVariables, defaultVari
     const right = condition.right;
     const leftHasSettings = hasSettings(leftDefinition);
     const rightHasSettings = right?.type === "variable" && hasSettings(rightDefinition);
+    const row = (label, control) => <div className="code-inspector-field"><span>{label}</span>{control}</div>;
+    const variableButton = (operand, label, ariaLabel) => <button type="button" className="code-cond-variable" disabled={disabled} onClick={() => onPickOperand(index, operand)} aria-label={ariaLabel} title={label}>
+        <span className="code-cond-variable-label">{label}</span>
+        <span className="code-cond-change" aria-hidden="true">▾</span>
+    </button>;
+    // Flat rows: the rows under a Value belong to the Value above them; hairlines around Compare separate the two sides.
     return <div className="code-cond-row" data-condition-row={index}>
-        <div className={`code-cond-compare ${isAlways ? "is-always" : ""}`}>
-            <button type="button" className="code-cond-variable" disabled={disabled} onClick={() => onPickOperand(index, 1)} aria-label={`Change variable for condition ${index + 1}`}>
-                <span className="code-cond-variable-label">{isAlways ? "Always" : leftDefinition.label}</span>
-                <span className="code-cond-change" aria-hidden="true">▾</span>
-            </button>
-            {!isAlways && <>
-                <select className="code-cond-comparator" aria-label="Comparator" disabled={disabled} value={comparator} onChange={(event) => onRowChange((item) => ({ ...item, comparator: event.target.value }))}>{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{COMPARATOR_SYMBOLS[candidate.id] ?? candidate.label}</option>)}</select>
-                <div className="code-cond-right">
-                    {right?.type === "boolean" && <select className="code-cond-value-select" aria-label="Boolean value" disabled={disabled} value={String(right.value)} onChange={(event) => onRowChange((item) => ({ ...item, right: { type: "boolean", value: event.target.value === "true" } }))}><option value="true">true</option><option value="false">false</option></select>}
-                    {right?.type === "number" && <div className="code-cond-number"><DeferredNumberInput digitsOnly={integerNumber && !signedNumber} integerOnly={integerNumber} aria-label="Compare to number" disabled={disabled} min={numberDefinition?.min ?? CUSTOM_NUMBER_MIN} max={numberDefinition?.max ?? CUSTOM_NUMBER_MAX} step={numberStep} value={right.value} onCommit={(value) => onRowChange((item) => ({ ...item, right: { type: "number", value } }))} />{numberSuffix && <span className="code-cond-unit">{numberSuffix}</span>}</div>}
-                    {right?.type === "variable" && <button type="button" className="code-cond-variable" disabled={disabled} onClick={() => onPickOperand(index, 2)} aria-label={`Change compared variable for condition ${index + 1}`}>
-                        <span className="code-cond-variable-label">{rightDefinition?.label ?? "Choose variable"}</span>
-                        <span className="code-cond-change" aria-hidden="true">▾</span>
-                    </button>}
-                    {(isNumber || right?.type === "boolean") && <div className="code-va-segmented code-va-segmented--small code-cond-kind" role="group" aria-label={`Compare condition ${index + 1} to`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()}>
-                        <button type="button" disabled={disabled} aria-pressed={right?.type !== "variable"} className={right?.type !== "variable" ? "is-active" : ""} onClick={() => { if (right?.type === "variable") onRowChange((item) => { const next = { ...item, right: { type: "number", value: 0 } }; delete next.rightSelectable; return next; }); }}>{isNumber ? "Num" : "T/F"}</button>
-                        <button type="button" disabled={disabled || !isNumber} aria-pressed={right?.type === "variable"} className={right?.type === "variable" ? "is-active" : ""} onClick={() => onPickOperand(index, 2)} aria-label="Compare to a variable" title={isNumber ? "Compare to a variable" : "Boolean conditions compare to true or false"}>Var</button>
-                    </div>}
-                </div>
-            </>}
-        </div>
+        {row("Value", variableButton(1, isAlways ? "Always" : leftDefinition.label, `Change variable for condition ${index + 1}`))}
         {!isAlways && <>
-            {(leftHasSettings || rightHasSettings) && <div className="code-cond-settings">
-                {leftHasSettings && <>
-                    <p className="code-cond-settings-caption">Settings for {leftDefinition.label}</p>
-                    <ConditionOperandFields definition={leftDefinition} rightDefinition={rightDefinition} condition={condition} operand={1} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} coordinateVersion={coordinateVersion} onUpdate={(updates) => updateOperand(1, updates)} />
-                </>}
-                {rightHasSettings && <>
-                    <p className="code-cond-settings-caption">Settings for {rightDefinition.label}</p>
-                    <ConditionOperandFields definition={rightDefinition} rightDefinition={rightDefinition} condition={condition} operand={2} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} coordinateVersion={coordinateVersion} onUpdate={(updates) => updateOperand(2, updates)} />
-                </>}
-            </div>}
+            {leftHasSettings && <ConditionOperandFields coordinateVersion={coordinateVersion} definition={leftDefinition} rightDefinition={rightDefinition} condition={condition} operand={1} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={(updates) => updateOperand(1, updates)} />}
+            <div className="ci-sep" />
+            {row("Compare", <select className="code-cond-comparator" aria-label="Comparator" disabled={disabled} value={comparator} onChange={(event) => onRowChange((item) => ({ ...item, comparator: event.target.value }))}>{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{COMPARATOR_SYMBOLS[candidate.id] ?? candidate.label}</option>)}</select>)}
+            <div className="ci-sep" />
+            {(isNumber || right?.type === "boolean") && row("With", <div className="code-va-segmented code-va-segmented--small code-cond-kind" role="group" aria-label={`Compare condition ${index + 1} to`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()}>
+                <button type="button" disabled={disabled} aria-pressed={right?.type !== "variable"} className={right?.type !== "variable" ? "is-active" : ""} onClick={() => { if (right?.type === "variable") onRowChange((item) => { const next = { ...item, right: { type: "number", value: 0 } }; delete next.rightSelectable; return next; }); }}>{isNumber ? "Num" : "T/F"}</button>
+                {isNumber && <button type="button" disabled={disabled} aria-pressed={right?.type === "variable"} className={right?.type === "variable" ? "is-active" : ""} onClick={() => onPickOperand(index, 2)} aria-label="Compare to a variable" title="Compare to a variable">Var</button>}
+            </div>)}
+            {right?.type === "boolean" && row("Value", <select className="code-cond-value-select" aria-label="Boolean value" disabled={disabled} value={String(right.value)} onChange={(event) => onRowChange((item) => ({ ...item, right: { type: "boolean", value: event.target.value === "true" } }))}><option value="true">True</option><option value="false">False</option></select>)}
+            {right?.type === "number" && row("Value", <div className="code-cond-number"><DeferredNumberInput digitsOnly={integerNumber && !signedNumber} integerOnly={integerNumber} aria-label="Compare to number" disabled={disabled} min={numberDefinition?.min ?? CUSTOM_NUMBER_MIN} max={numberDefinition?.max ?? CUSTOM_NUMBER_MAX} step={numberStep} value={right.value} onCommit={(value) => onRowChange((item) => ({ ...item, right: { type: "number", value } }))} />{numberSuffix && <span className="code-cond-unit">{numberSuffix}</span>}</div>)}
+            {right?.type === "variable" && <>
+                {row("Value", variableButton(2, rightDefinition ? rightDefinition.label : "Choose variable", `Change compared variable for condition ${index + 1}`))}
+                {rightHasSettings && <ConditionOperandFields coordinateVersion={coordinateVersion} definition={rightDefinition} rightDefinition={rightDefinition} condition={condition} operand={2} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={(updates) => updateOperand(2, updates)} />}
+            </>}
         </>}
     </div>;
 }
 
-function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, disabled, canRemove, canAddAction, defaultVariable = null, onClose, updateBranch, onPickConditionOperand, onChangeAction, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, className = "", focusEnabled = true, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
+function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, coordinateVersion = BOT_LOGIC_TREE_VERSION, disabled, canRemove, canAddAction, defaultVariable = null, onClose, updateBranch, onPickConditionOperand, onChangeAction, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, className = "", focusEnabled = true, orderInfo = null }) {
     const dialogRef = useRef(null);
     useDialogFocus(dialogRef, { onClose, enabled: focusEnabled });
-    const panel = (eyebrow, title, body, removeLabel = "", onRemove = null) => <aside ref={dialogRef} className={`code-inspector ${className}`} data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
+    // Flat rows in the settings column, then a quiet footer.
+    const panel = (eyebrow, title, body, removeLabel = "", onRemove = null, showOrder = false) => <aside ref={dialogRef} className={`code-inspector ${className}`} data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
         <header className="code-inspector-header"><div><span>{eyebrow}</span><h2 className="code-inspector-title">{title}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close inspector"><span aria-hidden="true">×</span></button></header>
-        <div className="code-inspector-body" onClick={(event) => { if (event.target === event.currentTarget) onDismissOperandPicker?.(); }}>{body}</div>
-        {onRemove && <footer className="code-inspector-footer"><button type="button" disabled={disabled || !canRemove} onClick={() => { onRemove(); onClose(); }}>{removeLabel}</button></footer>}
+        <div className="code-inspector-body" onClick={(event) => { if (event.target === event.currentTarget) onDismissOperandPicker?.(); }}>
+            <div className="code-cond-row code-action-row cx-fields"><div className="code-cond-settings">{body}</div></div>
+            <div className="cx-step-footer">
+                <span className="cx-order-group">{showOrder && orderInfo && <>
+                    <button type="button" className="cx-ghost" disabled={disabled || !orderInfo.canBack} onClick={() => orderInfo.onNudge(-1)} aria-label="Run earlier" title={`Runs ${orderInfo.rank} of ${orderInfo.count}`}>‹ Earlier</button>
+                    <button type="button" className="cx-ghost" disabled={disabled || !orderInfo.canForward} onClick={() => orderInfo.onNudge(1)} aria-label="Run later" title={`Runs ${orderInfo.rank} of ${orderInfo.count}`}>Later ›</button>
+                </>}</span>
+                {onRemove && <button type="button" className="cx-delete-step cx-trash" aria-label={removeLabel} title={removeLabel} disabled={disabled || !canRemove} onClick={() => { onRemove(); onClose(); }}><TrashIcon /></button>}
+            </div>
+        </div>
     </aside>;
 
     if (inspectedNode.kind === "condition-row") {
@@ -1132,7 +1094,8 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
             conditions: (current.conditions ?? []).map((item, index) => index === inspectedNode.rowIndex ? updater(item) : item),
         }));
         const fallbackVariable = defaultVariable ?? stateVariables[0];
-        return panel("Conditional", "Condition", <ConditionalInspectorRow {...{ condition, stateVariables, selectableTypes, selectableAbilityIds, disabled, coordinateVersion }} index={inspectedNode.rowIndex} defaultVariable={fallbackVariable} onPickOperand={(rowIndex, operand) => onPickConditionOperand?.(node.rootIndex, node.path, rowIndex, operand)} onRowChange={updateRow} />);
+        const removeRow = () => updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== inspectedNode.rowIndex) }));
+        return panel(orderInfo?.label ?? "IF", `Condition ${inspectedNode.rowIndex + 1} of ${conditions.length}`, <ConditionalInspectorRow {...{ condition, stateVariables, selectableTypes, selectableAbilityIds, disabled }} index={inspectedNode.rowIndex} defaultVariable={fallbackVariable} onPickOperand={(rowIndex, operand) => onPickConditionOperand?.(node.rootIndex, node.path, rowIndex, operand)} onRowChange={updateRow} />, "Remove condition", removeRow, true);
     }
 
     if (inspectedNode.kind === "condition-variable") {
@@ -1162,8 +1125,8 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
             }),
         }));
         return panel(`INPUT ${inspectedNode.operand} VARIABLE`, definition.label, <>
-            {onChangeConditionVariable && <button type="button" onClick={() => onChangeConditionVariable(inspectedNode.rowIndex, inspectedNode.operand)} className="mb-4 min-h-9 w-full border border-cyan-700/70 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-[.12em] text-cyan-200 hover:border-cyan-400 hover:bg-cyan-900/50">CHANGE VARIABLE</button>}
-            <ConditionOperandFields definition={definition} rightDefinition={rightDefinition} condition={condition} operand={inspectedNode.operand} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} coordinateVersion={coordinateVersion} onUpdate={update} />
+            {onChangeConditionVariable && <button type="button" onClick={() => onChangeConditionVariable(inspectedNode.rowIndex, inspectedNode.operand)} className="mb-4 min-h-9 w-full border border-cyan-700/70 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-[.12em] text-cyan-200 hover:border-cyan-400 hover:bg-cyan-900/50">Change variable</button>}
+            <ConditionOperandFields coordinateVersion={coordinateVersion} definition={definition} rightDefinition={rightDefinition} condition={condition} operand={inspectedNode.operand} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={update} />
         </>);
     }
 
@@ -1173,32 +1136,31 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         const actions = graphBranchActions(branch);
         const entry = node ? actions[node.actionIndex] : null;
         if (!node || !branch || !entry) return null;
-        const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
-        const definition = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
+        const actionTypes = editorActionTypes(selectedLoadout);
+        const missingAction = Boolean(entry.action) && entry.action !== "none" && !actionTypes.some((action) => action.id === entry.action);
+        const definition = actionTypes.find((action) => action.id === entry.action) ?? (missingAction ? undefined : actionTypes[0]);
         const update = (nextEntry) => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.map((item, index) => index === node.actionIndex ? nextEntry : item)));
         const targetMode = actionTargetMode(entry, definition);
-        const needsTarget = targetMode !== null && targetMode !== "absolute";
+        const needsTarget = targetMode !== null;
         const channelLabel = ACTION_CHANNEL_LABELS[definition ? actionExecutionHead(definition) : "none"] ?? "";
-        return panel(channelLabel ? `${sentenceCase(channelLabel)} · Action` : "Action", definition?.variableAction ? "Modify custom variable" : "Action", <div className="code-cond-row code-action-row">
-            {onChangeAction && !definition?.variableAction && <button type="button" className="code-cond-variable" disabled={disabled} onClick={() => onChangeAction(node.rootIndex, node.path, node.actionIndex)} aria-label="Change action"><span className="code-cond-variable-label">{definition?.label ?? "Action"}</span><span className="code-cond-change" aria-hidden="true">▾</span></button>}
-            <div className="code-cond-settings">
+        const removeAction = () => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.filter((_, index) => index !== node.actionIndex)));
+        return panel(channelLabel || "ACTION", "Action", <>
+            {onChangeAction && !definition?.variableAction && <div className="code-inspector-field"><span>Action</span><button type="button" className="code-cond-variable" disabled={disabled} onClick={() => onChangeAction(node.rootIndex, node.path, node.actionIndex)} aria-label="Change action"><span className="code-cond-variable-label">{definition?.label ?? (missingAction ? "Ability not equipped" : "Action")}</span><span className="code-cond-change" aria-hidden="true">▾</span></button></div>}
+            {needsTarget && <ActionTargetControls coordinateVersion={coordinateVersion} entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} />}
             {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={false} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => {}} />}
-            {definition?.movementConfig && <MovementConfigurationControls entry={entry} disabled={disabled} onChange={update} />}
             {definition?.orientationConfig && <PhaseOrientationControls entry={entry} disabled={disabled} onChange={update} />}
-            {needsTarget && <ActionTargetControls entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} coordinateVersion={coordinateVersion} />}
-            </div>
-        </div>);
+        </>, "Remove action", removeAction);
     }
     return null;
 }
 
 /** Entity / ability / status / target settings for one condition operand. */
-function ConditionOperandFields({ definition, rightDefinition = null, condition, operand, selectableTypes, selectableAbilityIds = null, disabled, coordinateVersion = BOT_LOGIC_TREE_VERSION, onUpdate }) {
+function ConditionOperandFields({ definition, rightDefinition = null, condition, operand, selectableTypes, selectableAbilityIds = null, disabled, onUpdate, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
     const update = onUpdate;
     // The compared-to pair variable has its own entity/target, separate from the first variable's.
     const pairCondition = operand === 2 ? rightOperandView(condition) : condition;
     const updatePair = (updates) => update(operand === 2 ? rightPairUpdates(updates) : updates);
-    const field = (label, control, hint = "") => <label className="code-inspector-field"><span>{sentenceCase(label)}</span>{control}{hint && <small>{hint}</small>}</label>;
+    const field = (label, control, hint = "", info = null) => <div className="code-inspector-field"><span>{sentenceCase(label)}{info}</span>{control}{hint && <small>{hint}</small>}</div>;
     const selectableField = operand === 1 ? "leftSelectable" : "rightSelectable";
     const selectableOptions = selectableOptionsForDefinition(
         definition,
@@ -1216,19 +1178,20 @@ function ConditionOperandFields({ definition, rightDefinition = null, condition,
     const abilityOptions = scopedDefinition.abilityOptions ?? [];
     const statusEffectOptions = scopedDefinition.statusEffectOptions ?? [];
     const selectablePickerLabel = selectableSelectorLabel(definition);
+    const pairNote = definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR ? selectablePairConfigurationNote(definition) : "";
+    const pairInfo = pairNote ? <InfoHint text={pairNote} label={`About ${definition.label}`} /> : null;
+    const edgeInfo = definition.id.endsWith("edgeDistance") ? <InfoHint text="Edge distance is measured from the center of the entity to the nearest arena or danger-zone boundary." label={`About ${definition.label}`} /> : null;
     return <>
             {definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
                 ? <>
-                    {field(selectableSelectorLabel(definition, 0), <OrderedSelectablePicker disabled={disabled} value={pairCondition.selectable1 ?? selectablePairDefaults[0]} selectableTypes={pairEntitySelectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => updatePair({ selectable1: selectable })} />)}
+                    <OrderedSelectablePicker label={sentenceCase(selectableSelectorLabel(definition, 0))} disabled={disabled} value={pairCondition.selectable1 ?? selectablePairDefaults[0]} selectableTypes={pairEntitySelectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => updatePair({ selectable1: selectable })} />
                     {definition.targetModes?.length
-                        ? <ConditionTargetControls condition={pairCondition} definition={definition} selectableTypes={selectableOptions} defaultSelectable={selectablePairDefaults[1]} disabled={disabled} onChange={updatePair} coordinateVersion={coordinateVersion} />
-                        : field(selectableSelectorLabel(definition, 1), <OrderedSelectablePicker disabled={disabled} value={pairCondition.selectable2 ?? pairCondition.selectable ?? selectablePairDefaults[1]} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => updatePair({ selectable2: selectable })} />)}
-                    <InfoHint text={selectablePairConfigurationNote(definition)} label={`About ${definition.label}`} />
+                        ? <ConditionTargetControls coordinateVersion={coordinateVersion} condition={pairCondition} definition={definition} selectableTypes={selectableOptions} defaultSelectable={selectablePairDefaults[1]} disabled={disabled} onChange={updatePair} info={pairInfo} />
+                        : <OrderedSelectablePicker label={sentenceCase(selectableSelectorLabel(definition, 1))} info={pairInfo} disabled={disabled} value={pairCondition.selectable2 ?? pairCondition.selectable ?? selectablePairDefaults[1]} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => updatePair({ selectable2: selectable })} />}
                 </>
-                : definition.supportsSelectable && field(selectablePickerLabel, <OrderedSelectablePicker value={condition[selectableField] ?? defaultSelectableForVariable(definition, selectableTypes)} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ [selectableField]: selectable })} />)}
+                : definition.supportsSelectable && <OrderedSelectablePicker label={sentenceCase(selectablePickerLabel)} info={edgeInfo} value={condition[selectableField] ?? defaultSelectableForVariable(definition, selectableTypes)} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ [selectableField]: selectable })} />}
             {definition.supportsAbility && abilityOptions.length > 0 && field("Ability", <select disabled={disabled} value={selectedCondition.ability ?? abilityOptions[0].id} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select>)}
             {definition.supportsStatusEffect && statusEffectOptions.length > 0 && field("Status effect", <select disabled={disabled} value={selectedCondition.statusEffect ?? ""} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select>)}
-            {definition.id.endsWith("edgeDistance") && <InfoHint text="Edge distance is measured from the center of the entity to the nearest arena or danger-zone boundary." label={`About ${definition.label}`} />}
             {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsSelectable && <p className="code-inspector-note">This variable has no additional configuration.</p>}
     </>;
 }
@@ -1250,7 +1213,7 @@ function TutorialLogicInspector({ kind, condition = { type: "always" }, action =
         priority: 1,
         branches: [branch],
     };
-    const graph = buildLogicGraph([root], stateVariables, selectedLoadout, selectableTypes, BOT_LOGIC_TREE_VERSION, customVariables);
+    const graph = buildLogicGraph([root], stateVariables, selectedLoadout, selectableTypes, customVariables);
     const node = kind === "condition" ? graph.conditions[0] : graph.actions[0];
     if (!node) return null;
     const inspectedNode = kind === "condition"
@@ -1276,52 +1239,48 @@ function TutorialLogicInspector({ kind, condition = { type: "always" }, action =
     />;
 }
 
-function actionTargetMode(entry, definition) {
-    if (definition?.movementConfig) {
-        if (entry?.movementMode === "absolute") return "absolute";
-        return entry?.movementMode === "coordinates" ? "coordinates" : "target";
-    }
-    if (definition?.angleTarget) {
-        return ["target", "angle", "coordinates"].includes(entry?.targetMode) ? entry.targetMode : "target";
-    }
-    if (definition?.coordinateTarget) return entry?.targetMode === "coordinates" ? "coordinates" : "target";
-    return actionSupportsTarget(definition) ? "target" : null;
-}
-
 function ActionTargetControls({ entry, definition, selectableTypes, disabled, onChange, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
+    const [showRelativeAngleHelp, setShowRelativeAngleHelp] = useState(false);
     const limits = coordinateLimitsFor(coordinateVersion);
     const center = coordinateCenter(coordinateVersion);
     const mode = actionTargetMode(entry, definition);
-    const canChooseCoordinates = Boolean(definition?.coordinateTarget && !definition?.movementConfig);
-    const modeControl = canChooseCoordinates && <TargetModeToggle
-        modes={["target", "coordinates", ...(definition?.angleTarget ? ["angle"] : [])]}
-        mode={mode}
-        disabled={disabled}
-        onSelect={(candidate) => onChange({ ...entry, targetMode: candidate })}
-    />;
+    const isMovement = Boolean(definition?.movementConfig);
+    const canChooseCoordinates = Boolean(definition?.coordinateTarget && !isMovement);
+    const modes = isMovement ? ["target", "coordinates", "absolute"]
+        : canChooseCoordinates ? ["target", "coordinates", ...(definition?.angleTarget ? ["angle"] : [])] : [];
+    const relativeDirection = movementAngle(entry.movementDirection);
+    const absoluteDegreeDirection = movementAngle(entry.movementDirection);
+    const changeMovementMode = (nextMode) => onChange({
+        ...entry,
+        movementMode: nextMode,
+        movementDirection: nextMode === "absolute" ? absoluteDegreeDirection : relativeDirection,
+    });
+    const row = (label, control) => <div className="code-inspector-field"><span>{label}</span>{control}</div>;
+    const numberRow = (label, props, unit = null) => row(label, <span className="ci-number"><DeferredNumberInput disabled={disabled} {...props} />{unit && <span className="code-inspector-field-unit">{unit}</span>}</span>);
+    let detail;
     if (mode === "angle") {
-        return <div>
-            {modeControl}
-            <label className="code-inspector-field"><span className="code-movement-label-row">ANGLE <AbsoluteArenaAngleHelpButton /></span><DeferredNumberInput disabled={disabled} min={-360} max={360} value={entry.targetAngle ?? 0} fallback={0} aria-label="Absolute rotation angle" onCommit={(targetAngle) => onChange({ ...entry, targetAngle })} /><span className="code-inspector-field-unit">deg</span></label>
-        </div>;
+        detail = numberRow(<span className="code-movement-label-row">Angle <AbsoluteArenaAngleHelpButton /></span>, { min: -360, max: 360, value: entry.targetAngle ?? 0, fallback: 0, "aria-label": "Absolute rotation angle", onCommit: (targetAngle) => onChange({ ...entry, targetAngle }) }, "deg");
+    } else if (mode === "absolute") {
+        detail = numberRow(<span className="code-movement-label-row">Angle <AbsoluteArenaAngleHelpButton /></span>, { min: MOVEMENT_DIRECTION_MIN, max: MOVEMENT_DIRECTION_MAX, step: NUMBER_STEP, value: absoluteDegreeDirection, fallback: 0, "aria-label": "Absolute arena movement direction in degrees", onCommit: (movementDirection) => onChange({ ...entry, movementDirection }) }, "deg");
+    } else if (mode === "coordinates") {
+        detail = <>
+            {numberRow("X", { min: limits.minimum, max: limits.maximum, fallback: center, value: entry.targetX ?? center, "aria-label": "Target X coordinate", onCommit: (targetX) => onChange({ ...entry, targetX }) })}
+            {numberRow("Y", { min: limits.minimum, max: limits.maximum, fallback: center, value: entry.targetY ?? center, "aria-label": "Target Y coordinate", onCommit: (targetY) => onChange({ ...entry, targetY }) })}
+        </>;
+    } else {
+        detail = <>
+            <OrderedSelectablePicker label={modes.length > 1 ? "Entity" : "Target"} disabled={disabled} value={entry.selectable ?? BOT_CODE_SELECTABLES.OPPONENT} selectableTypes={selectableTypes} onChange={(selectable) => onChange({ ...entry, selectable, ...(isMovement ? {} : { targetMode: "target" }) })} />
+            {!isMovement && numberRow("X offset", { min: -limits.offsetMagnitude, max: limits.offsetMagnitude, value: entry.targetOffsetX ?? 0, fallback: 0, "aria-label": "Target X offset", onCommit: (targetOffsetX) => onChange({ ...entry, targetOffsetX }) })}
+            {!isMovement && numberRow("Y offset", { min: -limits.offsetMagnitude, max: limits.offsetMagnitude, value: entry.targetOffsetY ?? 0, fallback: 0, "aria-label": "Target Y offset", onCommit: (targetOffsetY) => onChange({ ...entry, targetOffsetY }) })}
+        </>;
     }
-    if (mode === "coordinates") {
-        return <div>
-            {modeControl}
-            <div className="grid grid-cols-2 gap-2">
-                <label className="code-inspector-field"><span>X</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={entry.targetX ?? center} fallback={center} aria-label="Target X coordinate" onCommit={(targetX) => onChange({ ...entry, targetX })} /></label>
-                <label className="code-inspector-field"><span>Y</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={entry.targetY ?? center} fallback={center} aria-label="Target Y coordinate" onCommit={(targetY) => onChange({ ...entry, targetY })} /></label>
-            </div>
-        </div>;
-    }
-    return <div>
-        {modeControl}
-        <label className="code-inspector-field"><span>TARGET</span><OrderedSelectablePicker disabled={disabled} value={entry.selectable ?? BOT_CODE_SELECTABLES.OPPONENT} selectableTypes={selectableTypes} onChange={(selectable) => onChange({ ...entry, selectable, ...(definition?.movementConfig ? {} : { targetMode: "target" }) })} /></label>
-        {!definition?.movementConfig && <div className="grid grid-cols-2 gap-2">
-            <label className="code-inspector-field"><span>X OFFSET</span><DeferredNumberInput disabled={disabled} min={-limits.offsetMagnitude} max={limits.offsetMagnitude} value={entry.targetOffsetX ?? 0} fallback={0} aria-label="Target X offset" onCommit={(targetOffsetX) => onChange({ ...entry, targetOffsetX })} /></label>
-            <label className="code-inspector-field"><span>Y OFFSET</span><DeferredNumberInput disabled={disabled} min={-limits.offsetMagnitude} max={limits.offsetMagnitude} value={entry.targetOffsetY ?? 0} fallback={0} aria-label="Target Y offset" onCommit={(targetOffsetY) => onChange({ ...entry, targetOffsetY })} /></label>
-        </div>}
-    </div>;
+    return <>
+        {modes.length > 1 && <TargetModeToggle label="Target" modes={modes} mode={mode} disabled={disabled} onSelect={isMovement ? changeMovementMode : (candidate) => onChange({ ...entry, targetMode: candidate })} />}
+        {mode !== null && detail}
+        {isMovement && mode !== "absolute" && row(<span className="code-movement-label-row">Direction <InfoIconButton label="Explain relative movement angles" onClick={() => setShowRelativeAngleHelp(true)} /></span>,
+            <span className="ci-number"><DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={relativeDirection} fallback={0} aria-label="Movement direction in degrees" onCommit={(movementDirection) => onChange({ ...entry, movementDirection })} /><span className="code-inspector-field-unit">deg</span></span>)}
+        {showRelativeAngleHelp && <AngleGuideDialog initialMode="relative" onClose={() => setShowRelativeAngleHelp(false)} />}
+    </>;
 }
 
 function conditionTargetMode(condition, definition) {
@@ -1339,10 +1298,10 @@ function conditionTargetMode(condition, definition) {
 const CONDITION_TARGET_MODE_LABELS = Object.freeze({ [TARGET_MODES.TARGET]: "Entity", [TARGET_MODES.COORDINATES]: "Point", [TARGET_MODES.ANGLE]: "Angle" });
 
 // "To: Entity | Point | Angle" toggle shared by conditions, movement and zone / target actions.
-function TargetModeToggle({ modes, mode, disabled, onSelect }) {
+function TargetModeToggle({ modes, mode, disabled, onSelect, info = null, label: rowLabel = "To" }) {
     const label = (candidate) => candidate === "absolute" ? CONDITION_TARGET_MODE_LABELS[TARGET_MODES.ANGLE] : CONDITION_TARGET_MODE_LABELS[candidate];
     return <div className="code-inspector-field code-target-toggle-field" role="group" aria-label="Measure to">
-        <span>To</span>
+        <span>{rowLabel}{info}</span>
         <div className="code-segmented">
             {modes.map((candidate) => <button key={candidate} type="button" disabled={disabled} className={candidate === mode ? "is-active" : ""} aria-pressed={candidate === mode} onClick={() => onSelect(candidate)}>{label(candidate)}</button>)}
         </div>
@@ -1355,32 +1314,34 @@ function sentenceCase(label) {
     return text ? text[0].toUpperCase() + text.slice(1) : "";
 }
 
-function ConditionTargetControls({ condition, definition, selectableTypes, defaultSelectable, disabled, onChange, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
+function ConditionTargetControls({ condition, definition, selectableTypes, defaultSelectable, disabled, onChange, info = null, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
     const limits = coordinateLimitsFor(coordinateVersion);
     const center = coordinateCenter(coordinateVersion);
     const modes = [TARGET_MODES.TARGET, TARGET_MODES.COORDINATES, TARGET_MODES.ANGLE].filter((candidate) => (definition?.targetModes ?? []).includes(candidate));
     const mode = conditionTargetMode(condition, definition);
-    // "To: Entity | Point" (plus Angle for variables that measure against an absolute angle).
-    const modeControl = <TargetModeToggle modes={modes} mode={mode} disabled={disabled} onSelect={(candidate) => onChange({ targetMode: candidate })} />;
+    // "To: Entity | Point" (plus Angle only for variables that measure against an absolute angle).
+    const modeControl = <TargetModeToggle modes={modes} mode={mode} disabled={disabled} info={info} onSelect={(candidate) => onChange({ targetMode: candidate })} />;
+    const numberRow = (label, props, unit = null) => <label className="code-inspector-field"><span>{label}</span><span className="ci-number"><DeferredNumberInput disabled={disabled} {...props} />{unit && <span className="code-inspector-field-unit">{unit}</span>}</span></label>;
+    const arcRow = definition?.viewArc ? numberRow("Arc", { min: 1, max: 360, value: condition.viewArc ?? 360, fallback: 360, "aria-label": "View arc in degrees", onCommit: (viewArc) => onChange({ viewArc }) }, "deg") : null;
     if (mode === TARGET_MODES.ANGLE) {
-        return <div>
+        return <>
             {modeControl}
-            <label className="code-inspector-field"><span className="code-movement-label-row">Absolute angle <AbsoluteArenaAngleHelpButton /></span><DeferredNumberInput disabled={disabled} min={-360} max={360} value={condition.targetAngle ?? 0} fallback={0} aria-label="Target absolute angle" onCommit={(targetAngle) => onChange({ targetAngle })} /><span className="code-inspector-field-unit">deg</span></label>
-        </div>;
+            {numberRow(<span className="code-movement-label-row">Angle <AbsoluteArenaAngleHelpButton /></span>, { min: -360, max: 360, value: condition.targetAngle ?? 0, fallback: 0, "aria-label": "Target absolute angle", onCommit: (targetAngle) => onChange({ targetAngle }) }, "deg")}
+        </>;
     }
     if (mode === TARGET_MODES.COORDINATES) {
-        return <div>
+        return <>
             {modeControl}
-            <div className="grid grid-cols-2 gap-2">
-                <label className="code-inspector-field"><span>X</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={condition.targetX ?? center} fallback={center} aria-label="Target X coordinate" onCommit={(targetX) => onChange({ targetX })} /></label>
-                <label className="code-inspector-field"><span>Y</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={condition.targetY ?? center} fallback={center} aria-label="Target Y coordinate" onCommit={(targetY) => onChange({ targetY })} /></label>
-            </div>
-        </div>;
+            {numberRow("X", { min: limits.minimum, max: limits.maximum, value: condition.targetX ?? center, fallback: center, "aria-label": "Target X coordinate", onCommit: (targetX) => onChange({ targetX }) })}
+            {numberRow("Y", { min: limits.minimum, max: limits.maximum, value: condition.targetY ?? center, fallback: center, "aria-label": "Target Y coordinate", onCommit: (targetY) => onChange({ targetY }) })}
+            {arcRow}
+        </>;
     }
-    return <div>
+    return <>
         {modeControl}
-        <label className="code-inspector-field"><span>Target</span><OrderedSelectablePicker disabled={disabled} value={condition.selectable2 ?? condition.selectable ?? defaultSelectable} selectableTypes={selectableTypes} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => onChange({ selectable2: selectable, targetMode: TARGET_MODES.TARGET })} /></label>
-    </div>;
+        <OrderedSelectablePicker label="Entity" disabled={disabled} value={condition.selectable2 ?? condition.selectable ?? defaultSelectable} selectableTypes={selectableTypes} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => onChange({ selectable2: selectable, targetMode: TARGET_MODES.TARGET })} />
+        {arcRow}
+    </>;
 }
 
 function ActionVariableInspector({ definition, operand, selectableTypes, disabled, onChange, onClose }) {
@@ -1391,36 +1352,22 @@ function ActionVariableInspector({ definition, operand, selectableTypes, disable
     const selectable = operand?.selectable ?? defaultSelectableForVariable(definition, selectableTypes);
     const update = (updates) => onChange({ ...operand, ...updates });
     return <aside ref={dialogRef} className="code-inspector code-inspector--secondary" data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
-        <header className="code-inspector-header"><div><span>MODIFY INPUT VARIABLE</span><h2>{definition.label}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close variable inspector"><span aria-hidden="true">×</span></button></header>
+        <header className="code-inspector-header"><div><span>Modify input variable</span><h2>{definition.label}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close variable inspector"><span aria-hidden="true">×</span></button></header>
         <div className="code-inspector-body">
             <p className="code-inspector-note">Configure this action input without closing the modify custom variable action.</p>
-            {definition.supportsSelectable && <label className="code-inspector-field"><span>{definition.supportsAbility ? "BOT ENTITY" : "ENTITY"}</span><OrderedSelectablePicker disabled={disabled} value={selectable} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(nextSelectable) => update({ selectable: nextSelectable })} /></label>}
-            {definition.supportsAbility && definition.abilityOptions?.length > 0 && <label className="code-inspector-field"><span>ABILITY</span><select disabled={disabled} value={selectedAbilityOptionValue(operand?.ability, definition.abilityOptions)} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{definition.abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select></label>}
-            {definition.supportsStatusEffect && definition.statusEffectOptions?.length > 0 && <label className="code-inspector-field"><span>STATUS EFFECT</span><select disabled={disabled} value={selectedStatusOptionValue(operand?.statusEffect, definition.statusEffectOptions)} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, definition.statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{definition.statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select></label>}
+            {definition.supportsSelectable && <OrderedSelectablePicker label={definition.supportsAbility ? "Bot" : "Entity"} disabled={disabled} value={selectable} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(nextSelectable) => update({ selectable: nextSelectable })} />}
+            {definition.supportsAbility && definition.abilityOptions?.length > 0 && <div className="code-inspector-field"><span>Ability</span><select disabled={disabled} value={selectedAbilityOptionValue(operand?.ability, definition.abilityOptions)} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{definition.abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select></div>}
+            {definition.supportsStatusEffect && definition.statusEffectOptions?.length > 0 && <div className="code-inspector-field"><span>Status effect</span><select disabled={disabled} value={selectedStatusOptionValue(operand?.statusEffect, definition.statusEffectOptions)} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, definition.statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{definition.statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select></div>}
             {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsSelectable && <p className="code-inspector-note">This variable has no additional configuration.</p>}
         </div>
     </aside>;
 }
 
-function variableActionTerms(entry) {
-    if (Array.isArray(entry?.terms) && entry.terms.length) return entry.terms;
-    return [{
-        operator: entry?.operation ?? CUSTOM_VARIABLE_OPERATIONS.SET,
-        operand: entry?.operand ?? { type: "number", value: entry?.value ?? 0 },
-    }];
-}
-
 const CHANGE_OPERATIONS = Object.freeze([CUSTOM_VARIABLE_OPERATIONS.ADD, CUSTOM_VARIABLE_OPERATIONS.SUBTRACT, CUSTOM_VARIABLE_OPERATIONS.MODULO]);
-
-function SegmentedToggle({ options, value, onChange, disabled, ariaLabel, className = "" }) {
-    return <div className={`code-va-segmented ${className}`.trim()} role="group" aria-label={ariaLabel} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()}>
-        {options.map((option) => <button key={option.id} type="button" disabled={disabled} aria-pressed={value === option.id} className={value === option.id ? "is-active" : ""} onClick={() => onChange(option.id)}>{option.label}</button>)}
-    </div>;
-}
 
 function VariableActionControls({ entry, variables, stateVariables, selectableTypes = SELECTABLE_TYPES, disabled, canAddAction, allowRemoveAction = true, onChange, onPickOperand, onInspectOperand, onRemoveAction }) {
     const selected = variables.find((variable) => variable.id === entry.variableId) ?? variables[0];
-    if (!selected) return <div className="font-mono text-[9px] text-amber-300">CREATE A CUSTOM VARIABLE FIRST</div>;
+    if (!selected) return <div className="font-mono text-[9px] text-amber-300">Create a custom variable first</div>;
     const terms = variableActionTerms(entry);
     const isBoolean = selected.valueType === "boolean";
     const mode = (terms[0]?.operator ?? CUSTOM_VARIABLE_OPERATIONS.SET) === CUSTOM_VARIABLE_OPERATIONS.SET ? "set" : "change";
@@ -1518,134 +1465,26 @@ function BooleanVariableActionRow({ entry, variableName, stateVariables, disable
     </>;
 }
 
-function MovementConfigurationControls({ entry, disabled, onChange }) {
-    const [showRelativeAngleHelp, setShowRelativeAngleHelp] = useState(false);
-    const mode = entry.movementMode ?? "target";
-    const relativeDirection = relativeMovementAngle(entry.movementDirection);
-    const absoluteDegreeDirection = absoluteMovementAngle(entry.movementDirection);
-    const changeMode = (nextMode) => onChange({
-        ...entry,
-        movementMode: nextMode,
-        movementDirection: nextMode === "absolute" ? absoluteDegreeDirection : relativeDirection,
-    });
-    return <div className="space-y-2">
-        <TargetModeToggle modes={["target", "coordinates", "absolute"]} mode={mode} disabled={disabled} onSelect={changeMode} />
-        {mode === "absolute" ? <label className="code-inspector-field"><span className="code-movement-label-row">MOVEMENT DIRECTION <AbsoluteArenaAngleHelpButton /></span>
-            <div className="code-movement-angle-input">
-                <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={absoluteDegreeDirection} fallback={0} aria-label="Absolute arena movement direction in degrees" onCommit={(movementDirection) => onChange({ ...entry, movementDirection })} />
-                <span>deg</span>
-            </div>
-        </label> : <div className="code-inspector-field"><span className="code-movement-label-row">MOVEMENT DIRECTION <button type="button" className="code-angle-help-button" aria-label="Explain relative movement angles" title="Explain relative movement angles" onClick={() => setShowRelativeAngleHelp(true)}>i</button></span>
-            <div className="code-movement-angle-input">
-                <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={relativeDirection} fallback={0} aria-label="Movement direction in degrees" onCommit={(movementDirection) => onChange({ ...entry, movementDirection })} />
-                <span>deg</span>
-            </div>
-        </div>}
-        {showRelativeAngleHelp && <RelativeMovementAngleModal onClose={() => setShowRelativeAngleHelp(false)} />}
-    </div>;
-}
 
 function AbsoluteArenaAngleHelpButton() {
     const [open, setOpen] = useState(false);
-    const dialogRef = useRef(null);
-    useDialogFocus(dialogRef, { onClose: () => setOpen(false), lockScroll: true, enabled: open });
     return <>
-        <button type="button" className="code-angle-help-button" aria-label="Show arena compass degrees" title="Show arena compass degrees" onClick={(event) => { event.preventDefault(); setOpen(true); }}>i</button>
-        {open && createPortal(<div className="code-angle-help-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
-            <section ref={dialogRef} className="code-angle-help-dialog" role="dialog" aria-modal="true" aria-labelledby="absolute-angle-help-title" tabIndex={-1}>
-                <header><div><span>MOVEMENT GUIDE</span><h2 id="absolute-angle-help-title">Arena compass degrees</h2></div><button type="button" onClick={() => setOpen(false)} className="modal-close-button" aria-label="Close arena compass guide"><span aria-hidden="true">×</span></button></header>
-                <ArenaDegreesCompass className="mt-4" />
-            </section>
-        </div>, document.body)}
+        <InfoIconButton label="Explain movement angles" onClick={() => setOpen(true)} />
+        {open && <AngleGuideDialog initialMode="absolute" onClose={() => setOpen(false)} />}
     </>;
-}
-
-function RelativeMovementAngleModal({ onClose }) {
-    const dialogRef = useRef(null);
-    useDialogFocus(dialogRef, { onClose, lockScroll: true });
-    const examples = [
-        { angle: "0°", caption: "Toward the target", className: "is-zero" },
-        { angle: "90°", caption: "Right", className: "is-ninety" },
-        { angle: "180°", caption: "Away from the target", className: "is-one-eighty" },
-        { angle: "270°", caption: "Left", className: "is-two-seventy" },
-    ];
-    return createPortal(<div className="code-angle-help-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-        <section ref={dialogRef} className="code-angle-help-dialog" role="dialog" aria-modal="true" aria-labelledby="relative-angle-help-title" tabIndex={-1}>
-            <header><div><span>MOVEMENT GUIDE</span><h2 id="relative-angle-help-title">Relative movement angles</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close relative movement angle guide"><span aria-hidden="true">×</span></button></header>
-            <p>Angles are measured from the moving bot’s line to its target. It is completely relative based on that line.</p>
-            <div className="code-angle-help-grid">{examples.map((example) => <article key={example.angle}><RelativeAngleDiagram className={example.className} /><strong>{example.angle}</strong><span>{example.caption}</span></article>)}</div>
-            <div className="code-angle-help-relative-example"><RelativeAngleDiagram className="is-zero is-vertical" /><div><strong>Same angle, different positions</strong><p>Both diagrams show 0°. Whether the target is beside or above the bot, 0° always points directly toward it.</p></div></div>
-            <small>Negative angles also work: −90° is equivalent to 270°.</small>
-        </section>
-    </div>, document.body);
-}
-
-function RelativeAngleDiagram({ className = "" }) {
-    return <svg className={`code-angle-diagram ${className}`} viewBox="0 0 180 100" aria-hidden="true">
-        <defs><marker id={`relative-angle-arrow-${className.replaceAll(" ", "-")}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
-        <line className="code-angle-target-line" x1="42" y1="50" x2="138" y2="50" />
-        <circle className="code-angle-bot" cx="42" cy="50" r="13" />
-        <circle className="code-angle-target" cx="138" cy="50" r="13" />
-        <line className="code-angle-move-arrow" x1="42" y1="50" x2="78" y2="50" markerEnd={`url(#relative-angle-arrow-${className.replaceAll(" ", "-")})`} />
-        <text x="42" y="54">BOT</text><text x="138" y="54">TGT</text>
-    </svg>;
 }
 
 function PhaseOrientationControls({ entry, disabled, onChange }) {
     const [showPhaseStrikeHelp, setShowPhaseStrikeHelp] = useState(false);
     const relativeDirection = Number.isFinite(Number(entry.phaseFacingMode)) ? Number(entry.phaseFacingMode) : 0;
     return <div className="code-inspector-field">
-        <span className="code-movement-label-row">LANDING ROTATION (RELATIVE) <button type="button" className="code-angle-help-button" aria-label="Explain Phase Strike landing rotation" title="Explain Phase Strike landing rotation" onClick={() => setShowPhaseStrikeHelp(true)}>i</button></span>
-        <div className="code-movement-angle-input">
+        <span className="code-movement-label-row">Landing rotation <InfoIconButton label="Explain Phase Strike landing rotation" onClick={() => setShowPhaseStrikeHelp(true)} /></span>
+        <span className="ci-number">
             <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={relativeDirection} fallback={0} aria-label="Phase Strike landing rotation relative to its activation facing in degrees" onCommit={(phaseFacingMode) => onChange({ ...entry, phaseFacingMode })} />
-            <span>deg</span>
-        </div>
+            <span className="code-inspector-field-unit">deg</span>
+        </span>
         {showPhaseStrikeHelp && <PhaseStrikeLandingModal onClose={() => setShowPhaseStrikeHelp(false)} />}
     </div>;
-}
-
-function PhaseStrikeLandingModal({ onClose }) {
-    const dialogRef = useRef(null);
-    useDialogFocus(dialogRef, { onClose, lockScroll: true });
-    return createPortal(<div className="code-angle-help-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-        <section ref={dialogRef} className="code-angle-help-dialog" role="dialog" aria-modal="true" aria-labelledby="phase-strike-landing-help-title" tabIndex={-1}>
-            <header><div><span>PHASE STRIKE GUIDE</span><h2 id="phase-strike-landing-help-title">Landing rotation</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close Phase Strike landing rotation guide"><span aria-hidden="true">×</span></button></header>
-            <p>At 180°, Phase Strike travels forward from the activation facing, phases through the target, then lands behind it facing back toward where it came from.</p>
-            <PhaseStrikeLandingDiagram />
-            <div className="code-angle-help-relative-example"><div><strong>THE ROTATION HAPPENS AFTER THE HIT</strong><p>The travel direction comes from the bot’s original facing. The landing rotation is applied only after the bot reaches the far side of the target. For other values, the bot rotates by this value relative to the facing it had when the ability started.</p></div></div>
-        </section>
-    </div>, document.body);
-}
-
-function PhaseStrikeLandingDiagram() {
-    return <svg className="code-phase-strike-diagram" viewBox="0 0 560 210" role="img" aria-label="Phase Strike at 180 degrees: the bot faces and hits the target, phases through it, then lands behind the target facing backward">
-        <defs>
-            <marker id="phase-strike-travel-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
-            <marker id="phase-strike-facing-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
-        </defs>
-        <rect className="code-phase-panel" x="8" y="10" width="260" height="190" rx="3" />
-        <rect className="code-phase-panel" x="292" y="10" width="260" height="190" rx="3" />
-        <text className="code-phase-panel-label" x="138" y="32">BEFORE HIT</text>
-        <text className="code-phase-panel-label" x="422" y="32">AFTER HIT · 180°</text>
-
-        <line className="code-phase-lane" x1="34" y1="105" x2="242" y2="105" />
-        <circle className="code-angle-bot" cx="70" cy="105" r="19" />
-        <circle className="code-angle-target" cx="212" cy="105" r="19" />
-        <line className="code-phase-facing" x1="70" y1="105" x2="105" y2="105" markerEnd="url(#phase-strike-facing-arrow)" />
-        <line className="code-phase-travel" x1="91" y1="105" x2="190" y2="105" markerEnd="url(#phase-strike-travel-arrow)" />
-        <text className="code-phase-entity-label" x="70" y="109">BOT</text>
-        <text className="code-phase-entity-label" x="212" y="109">TGT</text>
-        <text className="code-phase-caption" x="138" y="158">faces target · hits forward</text>
-
-        <line className="code-phase-lane" x1="318" y1="105" x2="526" y2="105" />
-        <line className="code-phase-trail" x1="318" y1="105" x2="478" y2="105" markerEnd="url(#phase-strike-travel-arrow)" />
-        <circle className="code-angle-target" cx="406" cy="105" r="19" />
-        <circle className="code-angle-bot" cx="490" cy="105" r="19" />
-        <line className="code-phase-facing" x1="490" y1="105" x2="455" y2="105" markerEnd="url(#phase-strike-facing-arrow)" />
-        <text className="code-phase-entity-label" x="406" y="109">TGT</text>
-        <text className="code-phase-entity-label" x="490" y="109">BOT</text>
-        <text className="code-phase-caption" x="422" y="158">lands behind · faces back</text>
-    </svg>;
 }
 
 function newTreeBranch(branchType, defaultVariable, priority = 1) {
@@ -1685,7 +1524,7 @@ function conditionPickerCategory(option) {
     if (option?.group === "General") return "Match";
     if (option?.group === "Rotation") return "Rotation";
     if (option?.group === "Movement"
-        || ["selectable.x", "selectable.y", "selectable.distance"].includes(id)
+        || ["selectable.x", "selectable.y", "selectable.distance", "selectable.dangerZoneEdgeDistance"].includes(id)
         || id.endsWith("edgeDistance")) return "Position & Movement";
     if (/(hp|damage|alive)/.test(id)) return "Health & Combat";
     return "Other";
@@ -1763,7 +1602,7 @@ function sanitizeConfigurationConditions(configuration, conditionTypes, defaultC
         })
         : configuration?.roots;
 
-    return changed ? { ...configuration, roots: roots } : configuration;
+    return changed ? { ...configuration, roots } : configuration;
 }
 
 function sanitizeExpressionSelectable(condition, field, definition, selectableTypes) {
@@ -1944,28 +1783,37 @@ function selectableOrderLabel(order) {
     return order.charAt(0).toUpperCase() + order.slice(1);
 }
 
-function OrderedSelectablePicker({ value = BOT_CODE_SELECTABLES.OPPONENT, selectableTypes = SELECTABLE_TYPES, disabled = false, allowOrdering = true, onChange }) {
+// One labeled, flat row per control it shows, in the panel's row rhythm: a bot target is one row ("Entity" / "Target"),
+// an object target keeps that row (the object picked), then adds Owner, and Pick and Number behind Advanced.
+function OrderedSelectablePicker({ label = "Entity", info = null, value = BOT_CODE_SELECTABLES.OPPONENT, selectableTypes = SELECTABLE_TYPES, disabled = false, allowOrdering = true, onChange }) {
+    const row = (rowLabel, control, rowInfo = null) => <div className="code-inspector-field"><span>{rowLabel}{rowInfo}</span>{control}</div>;
     const availableSelectableTypes = Array.isArray(selectableTypes) ? selectableTypes : SELECTABLE_TYPES;
     const pickerModel = actionSelectablePickerModel(value, availableSelectableTypes);
     const targetPresentation = pickerModel.target;
+    // The pick (closest) and its number (1st) are advanced: a brain that uses anything else opens with them shown.
+    const customPick = (targetPresentation.order ?? "closest") !== "closest" || (Number(targetPresentation.ordinal) || 1) !== 1;
+    const [advancedOpen, setAdvancedOpen] = useState(customPick);
+    if (customPick && !advancedOpen) setAdvancedOpen(true);
     if (!targetPresentation.available) {
         const options = pickerModel.replacementOptions;
-        return <div className="code-selectable-picker is-unavailable">
+        return row(label, <div className="code-selectable-picker is-unavailable">
             <div className="code-selectable-picker-unavailable" role="status" aria-live="polite">
                 <strong>{pickerModel.statusLabel}</strong>
                 <small>{pickerModel.statusMessage}</small>
             </div>
-            <div className="code-selectable-picker-control">
-                <span>REPLACEMENT TARGET</span>
-                <select className="code-selectable-picker-entity" disabled={disabled || options.length === 0} aria-label="Replacement target" value={pickerModel.selectValue} onChange={(event) => {
-                    const replacement = encodeSelectableReplacement(event.target.value, availableSelectableTypes);
+            <MenuSelect
+                ariaLabel="Replacement target"
+                prefix="Replace with"
+                placeholder={pickerModel.replacementPlaceholder}
+                disabled={disabled || options.length === 0}
+                value={pickerModel.selectValue}
+                options={options.map((option) => ({ value: option.value, label: option.label }))}
+                onChange={(next) => {
+                    const replacement = encodeSelectableReplacement(next, availableSelectableTypes);
                     if (replacement != null) onChange(replacement);
-                }}>
-                    <option value="" disabled>{pickerModel.replacementPlaceholder}</option>
-                    {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-            </div>
-        </div>;
+                }}
+            />
+        </div>, info);
     }
     const baseValue = targetPresentation.baseId;
     const base = baseValue;
@@ -1993,41 +1841,49 @@ function OrderedSelectablePicker({ value = BOT_CODE_SELECTABLES.OPPONENT, select
         const entityGroup = entityGroups.find((group) => group.entityType === nextValue);
         onChange(entityGroup ? encodeEntity(nextValue) : encode(nextValue));
     };
-    const selectableValue = selectedEntityGroup?.entityType ?? base;
-    const entityOptions = entityGroups.map((group) => <option key={group.entityType} value={group.entityType}>{group.label}</option>);
-    const botOptionElements = botOptions.map((selectable) => <option key={selectable.id} value={selectable.id}>{selectable.label.replace(/^Closest /, "")}</option>);
-    const primaryOptions = botOptions.length > 0 && entityOptions.length > 0
-        ? <><optgroup label="Bots">{botOptionElements}</optgroup><optgroup label="Entities">{entityOptions}</optgroup></>
-        : <>{botOptionElements}{entityOptions}</>;
-    return <div className={`code-selectable-picker ${ordered ? "is-ordered" : ""}`}>
-        {selectedEntityGroup
-            ? <>
-                <div className="code-selectable-picker-entity-row">
-                    <div className="code-selectable-picker-control">
-                        <span>ABILITY NAME</span>
-                        <select disabled={disabled} aria-label="Selectable entity" value={selectableValue} onChange={(event) => handlePrimaryChange(event.target.value)} className="code-selectable-picker-entity">{primaryOptions}</select>
-                    </div>
-                    {ownerOptions.length > 0 && <div className="code-selectable-picker-control">
-                        <span>BY</span>
-                        <select disabled={disabled} aria-label="Selectable owner" value={selectedOwner?.id ?? ""} onChange={(event) => onChange(encodeEntity(selectedEntityGroup.entityType, event.target.value))} className="code-selectable-picker-owner">{ownerOptions.map((owner) => <option key={owner.id} value={owner.id}>{owner.label}</option>)}</select>
-                    </div>}
-                </div>
-            </>
-            : <select disabled={disabled} aria-label="Selectable" value={selectableValue} onChange={(event) => handlePrimaryChange(event.target.value)} className="code-selectable-picker-entity">
-                {primaryOptions}
-            </select>}
-        {ordered && <div className="code-selectable-picker-order">
-            <div className="code-selectable-picker-control">
-                <span>ATTRIBUTE</span>
-                <select disabled={disabled} aria-label="Selectable ordering" value={order} onChange={(event) => onChange(encode(selectedOwner?.selectableId ?? base, event.target.value))}>{SELECTABLE_ORDERS.map((option) => <option key={option} value={option}>{selectableOrderLabel(option)}</option>)}</select>
-            </div>
-            <div className="code-selectable-picker-control">
-                <span>ORDER #</span>
-                <DeferredNumberInput disabled={disabled} aria-label="Selectable ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(selectedOwner?.selectableId ?? base, order, value))} />
-            </div>
-        </div>}
-        {ordered && <small className="code-selectable-picker-note">Closest 1 means the 1st closest entity. It chooses the closest entity to you.</small>}
-    </div>;
+    // Bots and entities share one dropdown; only an entity brings the owner, pick and number controls.
+    const targetMenuOptions = [
+        ...botOptions.map((selectable) => ({ value: selectable.id, label: selectable.label.replace(/^Closest /, ""), group: entityGroups.length ? "Bots" : undefined })),
+        ...entityGroups.map((group) => ({ value: group.entityType, label: group.label, group: botOptions.length ? "Objects" : undefined })),
+    ];
+    const ownerMenuOptions = ownerOptions.map((owner) => ({ value: owner.id, label: owner.label }));
+    const pickMenuOptions = SELECTABLE_ORDERS.map((option) => ({ value: option, label: selectableOrderLabel(option) }));
+    const orderSummary = ordered ? selectableOrderSummary(order, ordinal, selectedOwner?.label, selectedEntityGroup?.label) : "";
+    const baseForOrder = selectedOwner?.selectableId ?? base;
+    const objectMenu = <MenuSelect ariaLabel={selectedEntityGroup ? "Selectable object" : "Selectable"} disabled={disabled} value={selectedEntityGroup?.entityType ?? base} options={targetMenuOptions} onChange={handlePrimaryChange} />;
+    if (!ordered) return row(label, objectMenu, info);
+    return <>
+        {row(label, objectMenu, info)}
+        {ownerMenuOptions.length > 0 && row("Owner", <MenuSelect ariaLabel="Selectable owner" disabled={disabled} value={selectedOwner?.id ?? ""} options={ownerMenuOptions} onChange={(ownerId) => onChange(encodeEntity(selectedEntityGroup.entityType, ownerId))} />)}
+        <div className="code-sprint-row">
+            <HudSwitchRow label="Advanced" checked={advancedOpen} disabled={disabled || customPick} onChange={() => setAdvancedOpen((open) => !open)} />
+        </div>
+        {advancedOpen && <>
+            {row("Pick", <MenuSelect ariaLabel="Selectable ordering" disabled={disabled} value={order} options={pickMenuOptions} onChange={(nextOrder) => onChange(encode(baseForOrder, nextOrder))} />)}
+            {row("Number", <div className="ts-stepper">
+                <button type="button" aria-label="Previous number" disabled={disabled || ordinal <= 1} onClick={() => onChange(encode(baseForOrder, order, ordinal - 1))}>−</button>
+                <DeferredNumberInput disabled={disabled} aria-label="Selectable ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(baseForOrder, order, value))} />
+                <button type="button" aria-label="Next number" disabled={disabled || ordinal >= 100} onClick={() => onChange(encode(baseForOrder, order, ordinal + 1))}>+</button>
+            </div>)}
+        </>}
+        <small className="code-selectable-picker-note">{orderSummary}</small>
+    </>;
+}
+
+const ORDINAL_SUFFIXES = ["th", "st", "nd", "rd"];
+function ordinalWord(number) {
+    const mod100 = number % 100;
+    const suffix = ORDINAL_SUFFIXES[(mod100 - 20) % 10] ?? ORDINAL_SUFFIXES[mod100] ?? ORDINAL_SUFFIXES[0];
+    return `${number}${suffix}`;
+}
+
+// One live sentence in place of a permanent help paragraph.
+function selectableOrderSummary(order, ordinal, ownerLabel, entityLabel) {
+    const place = ordinal > 1 ? `${ordinalWord(ordinal)} ${order}` : order;
+    const owner = ownerLabel ? ` ${String(ownerLabel).toLowerCase()}` : "";
+    const object = String(entityLabel ?? "object").toLowerCase();
+    const relative = order === "closest" || order === "farthest" ? " to you" : "";
+    return `Picks the ${place}${owner} ${object}${relative}.`;
 }
 
 function formatSelectableLabel(value, selectableTypes = SELECTABLE_TYPES) {
@@ -2052,7 +1908,7 @@ function selectableSelectorLabel(definition, pairSlot = null) {
     if (definition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
         return definition.selectableSelectorLabels?.[pairSlot] ?? "Entity";
     }
-    if (definition?.supportsAbility) return "Bot Entity";
+    if (definition?.supportsAbility) return "Bot";
     return "Entity";
 }
 
@@ -2129,6 +1985,15 @@ export {
     VariableOperandPicker,
     variableActionTerms,
     VariableActionControls,
+    ActionTargetControls,
+    PhaseOrientationControls,
+    ConditionalInspectorRow,
+    InfoHint,
+    conditionSummaryLookups,
+    formatSelectableLabel,
+    summarizeConditionForNode,
+    conditionPlainText,
+    editorActionTypes,
     VariableActionExpression,
     ConditionalOperandBox,
     ActionVariableInspector,

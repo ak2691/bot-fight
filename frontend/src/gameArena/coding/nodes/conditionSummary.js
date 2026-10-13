@@ -29,6 +29,7 @@ export function summarizeCondition(condition, lookups) {
             ? `(${formatNumber(condition.targetX)}, ${formatNumber(condition.targetY)})`
             : condition.targetMode === "angle" ? `${formatNumber(condition.targetAngle)}°` : lookups.selectable(condition.selectable2);
         entities.push(`${lookups.selectable(condition.selectable1)} → ${target}`);
+        if (left?.viewArc) entities.push(`${formatNumber(condition.viewArc ?? 360)}° arc`);
     } else if (condition.leftSelectable) {
         entities.push(lookups.selectable(condition.leftSelectable));
     }
@@ -37,10 +38,10 @@ export function summarizeCondition(condition, lookups) {
     const right = condition.right;
     let value = "";
     const valueEntities = [];
-    if (right?.type === "boolean") value = right.value ? "true" : "false";
+    if (right?.type === "boolean") value = right.value ? "True" : "False";
     else if (right?.type === "variable") {
         const rightVariable = lookups.variable(right.value);
-        value = rightVariable?.label ?? String(right.value ?? "");
+        value = (rightVariable && rightVariable.label) ?? String(right.value ?? "");
         if (rightVariable?.selectableType === "pair") {
             const view = rightOperandView(condition);
             const rightTarget = view.targetMode === "coordinates"
@@ -49,7 +50,7 @@ export function summarizeCondition(condition, lookups) {
             if (view.selectable1) valueEntities.push(`${lookups.selectable(view.selectable1)} → ${rightTarget}`);
         } else if (condition.rightSelectable) valueEntities.push(lookups.selectable(condition.rightSelectable));
     } else if (right?.type === "number") value = `${formatNumber(right.value)}${left?.suffix ? ` ${left.suffix}` : ""}`;
-    return { subject: left?.label ?? String(condition.left ?? "Unknown"), entities, comparator: comparatorSymbol(condition.comparator), value, valueEntities };
+    return { subject: (left && left.label) ?? String(condition.left ?? "Unknown"), entities, comparator: comparatorSymbol(condition.comparator), value, valueEntities };
 }
 
 export function describeCondition(condition, lookups) {

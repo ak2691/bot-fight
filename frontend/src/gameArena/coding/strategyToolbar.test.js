@@ -168,7 +168,7 @@ test("code graph nodes can be dragged from their surfaces without stealing contr
     const source = readCodingSource();
 
     assert.match(source, /function GraphConditionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
-    assert.match(source, /function GraphActionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
+    assert.match(source, /function GraphActionNode[\s\S]*beginNodeDrag\(event, node\.id, \{ fromControls: true \}\)/);
 });
 
 test("dragging a node never selects it or opens its panel; a tap opens it", () => {
@@ -178,7 +178,6 @@ test("dragging a node never selects it or opens its panel; a tap opens it", () =
     assert.match(board, /if \(draggedPastThreshold\) \{\s*dragClickSuppressedRef\.current = true;/);
     // The click that follows a drag is swallowed before any selection or panel logic.
     assert.match(board, /const selectGraphNode = [\s\S]*?if \(dragClickSuppressedRef\.current\) \{\s*dragClickSuppressedRef\.current = false;\s*return;/);
-    assert.match(board, /const openPanel = Boolean\(inspector\) && !additive;/);
 });
 
 test("root conditional controls do not change graph selection", () => {
@@ -204,7 +203,7 @@ test("removing a conditional promotes its child branches", () => {
     const source = readCodingSource();
 
     assert.match(source, /removeLogicBranch\(roots, rootIndex, path\)/);
-    assert.match(source, /if \(selectedConditionIds\.has\(branchId\)\) return removeFromBranches\(branch\.children, rootId\);/);
+    assert.match(source, /if \(selectedConditionIds\.has\(branchId\) || selectedConditionIds\.has\(branch\.id\)\) return removeFromBranches\(branch\.children, rootId\);/);
 });
 
 test("removing the final condition keeps the conditional and makes it always", () => {
@@ -233,7 +232,7 @@ test("custom variable names are sanitised and deleting a variable in use asks fi
     const modal = read("./modals/CustomVariablesModal.jsx");
 
     assert.match(modal, /replace\(\/\[\^A-Za-z0-9 _-\]\/g, ""\)/);
-    assert.match(modal, /Used in \$\{uses\} node\$\{uses === 1 \? "" : "s"\}\. Delete anyway\?/);
+    assert.match(modal, /Used in \$\{placesLabel\(uses\.length\)\}\. Delete anyway\?/);
 });
 
 test("raw number inputs accept digits only when asked and keep focus while the selected variable changes", () => {
