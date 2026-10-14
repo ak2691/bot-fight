@@ -4,6 +4,9 @@ services:
         restart: unless-stopped
         env_file:
             - ./server/.env.prod
+        # Secrets come from AWS Secrets Manager (prod/botfight); the deploy script exports them.
+        environment:
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
         expose:
             - "5432"
         volumes:
@@ -25,6 +28,9 @@ services:
         environment:
             SPRING_PROFILES_ACTIVE: prod
             TZ: UTC
+            SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+            MAIL_PASSWORD: ${MAIL_PASSWORD}
+            OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET}
             SIM_WORKER_URL: http://sim-worker:8090
             SIM_WORKER_SECRET: ${SIM_WORKER_SECRET:?Set SIM_WORKER_SECRET}
         networks:
