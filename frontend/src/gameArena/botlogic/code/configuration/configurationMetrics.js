@@ -4,12 +4,30 @@ export function actionEntryCost(entry) {
     return 1;
 }
 
+// Every tree the brain holds: connected roots, then unconnected nodes (a bare action is a branch with no children).
+function brainTrees(configuration) {
+    return [
+        ...(configuration?.roots ?? []).map((root) => root?.branches),
+        ...(Array.isArray(configuration?.orphans) ? configuration.orphans.map((node) => [node]) : []),
+    ];
+}
+
 export function countActionSlots(configuration) {
     const countBranches = (branches = []) => branches.reduce((total, branch) => {
         const actions = Array.isArray(branch?.actions) && branch.actions.length ? branch.actions : [branch];
         return total + actions.reduce((sum, entry) => sum + actionEntryCost(entry), 0) + countBranches(branch?.children);
     }, 0);
-    return (configuration?.roots ?? []).reduce((total, root) => total + countBranches(root?.branches), 0);
+    return brainTrees(configuration).reduce((total, branches) => total + countBranches(branches), 0);
+}
+
+/** Unconnected nodes: a conditional counts itself and its subtree, an action counts once. */
+export function countOrphanNodes(configuration) {
+    return (Array.isArray(configuration?.orphans) ? configuration.orphans : []).reduce((sum, node) => {
+        if (node?.kind === "action") return sum + 1;
+        if (node?.kind !== "conditional") return sum;
+        const count = (branch) => 1 + (Array.isArray(branch?.children) ? branch.children.reduce((total, child) => total + count(child), 0) : 0);
+        return sum + count(node);
+    }, 0);
 }
 
 export function countVariableSlots(configuration) {
@@ -51,5 +69,5 @@ export function countConditionSlots(configuration) {
         total + (branch.conditions ?? []).reduce((sum, condition) => sum + conditionCost(condition), 0)
             + countBranches(branch.children)
     ), 0);
-    return (configuration?.roots ?? []).reduce((total, root) => total + countBranches(root.branches), 0);
+    return brainTrees(configuration).reduce((total, branches) => total + countBranches(branches ?? []), 0);
 }

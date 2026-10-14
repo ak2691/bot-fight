@@ -1,15 +1,32 @@
-import { ACTION_TYPES, actionExecutionHead, createCodeRoot } from "../botlogic/code/BotCode.js";
-import { BOT_CODE_SELECTABLES } from "../botlogic/code/contracts/BotLogicContracts.js";
+import { ACTION_TYPES, actionExecutionHead } from "../botlogic/code/BotCode.js";
 
-// Wiring rules for the behaviour tree. The saved brain is roots -> conditionals -> children / actions, so every
-// node has exactly one parent: a root or conditional takes one wire, and an action sits in one conditional.
-// Wiring a connected conditional moves it. A connected action is never given a second parent: wiring it from a
-// new output is refused, and only its input bar lifts it to move it. Pure functions: they return new roots.
+// Editor adapters expose disconnected subtrees through the same branch editing paths. These wrappers never enter
+// the submitted brain. Roots take conditionals only: this branch's runtime has no root-level actions.
+export function editorRootsFor(configuration) {
+    const roots = (configuration.roots ?? []).map((root) => ({ ...root }));
+    for (const orphan of configuration.orphans ?? []) roots.push({ id: `orphan-wrapper:${orphan.id}`, _orphan: true, priority: roots.length + 1,
+        branches: [orphan.kind === "action" ? { id: `${orphan.id}-wrapper`, _actionOrphan: true, conditions: [], actions: [orphan], children: [] } : orphan],
+    });
+    return roots;
+}
 
-const HEAD_LABELS = { movement: "Move", rotation: "Rotate", ability: "Ability", dash: "Dash", cancel: "Cancel" };
-const isTail = (branch) => branch.branchType === "else";
-
-const validEntries = (branch) => (branch?.actions ?? []).filter((entry) => entry.action && entry.action !== "none");
+export function brainFromEditorRoots(configuration, roots) {
+    const orphans = [];
+    const connected = [];
+    for (const root of roots) {
+        if (root._orphan) {
+            for (const node of root.branches ?? []) {
+                if (node._actionOrphan) orphans.push(...node.actions.map((entry) => ({ ...entry, kind: "action" })));
+                else orphans.push({ ...node, kind: "conditional" });
+            }
+        } else {
+            const clean = { ...root };
+            delete clean._orphan;
+            connected.push({ ...clean, branches: root.branches ?? [] });
+        }
+    }
+    return { ...configuration, roots: connected, orphans };
+}
 
 function at(roots, node) {
     if (!node.path) return roots[node.rootIndex];
@@ -18,37 +35,58 @@ function at(roots, node) {
     return branch;
 }
 
+const validEntries = (branch) => (branch?.actions ?? []).filter((entry) => entry.action && entry.action !== "none");
+
 const actionHead = (entry) => {
     const definition = ACTION_TYPES.find((candidate) => candidate.id === entry?.action);
     return definition ? actionExecutionHead(definition) : null;
 };
-const sharesCategory = (head, other) => Boolean(head) && head !== "variable" && actionHead(other) === head;
+const sharesCategory = (head, other) => head && !["variable"].includes(head) && actionHead(other) === head;
 
-// Takes a node out of the tree copy `next` (mutated). Returns the removed item, or null.
-function detach(next, node) {
-    const owner = at(next, node);
+function detach(roots, node) {
+    const owner = at(roots, node);
     if (!owner) return null;
     if (node.actionIndex != null) {
-        owner.actions = validEntries(owner);
-        const [entry] = owner.actions.splice(node.actionIndex, 1);
-        if (!entry) return null;
+        owner.actions = (owner.actions ?? []).filter((entry) => entry.action && entry.action !== "none");
+        owner.actions.forEach((entry, i) => { entry.id ??= `action:${owner.id}:${i}:root:${node.rootId}`; });
+        const entry = owner.actions.splice(node.actionIndex, 1)[0];
+        // Branches mirror their first entry in the legacy action field. Clear
+        // it too, otherwise normalization resurrects the disconnected action.
         owner.action = owner.actions[0]?.action ?? "none";
+        entry.id = node.id;
         return entry;
     }
-    const parent = node.path.length === 1 ? next[node.rootIndex] : at(next, { ...node, path: node.path.slice(0, -1) });
+    const parent = node.path.length === 1 ? roots[node.rootIndex] : at(roots, { ...node, path: node.path.slice(0, -1) });
     const list = node.path.length === 1 ? parent.branches : parent.children;
-    const [item] = list.splice(node.path.at(-1), 1);
-    if (!item) return null;
+    const item = list.splice(node.path.at(-1), 1)[0];
+    const preserveIds = (branch) => {
+        const originalId = branch.id;
+        (branch.actions ?? []).forEach((entry, i) => { entry.id ??= `action:${originalId}:${i}:root:${node.rootId}`; });
+        (branch.children ?? []).forEach(preserveIds);
+    };
+    preserveIds(item);
+    item.id ??= node.id;
     list.forEach((branch, i) => { branch.priority = i + 1; if (!i) branch.branchType = "if"; });
     return item;
 }
 
-// Why `child` cannot be wired under `parent`, or null when it can. `move` is set when the child is lifted from
-// its input bar, which moves it; otherwise an action that already has a parent is refused.
-export function wireBlockReason(roots, parent, child, { move = false } = {}) {
+const HEAD_LABELS = { movement: "Move", rotation: "Rotate", ability: "Ability", dash: "Dash", cancel: "Cancel" };
+const isTail = (branch) => branch.branchType === "else";
+
+// A loose action with no parent at all (a bare orphan), as opposed to one inside a disconnected subtree.
+function isBareOrphanAction(roots, node) {
+    return Boolean(roots[node.rootIndex]?._orphan && at(roots, node)?._actionOrphan);
+}
+
+// Why `child` cannot be wired under `parent`, or null when it can. Roots and conditionals take one wire, so
+// wiring a connected one moves it (the same as lifting its input first). An action takes one parent: an action
+// that is already connected is refused, and only an unconnected action can be wired. Loops, self wires, and a second
+// action of the same category on one conditional are refused too.
+export function wireBlockReason(roots, parent, child) {
     if (!parent || !child) return "Pick a node to connect";
     if (parent.actionIndex != null) return "Actions have no output";
     if (!child.path) return "A root can't be connected under another node";
+    if (child.actionIndex != null && !parent.path) return "Roots connect to conditionals";
     if (parent.id === child.id) return "A node can't connect to itself";
     if (parent.rootIndex === child.rootIndex && child.actionIndex == null && parent.path
         && child.path.every((index, i) => parent.path[i] === index)) return "That would create a loop";
@@ -56,11 +94,10 @@ export function wireBlockReason(roots, parent, child, { move = false } = {}) {
     const current = at(roots, child);
     if (!owner || !current) return "That node is no longer available";
     if (child.actionIndex != null) {
-        if (!move) return "Already connected to a node. Lift its input bar to move it.";
-        // Moving an action onto the conditional it already hangs from changes nothing.
-        if (current === owner) return "Already connected to this node";
-        const action = validEntries(current)[child.actionIndex];
-        const head = actionHead(action);
+        if (!isBareOrphanAction(roots, child)) return "Already connected to a node";
+        const action = current.actions?.filter((entry) => entry.action && entry.action !== "none")[child.actionIndex];
+        // An action whose ability is not equipped has no category to clash with.
+        const head = action ? actionHead(action) : null;
         if (head && head !== "variable" && validEntries(owner).some((entry) => sharesCategory(head, entry))) {
             return `This conditional already has a ${HEAD_LABELS[head] ?? "matching"} action`;
         }
@@ -68,106 +105,70 @@ export function wireBlockReason(roots, parent, child, { move = false } = {}) {
     return null;
 }
 
-export function canWireNodes(roots, parent, child, options = {}) {
-    return wireBlockReason(roots, parent, child, options) === null;
+export function canWireNodes(roots, parent, child) {
+    return wireBlockReason(roots, parent, child) === null;
 }
 
 // `xOf(branch)` returns a conditional's canvas X (or undefined). When given, a wired conditional is inserted
 // among its siblings by X instead of appended, so the order badges match the left-to-right rule at once.
-export function wireNodes(roots, parent, child, { xOf, move = false } = {}) {
-    if (!canWireNodes(roots, parent, child, { move })) return null;
+export function wireNodes(roots, parent, child, { xOf } = {}) {
+    if (!canWireNodes(roots, parent, child)) return null;
     const next = structuredClone(roots);
-    // The target is resolved before the detach: removing an earlier sibling shifts the parent's path.
-    const target = at(next, parent);
+    // Retain references before splicing shifts sibling paths.
+    const owner = at(next, parent);
     const item = detach(next, child);
-    if (!target || !item) return null;
+    if (!item) return null;
+    delete item.kind;
     if (child.actionIndex != null) {
-        target.actions = validEntries(target);
-        target.actions.push(item);
-        target.action = target.actions[0]?.action ?? "none";
-        return next;
+        owner.actions = (owner.actions ?? []).filter((entry) => entry.action && entry.action !== "none");
+        owner.actions.push(item);
+        owner.action = owner.actions[0]?.action ?? "none";
+    } else {
+        const key = parent.path ? "children" : "branches";
+        owner[key] ??= [];
+        const list = owner[key];
+        const itemX = xOf?.(item);
+        let index = list.length;
+        if (Number.isFinite(itemX) && !isTail(item)) {
+            const later = list.findIndex((branch) => !isTail(branch) && xOf(branch) > itemX);
+            index = later >= 0 ? later : list.findIndex(isTail) >= 0 ? list.findIndex(isTail) : list.length;
+        }
+        list.splice(index, 0, item);
+        list.sort((a, b) => Number(isTail(a)) - Number(isTail(b)));
+        list.forEach((branch, i) => { branch.priority = i + 1; if (!i) branch.branchType = "if"; });
     }
-    const key = parent.path ? "children" : "branches";
-    target[key] ??= [];
-    const list = target[key];
-    const itemX = xOf?.(item);
-    let index = list.length;
-    if (Number.isFinite(itemX) && !isTail(item)) {
-        const later = list.findIndex((branch) => !isTail(branch) && xOf(branch) > itemX);
-        index = later >= 0 ? later : list.findIndex(isTail) >= 0 ? list.findIndex(isTail) : list.length;
-    }
-    list.splice(index, 0, item);
-    list.sort((a, b) => Number(isTail(a)) - Number(isTail(b)));
-    list.forEach((branch, i) => { branch.priority = i + 1; if (!i) branch.branchType = "if"; });
+    return next.filter((root) => !root._orphan || root.branches.some((branch) => !branch._actionOrphan || branch.actions.length));
+}
+
+// Cuts the wire into `child`. The child becomes an unconnected node (an orphan) with its subtree intact.
+export function disconnectNode(roots, child) {
+    const next = structuredClone(roots);
+    const item = detach(next, child);
+    if (!item) return null;
+    // Use the graph identity as the orphan identity, preserving the frame's position.
+    item.id ??= child.id;
+    next.push({ id: `orphan-wrapper:${item.id}`, _orphan: true, branches: [child.actionIndex != null
+        ? { id: `${item.id}-wrapper`, _actionOrphan: true, conditions: [], actions: [{ ...item, id: child.id }], children: [] }
+        : item], priority: next.length + 1 });
     return next;
 }
 
-// Where a node added with "+ Node", F, a double-click or a released wire attaches. `selected` is the chosen root
-// (path null) or conditional/action (path of its conditional), or null. Nothing selected means the last root;
-// no roots at all means a new root is added first (`newRoot`).
-export function attachTargetFor(roots, selected = null) {
-    if (!roots.length) return { rootIndex: 0, path: null, newRoot: true };
-    if (selected && roots[selected.rootIndex]) return { rootIndex: selected.rootIndex, path: selected.path ?? null };
-    return { rootIndex: roots.length - 1, path: null };
-}
-
-// The entry an action picked from the picker starts with. Variable actions start on the first custom variable.
-export function newActionEntry(action, customVariables = []) {
-    return {
-        action: action.id,
-        selectable: BOT_CODE_SELECTABLES.OPPONENT,
-        ...(action.variableAction ? {
-            variableId: customVariables[0]?.id ?? "",
-            operation: "set",
-            ...(customVariables[0]?.valueType === "boolean"
-                ? { value: false }
-                : { terms: [{ operator: "set", operand: { type: "number", value: 0 } }] }),
-        } : {}),
+// Deleting a root removes only the root: its conditionals and root actions become orphans, subtrees intact.
+export function removeRootKeepingChildren(roots, rootIndex) {
+    const root = roots[rootIndex];
+    if (!root) return roots;
+    const next = roots.filter((_, index) => index !== rootIndex);
+    if (root._orphan) return next;
+    const preserveIds = (branch) => {
+        (branch.actions ?? []).forEach((entry, i) => { entry.id ??= `action:${branch.id}:${i}:root:${root.id}`; });
+        (branch.children ?? []).forEach(preserveIds);
     };
-}
-
-// Adds `list` a branch before any ELSE, and renumbers the siblings (the first one is IF).
-function insertBranch(list, branch) {
-    const tail = list.findIndex(isTail);
-    const index = tail >= 0 ? tail : list.length;
-    list.splice(index, 0, branch);
-    list.forEach((item, i) => { item.priority = i + 1; if (!i) item.branchType = "if"; });
-    return index;
-}
-
-// Attaches a new node under `target`. `pick` is { kind: "conditional", branch } or { kind: "action", entry }.
-// Conditionals go last among their siblings, before an ELSE. An action under a conditional follows the one-per-
-// category rule. Roots hold conditionals only, so an action added under a root goes into an Always conditional of
-// its own. Returns { roots, select } where `select` names the new node, or { reason } when it is refused.
-export function attachNewNode(roots, target, pick) {
-    if (!target) return { reason: "Add a root first" };
-    const next = structuredClone(roots);
-    if (target.newRoot) next.push(createCodeRoot(1, "Root"));
-    const root = next[target.rootIndex];
-    if (!root) return { reason: "That node is no longer available" };
-    root.branches ??= [];
-    if (!target.path) {
-        if (pick.kind === "conditional") {
-            const index = insertBranch(root.branches, pick.branch);
-            return { roots: next, select: { rootIndex: target.rootIndex, path: [index] } };
-        }
-        const wrapper = { branchType: "if", conditions: [{ type: "always" }], actions: [pick.entry], children: [] };
-        const index = insertBranch(root.branches, wrapper);
-        return { roots: next, select: { rootIndex: target.rootIndex, path: [index], actionIndex: 0 } };
+    const wrap = (id, branch) => ({ id: `orphan-wrapper:${id}`, _orphan: true, branches: [branch], priority: 0 });
+    for (const original of structuredClone(root.branches ?? [])) {
+        preserveIds(original);
+        original.branchType = "if";
+        next.push(wrap(original.id, original));
     }
-    const owner = at(next, target);
-    if (!owner) return { reason: "That node is no longer available" };
-    if (pick.kind === "conditional") {
-        owner.children ??= [];
-        const index = insertBranch(owner.children, pick.branch);
-        return { roots: next, select: { rootIndex: target.rootIndex, path: [...target.path, index] } };
-    }
-    const head = actionHead(pick.entry);
-    if (head && head !== "variable" && validEntries(owner).some((entry) => sharesCategory(head, entry))) {
-        return { reason: `This conditional already has a ${HEAD_LABELS[head] ?? "matching"} action` };
-    }
-    owner.actions = validEntries(owner);
-    owner.actions.push(pick.entry);
-    owner.action = owner.actions[0]?.action ?? "none";
-    return { roots: next, select: { rootIndex: target.rootIndex, path: target.path, actionIndex: owner.actions.length - 1 } };
+    next.forEach((entry, index) => { entry.priority = entry.priority || index + 1; });
+    return next;
 }

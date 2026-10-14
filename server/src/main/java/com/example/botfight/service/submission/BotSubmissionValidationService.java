@@ -35,6 +35,9 @@ public class BotSubmissionValidationService {
     private static final double CUSTOM_NUMBER_LIMIT = BotLogicContracts.CUSTOM_NUMBER_LIMIT;
     private static final int MAX_ROOTS = 100;
     private static final int MAX_ROOT_NAME_LENGTH = 25;
+    // Unconnected nodes: same node shapes as connected ones, never run, and counted in every budget.
+    private static final int MAX_ORPHANS = MAX_LOGIC_BLOCKS + MAX_TOTAL_CONDITIONS;
+    private static final java.util.regex.Pattern ORPHAN_ID_PATTERN = java.util.regex.Pattern.compile("[A-Za-z0-9_:. -]{1,160}");
     private static final int MAX_CONDITIONS_PER_BLOCK = MAX_TOTAL_CONDITIONS;
     private static final Set<Integer> ALLOWED_ABILITIES = Set.copyOf(AbilityContracts.actions());
 
@@ -138,7 +141,7 @@ public class BotSubmissionValidationService {
             return;
         }
         validateLogicRoots(errors, roots, loadoutSpec, customVariableTypes, requireExecutableActions,
-                coordinateBounds, brainVersion);
+                coordinateBounds, brainVersion, brain.get("orphans"));
     }
 
     private void validateNodePositions(List<String> errors, JsonNode positions) {
@@ -260,7 +263,8 @@ public class BotSubmissionValidationService {
             costs.put(variable.path("id").asText(""), 1);
         }
         Set<String> referenced = new HashSet<>();
-        int rootConditions = countBrainConditionSlots(brain.get("roots"), costs, referenced);
+        int rootConditions = countBrainConditionSlots(brain.get("roots"), costs, referenced)
+                + countBrainConditionSlots(brain.get("orphans"), costs, referenced);
         return rootConditions;
     }
 
@@ -441,7 +445,7 @@ public class BotSubmissionValidationService {
 
     private void validateLogicRoots(List<String> errors, JsonNode roots, GameConfig loadoutSpec,
             Map<String, String> customVariableTypes, boolean requireExecutableActions,
-            CoordinateBounds coordinateBounds, String brainVersion) {
+            CoordinateBounds coordinateBounds, String brainVersion, JsonNode orphans) {
         if (!roots.isArray()) {
             errors.add("brain.roots must be an array");
             return;
@@ -469,8 +473,66 @@ public class BotSubmissionValidationService {
             validateTreeBranches(errors, branches, path + ".branches", loadoutSpec, customVariableTypes,
                     branchCount, conditionCount, requireExecutableActions, coordinateBounds, brainVersion);
         }
+        validateOrphans(errors, orphans, loadoutSpec, customVariableTypes, requireExecutableActions,
+                coordinateBounds, brainVersion, branchCount, conditionCount);
         if (branchCount[0] > MAX_LOGIC_BLOCKS) errors.add("brain tree actions exceed the action node limit");
         if (conditionCount[0] > MAX_TOTAL_CONDITIONS) errors.add("brain tree exceeds the total condition limit");
+    }
+
+    private void validateOrphans(List<String> errors, JsonNode orphans, GameConfig loadoutSpec,
+            Map<String, String> customVariableTypes, boolean requireExecutableActions,
+            CoordinateBounds coordinateBounds, String brainVersion, int[] branchCount, int[] conditionCount) {
+        if (orphans == null || orphans.isNull()) return;
+        if (!orphans.isArray()) {
+            errors.add("brain.orphans must be an array");
+            return;
+        }
+        if (orphans.size() > MAX_ORPHANS) errors.add("brain.orphans exceeds the unconnected node limit");
+        Set<String> ids = new HashSet<>();
+        for (int index = 0; index < orphans.size(); index++) {
+            JsonNode node = orphans.get(index);
+            String path = "brain.orphans[" + index + "]";
+            if (node == null || !node.isObject()) {
+                errors.add(path + " must be an object");
+                continue;
+            }
+            JsonNode id = node.get("id");
+            if (id == null || !id.isTextual() || !ORPHAN_ID_PATTERN.matcher(id.asText()).matches()) {
+                errors.add(path + ".id must be 1 to 160 letters, digits, spaces or _ : . -");
+            } else if (!ids.add(id.asText())) {
+                errors.add(path + ".id repeats " + id.asText());
+            }
+            String kind = node.path("kind").asText("");
+            if ("action".equals(kind)) {
+                if (node.has("children") || node.has("conditions") || node.has("actions")) {
+                    errors.add(path + " is an action, so it cannot contain a subtree");
+                }
+                // A bare action is checked as the only entry of a block with no conditions, as a connected action is.
+                tools.jackson.databind.node.ObjectNode block = tools.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+                block.putArray("conditions");
+                block.putArray("actions").add(node);
+                if (requireExecutableActions) branchCount[0] += executableActionCount(block);
+                validateLogicBlock(errors, block, path, loadoutSpec, customVariableTypes,
+                        requireExecutableActions, coordinateBounds, brainVersion);
+            } else if ("conditional".equals(kind)) {
+                // Mirrors one connected conditional, except that it is never an ELSE: it has no siblings.
+                if (requireExecutableActions) branchCount[0] += executableActionCount(node);
+                conditionCount[0] += conditionCount(node);
+                validateTreePriority(errors, node, path, MAX_LOGIC_BLOCKS);
+                validateLogicBlock(errors, node, path, loadoutSpec, customVariableTypes,
+                        requireExecutableActions, coordinateBounds, brainVersion);
+                String type = node.hasNonNull("branchType") ? node.get("branchType").asText() : "if";
+                if (!"if".equals(type)) errors.add(path + ".branchType must be if for an unconnected conditional");
+                JsonNode children = node.get("children");
+                if (children != null) {
+                    if (!children.isArray()) errors.add(path + ".children must be an array");
+                    else validateTreeBranches(errors, children, path + ".children", loadoutSpec, customVariableTypes,
+                            branchCount, conditionCount, requireExecutableActions, coordinateBounds, brainVersion);
+                }
+            } else {
+                errors.add(path + ".kind must be conditional or action");
+            }
+        }
     }
 
     private void validateTreeBranches(List<String> errors, JsonNode branches, String path,

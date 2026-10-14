@@ -2,6 +2,15 @@
 import { TrashIcon } from "../controls/WorkspaceToolbarBits.jsx";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { describeCondition, summarizeCondition } from "./conditionSummary.js";
+import {
+    MOVE_DIRECTION_INFO,
+    MOVE_DIRECTION_MEASURES,
+    MOVE_DIRECTION_TOWARD_INFO,
+    conditionVariableLabel,
+    moveDirectionMeasure,
+    objectPickIsCustom,
+    switchMoveDirectionMeasure,
+} from "./conditionMeasure.js";
 import AddIcon from "../controls/AddIcon.jsx";
 import {
     ACTION_TYPES,
@@ -17,10 +26,6 @@ import {
     defaultSelectablePairForVariable,
     abilityDefinitionsForVariable,
     normalizeConditionSelections,
-    CUSTOM_NUMBER_MIN,
-    CUSTOM_NUMBER_MAX,
-    NUMBER_STEP,
-    truncateToNumberPrecision,
     CUSTOM_VARIABLE_OPERATIONS,
     VARIABLE_TAGS,
     VARIABLE_SELECTABLE_TYPES,
@@ -29,11 +34,6 @@ import {
     SELECTABLE_IDENTITIES,
     selectableMatchesVariable,
     BOT_CODE_ACTIONS,
-    MAX_CONDITIONS_PER_BRANCH,
-    MAX_LOGIC_BLOCKS,
-    MAX_VARIABLE_ACTION_TERMS,
-    MAX_ROOT_NAME_LENGTH,
-    MAX_ROOT_NODES,
     countActionSlots,
     countConditionSlots,
     canonicalBotSelectableId,
@@ -50,8 +50,8 @@ import {
     decodeBotLoadout,
     decodeSandboxLoadout,
 } from "../../loadout/BotLoadout.js";
-import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION, coordinateLimitsFor } from "../../botlogic/code/configuration/constants.js";
-import { ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
+import { BOT_LOGIC_TREE_VERSION, CUSTOM_NUMBER_MAX, CUSTOM_NUMBER_MIN, MAX_CONDITIONS_PER_BRANCH, MAX_LOGIC_BLOCKS, MAX_ROOT_NAME_LENGTH, MAX_ROOT_NODES, MAX_VARIABLE_ACTION_TERMS, NUMBER_STEP, coordinateLimitsFor, truncateToNumberPrecision } from "../../botlogic/code/configuration/constants.js";
+const COORDINATE_LIMITS = coordinateLimitsFor(BOT_LOGIC_TREE_VERSION);
 import { getAbilityCatalogueIcon } from "../../../abilityCatalogueIcons.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import AngleGuideDialog, { PhaseStrikeLandingModal } from "../modals/AngleGuideDialog.jsx";
@@ -193,18 +193,18 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
     const graph = { roots: [], conditions: [], actions: [], variables: [], targets: [], edges: [], width: 0, height: 0 };
     let forestX = 80;
     const summaryLookups = conditionSummaryLookups(stateVariables, selectableTypes);
+    const actionWidthOf = (entry) => actionNodeWidth(entry, selectedLoadout, selectableTypes, stateVariables, customVariables);
     const measureBranch = (branch) => {
         const actions = graphBranchActions(branch);
         const childWidth = (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
-        const nodeWidth = GRAPH_NODE_WIDTH;
-        const actionWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, stateVariables, customVariables) + GRAPH_NODE_GAP, 0);
-        return Math.max(nodeWidth + GRAPH_NODE_GAP, actionWidth + childWidth);
+        const actionWidth = actions.reduce((sum, entry) => sum + actionWidthOf(entry) + GRAPH_NODE_GAP, 0);
+        return Math.max(GRAPH_NODE_WIDTH + GRAPH_NODE_GAP, actionWidth + childWidth);
     };
     const measureLevel = (branches) => Math.max(GRAPH_NODE_WIDTH + GRAPH_NODE_GAP, (branches ?? []).reduce((sum, branch) => sum + measureBranch(branch), 0));
     const addBranch = (branch, rootIndex, rootId, path, left, y, parent) => {
         const width = measureBranch(branch);
         const actions = graphBranchActions(branch);
-        const descendantsWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, stateVariables, customVariables) + GRAPH_NODE_GAP, 0)
+        const descendantsWidth = actions.reduce((sum, entry) => sum + actionWidthOf(entry) + GRAPH_NODE_GAP, 0)
             + (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
         const branchConditions = Array.isArray(branch.conditions) ? branch.conditions : [];
         const stripsHeight = branch.branchType === "else" || branchConditions.length === 0
@@ -212,19 +212,21 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
             : branchConditions.reduce((sum, entry) => sum + conditionStripHeight(summarizeConditionForNode(entry, summaryLookups)), 0);
         const conditionHeight = stripsHeight + CONDITION_BODY_HEIGHT + 66;
         const nodeWidth = GRAPH_NODE_WIDTH;
-        const condition = { id: conditionGraphNodeId(branch.id, rootId), rootId, branchId: branch.id, rootIndex, path, x: left + width / 2 - nodeWidth / 2, y, width: nodeWidth, height: conditionHeight, priority: priorityForNode(branch, (path[path.length - 1] ?? 0) + 1) };
-        graph.conditions.push(condition);
-        graph.edges.push({ id: `${parent.id}->${condition.id}`, fromId: parent.id, toId: condition.id, x1: parent.x + parent.width / 2, y1: parent.y + parent.height, x2: condition.x + condition.width / 2, y2: condition.y });
+        // The top node of an unconnected group is the only one that says "Not connected".
+        const topOfGroup = Boolean(roots[rootIndex]?._orphan) && path.length === 1;
+        const condition = { id: topOfGroup ? branch.id : conditionGraphNodeId(branch.id, rootId), rootId, branchId: branch.id, rootIndex, path, x: left + width / 2 - nodeWidth / 2, y, width: nodeWidth, height: conditionHeight, priority: priorityForNode(branch, (path[path.length - 1] ?? 0) + 1), orphan: topOfGroup };
+        if (!branch._actionOrphan) graph.conditions.push(condition);
+        if (!topOfGroup) graph.edges.push({ id: `${parent.id}->${condition.id}`, fromId: parent.id, toId: condition.id, x1: parent.x + parent.width / 2, y1: parent.y + parent.height, x2: condition.x + condition.width / 2, y2: condition.y });
         // Keep the action/child row centered under its conditional when the
         // conditional is wider than its descendants (notably a lone Walk).
         let childX = left + Math.max(0, (width - descendantsWidth) / 2);
         const childY = y + conditionHeight + 70;
-        actions.forEach((entry, actionIndex) => {
-            const actionWidth = actionNodeWidth(entry, selectedLoadout, selectableTypes, stateVariables, customVariables);
-            const action = { id: actionGraphNodeId(branch.id, actionIndex, rootId), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables), parents: [] };
+        graphBranchActions(branch).forEach((entry, actionIndex) => {
+            const actionWidth = actionWidthOf(entry);
+            // A bare orphan action is the only action with no parent; it is the top node of its group.
+            const action = { id: entry.id ?? actionGraphNodeId(branch.id, actionIndex, rootId), orphan: Boolean(branch._actionOrphan) && Boolean(roots[rootIndex]?._orphan), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables) };
             graph.actions.push(action);
-            action.parents.push({ edgeId: `${condition.id}->${action.id}`, fromId: condition.id });
-            graph.edges.push({ id: `${condition.id}->${action.id}`, fromId: condition.id, toId: action.id, x1: condition.x + condition.width / 2, y1: condition.y + condition.height, x2: action.x + action.width / 2, y2: action.y });
+            if (!branch._actionOrphan) graph.edges.push({ id: `${condition.id}->${action.id}`, fromId: condition.id, toId: action.id, x1: condition.x + condition.width / 2, y1: condition.y + condition.height, x2: action.x + action.width / 2, y2: action.y });
             childX += actionWidth + GRAPH_NODE_GAP;
         });
         (branch.children ?? []).forEach((child, childIndex) => {
@@ -239,7 +241,7 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
         const rootId = String(root?.id || `root-${rootIndex + 1}`);
         const treeWidth = measureLevel(root.branches);
         const rootGraphNode = { id: `rootNode:${rootId}`, rootId, rootIndex, x: forestX + treeWidth / 2 - ROOT_NODE_WIDTH / 2, y: 50, width: ROOT_NODE_WIDTH, height: ROOT_NODE_HEIGHT };
-        graph.roots.push(rootGraphNode);
+        if (!root._orphan) graph.roots.push(rootGraphNode);
         let branchX = forestX;
         (root.branches ?? []).forEach((branch, branchIndex) => {
             branchX += addBranch(branch, rootIndex, rootId, [branchIndex], branchX, 300, rootGraphNode);
@@ -257,7 +259,7 @@ function graphNodeStyle(node, offsets) {
 }
 
 function conditionGraphNodeId(branchId, rootId) {
-    return `condition:${branchId}:root:${rootId}`;
+    return /^(condition:|node-)/.test(branchId) ? branchId : `condition:${branchId}:root:${rootId}`;
 }
 
 function actionGraphNodeId(branchId, actionIndex, rootId) {
@@ -336,6 +338,21 @@ function normalizeSiblingTypes(branches) {
     }));
 }
 
+// The starting entry for a newly picked action.
+function newActionEntry(action, { customVariables = [] } = {}) {
+    return {
+        action: action.id,
+        selectable: BOT_CODE_SELECTABLES.OPPONENT,
+        ...(action.variableAction ? {
+            variableId: customVariables[0]?.id ?? "",
+            operation: "set",
+            ...(customVariables[0]?.valueType === "boolean"
+                ? { value: false }
+                : { terms: [{ operator: "set", operand: { type: "number", value: 0 } }] }),
+        } : {}),
+    };
+}
+
 function addGraphAction(branch, selectedLoadout, requestedAction = null, customVariables = []) {
     const actions = graphBranchActions(branch);
     const actionTypes = editorActionTypes(selectedLoadout);
@@ -344,17 +361,7 @@ function addGraphAction(branch, selectedLoadout, requestedAction = null, customV
         ?? actionTypes.find((action) => action.id !== "none" && action.id !== "variable" && !usedHeads.has(actionExecutionHead(action)));
     // Variable actions do not use up a category, so a node can hold several.
     if (!next || (next.id !== "variable" && usedHeads.has(actionExecutionHead(next)))) return branch;
-    return setGraphActions(branch, [...actions, {
-        action: next.id,
-        selectable: BOT_CODE_SELECTABLES.OPPONENT,
-        ...(next.variableAction ? {
-            variableId: customVariables[0]?.id ?? "",
-            operation: "set",
-            ...(customVariables[0]?.valueType === "boolean"
-                ? { value: false }
-                : { terms: [{ operator: "set", operand: { type: "number", value: 0 } }] }),
-        } : {}),
-    }]);
+    return setGraphActions(branch, [...actions, newActionEntry(next, { customVariables })]);
 }
 
 function prefersFinePointer() {
@@ -422,7 +429,7 @@ function usePickerPlacement(pickerRef, onClose) {
     return anchorStyle;
 }
 
-function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, onChooseConditional = null, title = "Add action" }) {
+function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "Add action", flowOptions = [], onChooseFlow = null, flowBlockReason = () => null }) {
     const [query, setQuery] = useState("");
     const [activeIndex, setActiveIndex] = useState(-1);
     const pickerRef = useRef(null);
@@ -439,16 +446,14 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, onChooseCon
     const actionOptions = actionTypesForLoadout(ACTION_TYPES, selectedLoadout).filter((action) => action.id !== "none");
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const matchingActions = actionOptions.filter((action) => !normalizedQuery || `${action.label} ${action.id}`.toLocaleLowerCase().includes(normalizedQuery));
-    // Flow nodes (a conditional) are offered only where a node can be added, never when changing an action.
-    const flowOptions = onChooseConditional ? [{ id: "conditional", label: "Conditional", description: "A condition and the actions it runs", head: "flow", flow: true }] : [];
     const matchingFlow = flowOptions.filter((option) => !normalizedQuery || `${option.label} ${option.id}`.toLocaleLowerCase().includes(normalizedQuery));
     const groupedActions = [
-        ...(matchingFlow.length ? [{ head: "flow", title: "Flow", options: matchingFlow }] : []),
+        ...(matchingFlow.length ? [{ head: "flow", title: "Flow", options: matchingFlow.map((option) => ({ ...option, flow: true })) }] : []),
         ...groupedActionPickerOptions(matchingActions),
     ];
     // Keyboard navigation walks the rows in the order they are drawn.
     const filteredActions = groupedActions.flatMap((group) => group.options);
-    const choose = (option) => (option.flow ? onChooseConditional?.() : onChooseAction(option.id));
+    const choose = (option) => (option.flow ? onChooseFlow?.(option.id) : onChooseAction(option.id));
     const moveFromSearch = (event) => {
         if (event.key === "Enter" && filteredActions.length) {
             event.preventDefault();
@@ -493,9 +498,9 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, onChooseCon
             {group.options.map((action) => {
                 const index = filteredActions.indexOf(action);
                 const isAbility = action.head === "ability" || action.head === "dash";
-                const label = actionPickerLabel(action);
+                const label = action.flow ? action.label : actionPickerLabel(action);
                 const description = action.flow ? action.description : actionPickerDescription(action);
-                const blocked = null;
+                const blocked = action.flow ? flowBlockReason(action.id) : null;
                 return <button ref={(element) => { optionRefs.current[index] = element; }} key={action.id} tabIndex={index === activeIndex ? 0 : -1} className={`pk-row ${index === activeIndex ? "is-active" : ""}`} type="button" aria-disabled={blocked ? "true" : undefined} title={blocked ?? undefined} data-blocked={blocked ? "true" : undefined} onKeyDown={(event) => moveFromOption(event, index)} onClick={() => choose(action)}>
                     {isAbility && <PickerAbilityIcon abilityId={action.abilityId} label={label} />}
                     <span className="pk-row__text"><strong className="pk-row__name">{label}</strong>{(blocked || description) && <small className="pk-row__desc">{blocked ?? description}</small>}</span>
@@ -631,10 +636,6 @@ function SelectableToken({ value, selectableTypes = SELECTABLE_TYPES }) {
     </span>;
 }
 
-function coordinateCenter(version) {
-    return version === BOT_LOGIC_TREE_V1 ? ARENA_WIDTH_UNITS / 2 : 0;
-}
-
 function CoordinateToken({ x, y }) {
     return <span className="code-config-token code-config-token--coordinate"><span aria-hidden="true">⌖</span>{Number(x)}, {Number(y)}</span>;
 }
@@ -755,6 +756,7 @@ function CompactConditionNode({ onRemoveCondition = null, onInput = null, onInpu
         <div className="code-bt-core code-bt-core--cond">
             <div className="code-bt-cond-head">
                 <span className="code-bt-kw">{kindWord}</span>
+                {node.orphan && <span className="code-orphan-label">Not connected</span>}
                 <span className="code-bt-cond-meta">
                     {puzzleMode && <span className="code-bt-count">{puzzleLabel}</span>}
                     <ExecutionOrderControls rank={order} label={`Conditional ${order}`} mismatch={orderMismatch} />
@@ -983,6 +985,7 @@ function GraphActionNode({ onInput = null, onInputPress = null, validInput = fal
     const channelTag = channel && channel !== "none" && <span className={`code-bt-channel code-bt-channel--${String(channel).toLowerCase()}`}>{ACTION_CHANNEL_LABELS[channel] ?? String(channel).toUpperCase()}</span>;
     return <section data-graph-node-id={node.id} onClick={onInspect} onPointerDown={(event) => beginNodeDrag(event, node.id, { fromControls: true })} className={`code-graph-node code-graph-node--action code-bt-node code-bt-task absolute ${node.orphan ? "is-orphan" : ""} ${missing ? "is-missing" : ""} ${selectedNode ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <PinBar direction="input" disabled={disabled} valid={validInput} blockedReason={blockedReason} onActivate={onInput} onPress={onInputPress} />
+        {node.orphan && <span className="code-orphan-label">Not connected</span>}
         <div className="code-bt-task-core code-an">
             <div className="code-an-r1">
                 {channelTag}
@@ -996,7 +999,8 @@ function GraphActionNode({ onInput = null, onInputPress = null, validInput = fal
 
 function selectablePairConfigurationNote(definition) {
     if (definition.id === "selectable.distance") return "Distance compares From to either a selected entity or a point in the arena.";
-    return "";
+    if (definition.id === "selectable.approachAngle") return MOVE_DIRECTION_TOWARD_INFO;
+    return "In View is true when To lies within the arc centred on From's facing. The arc is the full width: 90 means 45 degrees either side, and 360 covers every direction.";
 }
 
 const COMPARATOR_SYMBOLS = Object.freeze({ lt: "<", lte: "≤", eq: "=", neq: "≠", gte: "≥", gt: ">" });
@@ -1009,7 +1013,7 @@ function conditionVariableDefinition(stateVariables, id) {
 
 // One condition, opened from its strip on the node. It reads top to bottom:
 // the variable, the comparator, what it is compared to, then the settings fields.
-function ConditionalInspectorRow({ coordinateVersion = BOT_LOGIC_TREE_VERSION, condition, index, stateVariables, defaultVariable, selectableTypes, selectableAbilityIds, disabled, onPickOperand, onRowChange }) {
+function ConditionalInspectorRow({ condition, index, stateVariables, defaultVariable, selectableTypes, selectableAbilityIds, disabled, onPickOperand, onRowChange }) {
     const isAlways = condition.type === "always";
     const leftDefinition = isAlways ? null : conditionVariableDefinition(stateVariables, condition.left) ?? defaultVariable;
     const rightDefinition = condition.right?.type === "variable" ? conditionVariableDefinition(stateVariables, condition.right.value) : null;
@@ -1024,6 +1028,7 @@ function ConditionalInspectorRow({ coordinateVersion = BOT_LOGIC_TREE_VERSION, c
             ...(scoped.supportsStatusEffect && normalized.statusEffect != null ? { statusEffect: normalized.statusEffect } : {}),
         };
     });
+    const switchMeasure = (operand, measure) => onRowChange((item) => switchMoveDirectionMeasure(item, operand, measure, selectableTypes));
     const hasSettings = (definition) => Boolean(definition && (definition.supportsSelectable || definition.supportsAbility || definition.supportsStatusEffect));
     const comparators = leftDefinition ? CONDITION_COMPARATORS.filter((candidate) => candidate.valueTypes.includes(leftDefinition.valueType)) : [];
     const comparator = comparators.some((candidate) => candidate.id === condition.comparator) ? condition.comparator : comparators[0]?.id ?? "eq";
@@ -1045,9 +1050,9 @@ function ConditionalInspectorRow({ coordinateVersion = BOT_LOGIC_TREE_VERSION, c
     </button>;
     // Flat rows: the rows under a Value belong to the Value above them; hairlines around Compare separate the two sides.
     return <div className="code-cond-row" data-condition-row={index}>
-        {row("Value", variableButton(1, isAlways ? "Always" : leftDefinition.label, `Change variable for condition ${index + 1}`))}
+        {row("Value", variableButton(1, isAlways ? "Always" : conditionVariableLabel(leftDefinition), `Change variable for condition ${index + 1}`))}
         {!isAlways && <>
-            {leftHasSettings && <ConditionOperandFields coordinateVersion={coordinateVersion} definition={leftDefinition} rightDefinition={rightDefinition} condition={condition} operand={1} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={(updates) => updateOperand(1, updates)} />}
+            {leftHasSettings && <ConditionOperandFields definition={leftDefinition} rightDefinition={rightDefinition} condition={condition} operand={1} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={(updates) => updateOperand(1, updates)} onMeasureChange={(measure) => switchMeasure(1, measure)} />}
             <div className="ci-sep" />
             {row("Compare", <select className="code-cond-comparator" aria-label="Comparator" disabled={disabled} value={comparator} onChange={(event) => onRowChange((item) => ({ ...item, comparator: event.target.value }))}>{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{COMPARATOR_SYMBOLS[candidate.id] ?? candidate.label}</option>)}</select>)}
             <div className="ci-sep" />
@@ -1058,14 +1063,14 @@ function ConditionalInspectorRow({ coordinateVersion = BOT_LOGIC_TREE_VERSION, c
             {right?.type === "boolean" && row("Value", <select className="code-cond-value-select" aria-label="Boolean value" disabled={disabled} value={String(right.value)} onChange={(event) => onRowChange((item) => ({ ...item, right: { type: "boolean", value: event.target.value === "true" } }))}><option value="true">True</option><option value="false">False</option></select>)}
             {right?.type === "number" && row("Value", <div className="code-cond-number"><DeferredNumberInput digitsOnly={integerNumber && !signedNumber} integerOnly={integerNumber} aria-label="Compare to number" disabled={disabled} min={numberDefinition?.min ?? CUSTOM_NUMBER_MIN} max={numberDefinition?.max ?? CUSTOM_NUMBER_MAX} step={numberStep} value={right.value} onCommit={(value) => onRowChange((item) => ({ ...item, right: { type: "number", value } }))} />{numberSuffix && <span className="code-cond-unit">{numberSuffix}</span>}</div>)}
             {right?.type === "variable" && <>
-                {row("Value", variableButton(2, rightDefinition ? rightDefinition.label : "Choose variable", `Change compared variable for condition ${index + 1}`))}
-                {rightHasSettings && <ConditionOperandFields coordinateVersion={coordinateVersion} definition={rightDefinition} rightDefinition={rightDefinition} condition={condition} operand={2} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={(updates) => updateOperand(2, updates)} />}
+                {row("Value", variableButton(2, rightDefinition ? conditionVariableLabel(rightDefinition) : "Choose variable", `Change compared variable for condition ${index + 1}`))}
+                {rightHasSettings && <ConditionOperandFields definition={rightDefinition} rightDefinition={rightDefinition} condition={condition} operand={2} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={(updates) => updateOperand(2, updates)} onMeasureChange={(measure) => switchMeasure(2, measure)} />}
             </>}
         </>}
     </div>;
 }
 
-function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, coordinateVersion = BOT_LOGIC_TREE_VERSION, disabled, canRemove, canAddAction, defaultVariable = null, onClose, updateBranch, onPickConditionOperand, onChangeAction, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, className = "", focusEnabled = true, orderInfo = null }) {
+function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, disabled, canRemove, canAddAction, defaultVariable = null, onClose, updateBranch, onPickConditionOperand, onChangeAction, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, className = "", focusEnabled = true, orderInfo = null }) {
     const dialogRef = useRef(null);
     useDialogFocus(dialogRef, { onClose, enabled: focusEnabled });
     // Flat rows in the settings column, then a quiet footer.
@@ -1124,9 +1129,15 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
                 };
             }),
         }));
-        return panel(`INPUT ${inspectedNode.operand} VARIABLE`, definition.label, <>
+        const switchMeasure = (measure) => updateBranch(node.rootIndex, node.path, (current) => ({
+            ...current,
+            conditions: (current.conditions ?? []).map((item, index) => index === inspectedNode.rowIndex
+                ? switchMoveDirectionMeasure(item, inspectedNode.operand, measure, selectableTypes)
+                : item),
+        }));
+        return panel(`INPUT ${inspectedNode.operand} VARIABLE`, conditionVariableLabel(definition), <>
             {onChangeConditionVariable && <button type="button" onClick={() => onChangeConditionVariable(inspectedNode.rowIndex, inspectedNode.operand)} className="mb-4 min-h-9 w-full border border-cyan-700/70 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-[.12em] text-cyan-200 hover:border-cyan-400 hover:bg-cyan-900/50">Change variable</button>}
-            <ConditionOperandFields coordinateVersion={coordinateVersion} definition={definition} rightDefinition={rightDefinition} condition={condition} operand={inspectedNode.operand} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={update} />
+            <ConditionOperandFields definition={definition} rightDefinition={rightDefinition} condition={condition} operand={inspectedNode.operand} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} disabled={disabled} onUpdate={update} onMeasureChange={switchMeasure} />
         </>);
     }
 
@@ -1146,7 +1157,7 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         const removeAction = () => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.filter((_, index) => index !== node.actionIndex)));
         return panel(channelLabel || "ACTION", "Action", <>
             {onChangeAction && !definition?.variableAction && <div className="code-inspector-field"><span>Action</span><button type="button" className="code-cond-variable" disabled={disabled} onClick={() => onChangeAction(node.rootIndex, node.path, node.actionIndex)} aria-label="Change action"><span className="code-cond-variable-label">{definition?.label ?? (missingAction ? "Ability not equipped" : "Action")}</span><span className="code-cond-change" aria-hidden="true">▾</span></button></div>}
-            {needsTarget && <ActionTargetControls coordinateVersion={coordinateVersion} entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} />}
+            {needsTarget && <ActionTargetControls entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update}/>}
             {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={false} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => {}} />}
             {definition?.orientationConfig && <PhaseOrientationControls entry={entry} disabled={disabled} onChange={update} />}
         </>, "Remove action", removeAction);
@@ -1155,8 +1166,9 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
 }
 
 /** Entity / ability / status / target settings for one condition operand. */
-function ConditionOperandFields({ definition, rightDefinition = null, condition, operand, selectableTypes, selectableAbilityIds = null, disabled, onUpdate, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
+function ConditionOperandFields({ definition, rightDefinition = null, condition, operand, selectableTypes, selectableAbilityIds = null, disabled, onUpdate, onMeasureChange = null }) {
     const update = onUpdate;
+    const measure = moveDirectionMeasure(definition.id);
     // The compared-to pair variable has its own entity/target, separate from the first variable's.
     const pairCondition = operand === 2 ? rightOperandView(condition) : condition;
     const updatePair = (updates) => update(operand === 2 ? rightPairUpdates(updates) : updates);
@@ -1178,15 +1190,15 @@ function ConditionOperandFields({ definition, rightDefinition = null, condition,
     const abilityOptions = scopedDefinition.abilityOptions ?? [];
     const statusEffectOptions = scopedDefinition.statusEffectOptions ?? [];
     const selectablePickerLabel = selectableSelectorLabel(definition);
-    const pairNote = definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR ? selectablePairConfigurationNote(definition) : "";
-    const pairInfo = pairNote ? <InfoHint text={pairNote} label={`About ${definition.label}`} /> : null;
+    const pairInfo = definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR ? <InfoHint text={selectablePairConfigurationNote(definition)} label={`About ${definition.label}`} /> : null;
     const edgeInfo = definition.id.endsWith("edgeDistance") ? <InfoHint text="Edge distance is measured from the center of the entity to the nearest arena or danger-zone boundary." label={`About ${definition.label}`} /> : null;
     return <>
+            {measure && onMeasureChange && field("Measure", <SegmentedToggle ariaLabel="Move Direction measure" disabled={disabled} value={measure} options={MOVE_DIRECTION_MEASURES} onChange={onMeasureChange} />, "", <InfoHint text={MOVE_DIRECTION_INFO} label="About Move Direction" />)}
             {definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
                 ? <>
                     <OrderedSelectablePicker label={sentenceCase(selectableSelectorLabel(definition, 0))} disabled={disabled} value={pairCondition.selectable1 ?? selectablePairDefaults[0]} selectableTypes={pairEntitySelectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => updatePair({ selectable1: selectable })} />
                     {definition.targetModes?.length
-                        ? <ConditionTargetControls coordinateVersion={coordinateVersion} condition={pairCondition} definition={definition} selectableTypes={selectableOptions} defaultSelectable={selectablePairDefaults[1]} disabled={disabled} onChange={updatePair} info={pairInfo} />
+                        ? <ConditionTargetControls condition={pairCondition} definition={definition} selectableTypes={selectableOptions} defaultSelectable={selectablePairDefaults[1]} disabled={disabled} onChange={updatePair} info={pairInfo} />
                         : <OrderedSelectablePicker label={sentenceCase(selectableSelectorLabel(definition, 1))} info={pairInfo} disabled={disabled} value={pairCondition.selectable2 ?? pairCondition.selectable ?? selectablePairDefaults[1]} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => updatePair({ selectable2: selectable })} />}
                 </>
                 : definition.supportsSelectable && <OrderedSelectablePicker label={sentenceCase(selectablePickerLabel)} info={edgeInfo} value={condition[selectableField] ?? defaultSelectableForVariable(definition, selectableTypes)} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ [selectableField]: selectable })} />}
@@ -1239,10 +1251,10 @@ function TutorialLogicInspector({ kind, condition = { type: "always" }, action =
     />;
 }
 
-function ActionTargetControls({ entry, definition, selectableTypes, disabled, onChange, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
+function ActionTargetControls({ entry, definition, selectableTypes, disabled, onChange }) {
     const [showRelativeAngleHelp, setShowRelativeAngleHelp] = useState(false);
-    const limits = coordinateLimitsFor(coordinateVersion);
-    const center = coordinateCenter(coordinateVersion);
+    const limits = COORDINATE_LIMITS;
+    const center = 0;
     const mode = actionTargetMode(entry, definition);
     const isMovement = Boolean(definition?.movementConfig);
     const canChooseCoordinates = Boolean(definition?.coordinateTarget && !isMovement);
@@ -1314,9 +1326,9 @@ function sentenceCase(label) {
     return text ? text[0].toUpperCase() + text.slice(1) : "";
 }
 
-function ConditionTargetControls({ condition, definition, selectableTypes, defaultSelectable, disabled, onChange, info = null, coordinateVersion = BOT_LOGIC_TREE_VERSION }) {
-    const limits = coordinateLimitsFor(coordinateVersion);
-    const center = coordinateCenter(coordinateVersion);
+function ConditionTargetControls({ condition, definition, selectableTypes, defaultSelectable, disabled, onChange, info = null }) {
+    const limits = COORDINATE_LIMITS;
+    const center = 0;
     const modes = [TARGET_MODES.TARGET, TARGET_MODES.COORDINATES, TARGET_MODES.ANGLE].filter((candidate) => (definition?.targetModes ?? []).includes(candidate));
     const mode = conditionTargetMode(condition, definition);
     // "To: Entity | Point" (plus Angle only for variables that measure against an absolute angle).
@@ -1465,7 +1477,6 @@ function BooleanVariableActionRow({ entry, variableName, stateVariables, disable
     </>;
 }
 
-
 function AbsoluteArenaAngleHelpButton() {
     const [open, setOpen] = useState(false);
     return <>
@@ -1602,7 +1613,7 @@ function sanitizeConfigurationConditions(configuration, conditionTypes, defaultC
         })
         : configuration?.roots;
 
-    return changed ? { ...configuration, roots } : configuration;
+    return changed ? { ...configuration, roots: roots } : configuration;
 }
 
 function sanitizeExpressionSelectable(condition, field, definition, selectableTypes) {
@@ -1791,7 +1802,7 @@ function OrderedSelectablePicker({ label = "Entity", info = null, value = BOT_CO
     const pickerModel = actionSelectablePickerModel(value, availableSelectableTypes);
     const targetPresentation = pickerModel.target;
     // The pick (closest) and its number (1st) are advanced: a brain that uses anything else opens with them shown.
-    const customPick = (targetPresentation.order ?? "closest") !== "closest" || (Number(targetPresentation.ordinal) || 1) !== 1;
+    const customPick = objectPickIsCustom(targetPresentation.order, targetPresentation.ordinal);
     const [advancedOpen, setAdvancedOpen] = useState(customPick);
     if (customPick && !advancedOpen) setAdvancedOpen(true);
     if (!targetPresentation.available) {

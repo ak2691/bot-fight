@@ -1408,6 +1408,63 @@ class BotSubmissionValidationServiceTest {
         assertThat(result.getErrors()).contains("brain.customVariables[0].conditions are no longer supported");
     }
 
+    @Test
+    void acceptsUnconnectedNodesInTheSameShapesAsConnectedOnes() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","customVariables":[],"roots":[],"orphans":[
+                  {"id":"loose-act","kind":"action","action":"move_walk","movementMode":"target","movementDirection":0},
+                  {"id":"loose-cond","kind":"conditional","priority":1,"branchType":"if","conditions":[{"type":"always"}],
+                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}
+                ]}
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.getErrors()).isEmpty();
+        assertThat(result.isAccepted()).isTrue();
+    }
+
+    @Test
+    void rejectsMalformedUnconnectedNodes() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","customVariables":[],"roots":[],"orphans":[
+                  {"id":"a","kind":"other","action":"move_walk"},
+                  {"id":"dup","kind":"action","action":"move_walk","movementMode":"target","movementDirection":0},
+                  {"id":"dup","kind":"action","action":"move_walk","movementMode":"target","movementDirection":0},
+                  {"id":"leaf","kind":"action","action":"move_walk","movementMode":"target","movementDirection":0,"children":[]},
+                  {"id":"else","kind":"conditional","branchType":"else","conditions":[],"actions":[],"children":[]}
+                ]}
+                """));
+
+        assertThat(service.validate(payload).getErrors()).contains(
+                "brain.orphans[0].kind must be conditional or action",
+                "brain.orphans[2].id repeats dup",
+                "brain.orphans[3] is an action, so it cannot contain a subtree",
+                "brain.orphans[4].branchType must be if for an unconnected conditional");
+    }
+
+    @Test
+    void unconnectedNodesCountTowardTheActionAndConditionBudgets() throws Exception {
+        String branches = java.util.stream.IntStream.range(0, 100)
+                .mapToObj(index -> "{\"conditions\":[],\"action\":\"move_walk\",\"movementMode\":\"target\",\"movementDirection\":0}")
+                .collect(java.util.stream.Collectors.joining(","));
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v1\",\"customVariables\":[],\"roots\":[{\"branches\":[" + branches + "]}],"
+                + "\"orphans\":[{\"id\":\"loose\",\"kind\":\"action\",\"action\":\"move_walk\",\"movementMode\":\"target\",\"movementDirection\":0}]}"));
+
+        assertThat(service.validate(payload).getErrors()).contains("brain tree actions exceed the action node limit");
+
+        String conditions = java.util.stream.IntStream.range(0, 300)
+                .mapToObj(index -> "{\"type\":\"always\"}")
+                .collect(java.util.stream.Collectors.joining(","));
+        payload.setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v1\",\"customVariables\":[],\"roots\":[{\"branches\":[{\"conditions\":[" + conditions + "],\"actions\":[]}]}],"
+                + "\"orphans\":[{\"id\":\"loose\",\"kind\":\"conditional\",\"branchType\":\"if\",\"conditions\":[{\"type\":\"always\"}],\"actions\":[],\"children\":[]}]}"));
+
+        assertThat(service.validate(payload).getErrors()).contains("brain exceeds the total condition limit");
+    }
+
     private BotSubmissionPayloadDTO validPayload() throws Exception {
         BotSubmissionPayloadDTO payload = new BotSubmissionPayloadDTO();
         payload.setMatchId(java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"));

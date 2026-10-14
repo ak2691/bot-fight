@@ -1,96 +1,133 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attachNewNode, attachTargetFor, canWireNodes, wireBlockReason, wireNodes } from "./treeWiring.js";
+import { brainFromEditorRoots, editorRootsFor, wireNodes, canWireNodes, wireBlockReason, disconnectNode, removeRootKeepingChildren } from "./treeWiring.js";
+import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized } from "../botlogic/code/BotCode.js";
+import { graphEdgePath } from "./graphEdgeGeometry.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../botlogic/code/BotCode.js";
 
-const move = { action: "move_walk", selectable: "opponent" };
-const rotate = { action: "rotate_toward_enemy", selectable: "opponent" };
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);
 
 function fixture() {
-    return {
-        roots: [
-            { id: "r1", name: "Root", priority: 1, branches: [
-                { id: "b1", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [move], children: [] },
-                { id: "b2", branchType: "else", priority: 2, conditions: [], actions: [{ action: "none" }], children: [] },
-            ] },
-            { id: "r2", name: "Other", priority: 2, branches: [
-                { id: "b3", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [rotate], children: [] },
-            ] },
-        ],
-    };
+    const brain = { roots: [{ id: "r", branches: [{ id: "b", conditions: [{ type: "always" }], actions: [], children: [{ id: "c", actions: [], conditions: [], children: [] }] }] }],
+        orphans: [{ id: "loose", kind: "action", action: "move_walk" }] };
+    return { brain, roots: editorRootsFor(brain), root: { id: "rootNode:r", rootIndex: 0 }, branch: { id: "condition:b:root:r", branchId: "b", rootId: "r", rootIndex: 0, path: [0] },
+        child: { id: "condition:c:root:r", rootIndex: 0, path: [0, 0] }, action: { id: "loose", rootIndex: 1, rootId: "orphan-wrapper:loose", path: [0], actionIndex: 0 } };
 }
 
-const rootNode = (rootIndex) => ({ id: `root:${rootIndex}`, rootIndex });
-const branchNode = (rootIndex, path) => ({ id: `cond:${rootIndex}:${path.join(".")}`, rootIndex, path });
-const actionNode = (rootIndex, path, actionIndex) => ({ id: `act:${rootIndex}:${path.join(".")}:${actionIndex}`, rootIndex, path, actionIndex });
-
-test("a conditional wires under a root and keeps ELSE last", () => {
-    const { roots } = fixture();
-    const next = wireNodes(roots, rootNode(0), branchNode(1, [0]), { xOf: () => 0 });
-    assert.deepEqual(next[0].branches.map((branch) => branch.id), ["b1", "b3", "b2"], "inserted before ELSE");
-    assert.deepEqual(next[0].branches.map((branch) => branch.priority), [1, 2, 3]);
-    assert.equal(next[1].branches.length, 0, "the moved conditional leaves its old root");
-    assert.equal(roots[1].branches.length, 1, "the previous roots are not mutated");
+test("an action is never wired to a root: roots connect to conditionals", () => {
+    const { brain, roots, root, action, branch } = fixture();
+    assert.equal(wireBlockReason(roots, root, action), "Roots connect to conditionals");
+    assert.equal(canWireNodes(roots, root, action), false);
+    const connected = brainFromEditorRoots(brain, wireNodes(roots, branch, action));
+    assert.equal(connected.roots[0].branches[0].actions[0].id, "loose");
+    assert.equal(connected.orphans.length, 0);
+    assert.equal(brain.orphans.length, 1, "edits never mutate the previous history entry");
 });
 
-test("a connected action is refused from a new output but moves when lifted", () => {
-    const { roots } = fixture();
-    const reason = wireBlockReason(roots, branchNode(1, [0]), actionNode(0, [0], 0));
-    assert.match(reason, /Lift its input bar/);
-    assert.equal(wireBlockReason(roots, branchNode(1, [0]), actionNode(0, [0], 0), { move: true }), null);
-    const moved = wireNodes(roots, branchNode(1, [0]), actionNode(0, [0], 0), { move: true });
-    assert.deepEqual(moved[0].branches[0].actions, [], "the action leaves its old conditional");
-    assert.equal(moved[1].branches[0].actions.length, 2);
-    assert.equal(moved[1].branches[0].action, "rotate_toward_enemy");
+
+test("disconnect preserves the full subtree and reconnect replaces its one parent", () => {
+    const { brain, roots, branch, root } = fixture();
+    const detached = disconnectNode(roots, branch);
+    const saved = brainFromEditorRoots(brain, detached);
+    assert.equal(saved.roots[0].branches.length, 0);
+    assert.equal(saved.orphans[1].children.length, 1);
+    const child = { ...branch, rootIndex: 2, path: [0], id: saved.orphans[1].id };
+    const connected = brainFromEditorRoots(brain, wireNodes(detached, root, child));
+    assert.equal(connected.roots[0].branches.length, 1);
+    assert.equal(connected.roots[0].branches[0].children.length, 1);
+    assert.equal(connected.orphans.length, 1);
 });
 
-test("an action is refused where its category is already used, and onto its own conditional", () => {
-    const { roots } = fixture();
-    // The target holds a rotate, so a move is allowed beside it.
-    assert.equal(wireBlockReason(roots, branchNode(1, [0]), actionNode(0, [0], 0), { move: true }), null);
-    assert.equal(wireBlockReason(roots, branchNode(0, [0]), actionNode(0, [0], 0), { move: true }), "Already connected to this node");
-    const clash = structuredClone(roots);
-    clash[1].branches[0].actions = [{ action: "move_walk", selectable: "opponent" }];
-    assert.match(wireBlockReason(clash, branchNode(1, [0]), actionNode(0, [0], 0), { move: true }), /already has a Move action/);
+test("cycles and action outputs cannot be connected", () => {
+    const { roots, branch, child, action } = fixture();
+    assert.equal(canWireNodes(roots, child, branch), false);
+    assert.equal(canWireNodes(roots, branch, branch), false);
+    assert.equal(canWireNodes(roots, action, branch), false);
 });
 
-test("loops, self wires and root-into-node wires are refused", () => {
-    const { roots } = fixture();
-    const nested = structuredClone(roots);
-    nested[0].branches[0].children = [{ id: "c", branchType: "if", priority: 1, conditions: [], actions: [], children: [] }];
-    assert.match(wireBlockReason(nested, branchNode(0, [0, 0]), branchNode(0, [0])), /loop/);
-    assert.match(wireBlockReason(roots, branchNode(0, [0]), branchNode(0, [0])), /itself/);
-    assert.match(wireBlockReason(roots, branchNode(0, [0]), rootNode(1)), /root can't/);
-    assert.equal(canWireNodes(roots, rootNode(0), branchNode(1, [0])), true);
+test("wire endpoints use measured frame edges instead of estimated heights at any zoom", () => {
+    const edge = { fromId: "p", toId: "c", x1: 0, y1: 0, x2: 0, y2: 0 };
+    const path = graphEdgePath(edge, { p: { x: 999, y: 999 } }, { p: { x: 20, y: 30, width: 100, height: 67 }, c: { x: 200, y: 250, width: 80, height: 50 } });
+    assert.equal(path, "M 70 97 C 70 167, 240 180, 240 250");
 });
 
-test("the attach target is the selected root or conditional, else the last root, else a new root", () => {
-    const { roots } = fixture();
-    assert.deepEqual(attachTargetFor(roots, null), { rootIndex: 1, path: null });
-    assert.deepEqual(attachTargetFor(roots, { rootIndex: 0, path: null }), { rootIndex: 0, path: null });
-    assert.deepEqual(attachTargetFor(roots, { rootIndex: 0, path: [0] }), { rootIndex: 0, path: [0] });
-    assert.deepEqual(attachTargetFor(roots, { rootIndex: 9, path: null }), { rootIndex: 1, path: null }, "a stale selection falls back");
-    assert.deepEqual(attachTargetFor([], null), { rootIndex: 0, path: null, newRoot: true });
+test("disconnecting a normalized branch's last action does not resurrect its legacy action", () => {
+    const brain = normalizeAbilityStrategyConfiguration({ roots: [{ id: "r", branches: [{ id: "node-b", conditions: [{ type: "always" }], actions: [{ id: "node-a", action: "move_walk" }] }] }] });
+    const next = brainFromEditorRoots(brain, disconnectNode(editorRootsFor(brain), { id: "node-a", rootId: "r", rootIndex: 0, path: [0], actionIndex: 0 }));
+    const saved = normalizeAbilityStrategyConfiguration(next);
+    assert.equal(saved.roots[0].branches[0].action, "none");
+    assert.equal(saved.orphans[0].action, "move_walk");
+    assert.equal(selectAbilityStrategyActionPlan(saved, { playerModel: { hp: 100 }, objects: [] }).movement, undefined);
 });
 
-test("a new conditional under a root goes last before ELSE, and a new root is made when there is none", () => {
-    const { roots } = fixture();
-    const branch = { branchType: "if", priority: 9, conditions: [{ type: "always" }], actions: [], children: [] };
-    const added = attachNewNode(roots, { rootIndex: 0, path: null }, { kind: "conditional", branch });
-    assert.deepEqual(added.roots[0].branches.map((item) => item.branchType), ["if", "if", "else"]);
-    assert.deepEqual(added.select, { rootIndex: 0, path: [1] });
-    const fresh = attachNewNode([], attachTargetFor([], null), { kind: "conditional", branch });
-    assert.equal(fresh.roots.length, 1);
-    assert.deepEqual(fresh.select, { rootIndex: 0, path: [0] });
+test("connecting to an empty normalized conditional replaces its N/A placeholder", () => {
+    const brain = normalizeAbilityStrategyConfiguration({ roots: [{ id: "r", branches: [{ id: "b", conditions: [{ type: "always" }], actions: [{ action: "none" }] }] }], orphans: [{ id: "a", kind: "action", action: "move_walk" }] });
+    const roots = editorRootsFor(brain);
+    const next = wireNodes(roots, { id: "condition:b:root:r", rootIndex: 0, path: [0] }, { id: "a", rootIndex: 1, path: [0], actionIndex: 0 });
+    assert.equal(next[0].branches[0].actions.length, 1);
+    assert.equal(next[0].branches[0].actions[0].action, "move_walk");
+    const detached = brainFromEditorRoots(brain, disconnectNode(next, { id: "a", rootIndex: 0, rootId: "r", path: [0], actionIndex: 0 }));
+    assert.equal(detached.roots[0].branches[0].actions.length, 0);
+    assert.equal(detached.orphans[0].action, "move_walk");
 });
 
-test("an action under a conditional follows the one-per-category rule; under a root it gets an Always conditional", () => {
-    const { roots } = fixture();
-    const sameCategory = { action: "move_walk", selectable: "opponent" };
-    assert.match(attachNewNode(roots, { rootIndex: 0, path: [0] }, { kind: "action", entry: sameCategory }).reason, /already has a Move action/);
-    const added = attachNewNode(roots, { rootIndex: 1, path: [0] }, { kind: "action", entry: { action: "variable", variableId: "", terms: [] } });
-    assert.equal(added.roots[1].branches[0].actions.length, 2);
-    assert.deepEqual(added.select, { rootIndex: 1, path: [0], actionIndex: 1 });
-    const underRoot = attachNewNode(roots, { rootIndex: 0, path: null }, { kind: "action", entry: { action: "rotate_toward_enemy", selectable: "opponent" } });
-    assert.equal(underRoot.roots[0].branches[1].conditions[0].type, "always");
-    assert.deepEqual(underRoot.select, { rootIndex: 0, path: [1], actionIndex: 0 });
+test("an unconnected action takes its parent without a copy", () => {
+    const { brain, roots, branch, action } = fixture();
+    const saved = brainFromEditorRoots(brain, wireNodes(roots, branch, action));
+    assert.equal(saved.orphans.length, 0);
+    assert.equal(saved.roots[0].branches[0].actions.length, 1);
+    assert.equal(saved.roots[0].branches[0].actions[0].linkId, undefined);
+});
+
+test("a connected action cannot be wired under a second parent", () => {
+    const brain = { roots: [{ id: "r", branches: [
+        { id: "b1", conditions: [{ type: "always" }], actions: [{ id: "a1", action: "move_walk" }], children: [] },
+        { id: "b2", conditions: [{ type: "always" }], actions: [], children: [] },
+    ] }], orphans: [] };
+    const roots = editorRootsFor(brain);
+    const a1 = { id: "a1", rootIndex: 0, rootId: "r", path: [0], actionIndex: 0 };
+    const b2 = { id: "condition:b2:root:r", rootIndex: 0, path: [1] };
+    assert.equal(wireBlockReason(roots, b2, a1), "Already connected to a node");
+    assert.equal(wireNodes(roots, b2, a1), null);
+});
+
+test("a wired conditional is inserted among its siblings by X, with ELSE last, and priorities renumbered", () => {
+    const brain = { roots: [{ id: "r", branches: [
+        { id: "left", conditions: [{ type: "always" }], actions: [], children: [] },
+        { id: "right", conditions: [{ type: "always" }], actions: [], children: [] },
+        { id: "other", branchType: "else", conditions: [], actions: [], children: [] },
+    ] }], orphans: [{ id: "mid", kind: "conditional", conditions: [{ type: "always" }], actions: [], children: [] }] };
+    const roots = editorRootsFor(brain);
+    const xs = { left: 100, right: 500, mid: 300, other: 900 };
+    const wired = wireNodes(roots, { id: "rootNode:r", rootIndex: 0 }, { id: "mid", rootIndex: 1, path: [0] }, { xOf: (branch) => xs[branch.id] });
+    const saved = brainFromEditorRoots(brain, wired).roots[0].branches;
+    assert.deepEqual(saved.map((branch) => branch.id), ["left", "mid", "right", "other"]);
+    assert.deepEqual(saved.map((branch) => branch.priority), [1, 2, 3, 4]);
+    assert.equal(saved.at(-1).branchType, "else");
+    const farRight = wireNodes(roots, { id: "rootNode:r", rootIndex: 0 }, { id: "mid", rootIndex: 1, path: [0] }, { xOf: () => 2000 });
+    assert.deepEqual(brainFromEditorRoots(brain, farRight).roots[0].branches.map((branch) => branch.id), ["left", "right", "mid", "other"]);
+});
+
+test("an action whose ability is not equipped can still be wired and disconnected", () => {
+    const brain = { roots: [{ id: "r", branches: [{ id: "b", conditions: [{ type: "always" }], actions: [], children: [] }] }],
+        orphans: [{ id: "ghost", kind: "action", action: "removed_ability" }] };
+    const roots = editorRootsFor(brain);
+    const ghost = { id: "ghost", rootIndex: 1, path: [0], actionIndex: 0 };
+    const parent = { id: "condition:b:root:r", rootIndex: 0, path: [0] };
+    const wired = wireNodes(roots, parent, ghost);
+    assert.equal(wired[0].branches[0].actions[0].action, "removed_ability");
+    assert.ok(disconnectNode(wired, { id: "ghost", rootIndex: 0, rootId: "r", path: [0], actionIndex: 0 }));
+});
+
+test("deleting a root orphans its conditionals instead of deleting them", () => {
+    const brain = { roots: [{ id: "r", branches: [
+        { id: "b1", conditions: [{ type: "always" }], actions: [{ id: "a1", action: "move_walk" }], children: [{ id: "c1", conditions: [], actions: [], children: [] }] },
+        { id: "b2", conditions: [{ type: "always" }], actions: [], children: [] },
+    ] }, { id: "other", branches: [] }], orphans: [] };
+    const saved = brainFromEditorRoots(brain, removeRootKeepingChildren(editorRootsFor(brain), 0));
+    assert.deepEqual(saved.roots.map((root) => root.id), ["other"]);
+    assert.deepEqual(saved.orphans.map((node) => node.id).sort(), ["b1", "b2"]);
+    assert.equal(saved.orphans.find((node) => node.id === "b1").children.length, 1);
+    assert.equal(saved.orphans.find((node) => node.id === "b1").actions[0].id, "a1");
 });

@@ -1732,3 +1732,49 @@ test("condition variable labels are short and ids are unchanged", () => {
     });
     assert.equal(new Set(STATE_VARIABLES.map((variable) => variable.label)).size, STATE_VARIABLES.length);
 });
+
+test("unconnected nodes load and save, never run, and count toward every budget", () => {
+    const connected = { version: "bot-logic-tree-v2", roots: [{ priority: 1, branches: [{ id: "b1", conditions: [{ type: "always" }], actions: [{ action: "swing" }] }] }] };
+    const withOrphans = { ...connected, orphans: [
+        { id: "loose-cond", kind: "conditional", priority: 1, branchType: "if", conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }], children: [] },
+        { id: "loose-act", kind: "action", action: "concussive_shot", selectable: "opponent" },
+    ] };
+    const normalized = normalizeAbilityStrategyConfiguration(withOrphans);
+    assert.deepEqual(normalized.orphans.map((node) => [node.id, node.kind]), [["loose-cond", "conditional"], ["loose-act", "action"]]);
+    assert.equal(normalizeAbilityStrategyConfiguration(connected).orphans, undefined, "a brain without orphans loads unchanged");
+    assert.equal(normalizeAbilityStrategyConfiguration({ ...connected, orphans: [] }).orphans, undefined, "an empty list is omitted");
+    // The orphan action is a bare action, not a conditional: an action with no conditions never gains a subtree.
+    assert.equal(normalized.orphans[1].children, undefined);
+
+    // Orphans never run: the runtime's choice is the same as for the brain without them.
+    assert.deepEqual(selectAbilityStrategyActionPlan(withOrphans, payload()), selectAbilityStrategyActionPlan(connected, payload()));
+
+    // They draw from the same budgets as connected nodes, and validation reports the overflow.
+    const fill = Array.from({ length: 100 }, (_, index) => ({ id: `f${index}`, conditions: [{ type: "always" }], actions: [{ action: "swing" }] }));
+    const full = { version: "bot-logic-tree-v2", roots: [{ priority: 1, branches: fill }] };
+    assert.deepEqual(validateAbilityStrategyConfiguration(full).errors, []);
+    const over = validateAbilityStrategyConfiguration({ ...full, orphans: [
+        { id: "x1", kind: "action", action: "swing", selectable: "opponent" },
+        { id: "x2", kind: "action", action: "swing", selectable: "opponent" },
+    ] });
+    assert.ok(over.errors.some((error) => error.includes("102/100")), over.errors.join("; "));
+    assert.equal(normalizeAbilityStrategyConfiguration({ ...full, orphans: [{ id: "x1", kind: "action", action: "swing" }] }).orphans, undefined, "over budget, the orphan is dropped as a connected node would be");
+});
+
+test("unconnected nodes are validated like connected ones: kind, IDs, bare-action subtrees, and a warning", () => {
+    const base = { version: "bot-logic-tree-v2", roots: [] };
+    const result = validateAbilityStrategyConfiguration({ ...base, orphans: [
+        { id: "ok", kind: "action", action: "swing", selectable: "opponent" },
+        { id: "bad-kind", kind: "other", action: "swing" },
+        { id: "dup", kind: "action", action: "swing", selectable: "opponent" },
+        { id: "dup", kind: "action", action: "swing", selectable: "opponent" },
+        { id: "leaf", kind: "action", action: "swing", children: [] },
+    ] });
+    assert.ok(result.errors.some((error) => error.includes("Unconnected node 2 has an invalid kind")));
+    assert.ok(result.errors.some((error) => error.includes("Unconnected node 4 has an invalid or duplicate ID")));
+    assert.ok(result.errors.some((error) => error.includes("Unconnected node 5 is an action, so it cannot contain a subtree")));
+    assert.deepEqual(result.warnings, ["4 nodes aren't connected and won't run."]);
+    const clean = validateAbilityStrategyConfiguration({ ...base, orphans: [{ id: "ok", kind: "action", action: "swing", selectable: "opponent" }] });
+    assert.deepEqual(clean.errors, []);
+    assert.deepEqual(clean.warnings, ["1 node isn't connected and won't run."]);
+});

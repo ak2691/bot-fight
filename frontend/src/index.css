@@ -1,5 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Cousine:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
 @import "tailwindcss";
+
 
 @layer utilities {
   .font-ui {
@@ -28,6 +30,7 @@
   }
 }
 
+
 /* Blueprint Combat: Unreal-inspired graphite structure with blue conditions and green actions. */
 
 .tutorial-control-focus {
@@ -39,10 +42,12 @@
   animation: tutorial-control-pulse 1.8s ease-in-out infinite;
 }
 
+
 @keyframes tutorial-control-pulse {
   0%, 100% { filter: brightness(1); }
   50% { filter: brightness(1.22); }
 }
+
 
 :root {
   --color-arena-deep: #1b2226;
@@ -137,15 +142,18 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+
 a {
   font-weight: 500;
   color: #ffffff;
   text-decoration: inherit;
 }
 
+
 a:hover {
   color: #ffffff;
 }
+
 
 body {
   margin: 0;
@@ -155,15 +163,19 @@ body {
   overflow-x: clip;
 }
 
+
 html,
 #root {
   min-height: 100%;
   background: #1b2226;
 }
 
+
 #root { min-height: 100vh; }
 
+
 .match-arena-shell { background: #171a1c; }
+
 
 .match-arena-stage {
   position: relative;
@@ -171,15 +183,19 @@ html,
   background-color: #171a1c;
 }
 
+
 .replay-opponent-stats { box-shadow: 0 0 15px rgba(253, 14, 69, .18), inset 0 0 14px rgba(188, 73, 73, .1); }
+
 
 @media (max-width: 1400px) {
   .arena-right-toolbar { width: 20rem; }
 }
 
+
 @media (max-width: 1180px) {
   .arena-right-toolbar { width: clamp(17.5rem, calc(100vw - 53.75rem), 20rem); }
 }
+
 
 /* The arena remains the primary surface on narrow screens. Once the side
    toolbar no longer fits, keep it in the document below the arena so every
@@ -189,9 +205,11 @@ html,
   min-width: 0;
 }
 
+
 .arena-stage-frame {
   min-width: 0;
 }
+
 
 .arena-stage-info {
   position: absolute;
@@ -203,10 +221,12 @@ html,
   z-index: 20;
 }
 
+
 .arena-stage-canvas {
   width: 100%;
   min-width: 0;
 }
+
 
 @media (max-width: 1180px) {
   /* In vertical mode the info card belongs above the status-panel row. Keep
@@ -267,54 +287,103 @@ html,
   }
 }
 
+
 .chat-panel { display: flex; min-height: 0; flex-direction: column; overflow: hidden; border: 1px solid #262c33; border-radius: 12px; background: #0f1418; color: #e6edf3; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+
 .chat-panel svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
 .chat-panel__header { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 10px 0 14px; border-bottom: 1px solid #262c33; }
+
 .chat-panel__title { display: flex; flex: 1; align-items: center; gap: 8px; margin: 0; font-family: "Chakra Petch", sans-serif; font-size: 14px; font-weight: 600; }
+
 .chat-panel__toggle { display: inline-flex; overflow: hidden; border: 1px solid #262c33; border-radius: 6px; background: #12181d; }
+
 .chat-panel__toggle button { min-height: 26px; border: 0; border-radius: 0; padding: 0 10px; background: transparent; color: #8b98a5; font: 600 12px "IBM Plex Sans", sans-serif; }
+
 .chat-panel__toggle button:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+
 .chat-panel__toggle button.is-active { background: #1f6f8b; color: #fff; }
+
 .chat-panel__minimize { width: 28px; height: 28px; border: 0; border-radius: 6px; padding: 0; background: transparent; color: #8b98a5; font-size: 18px; line-height: 1; }
+
 .chat-panel__minimize:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+
 .chat-panel__messages { min-height: 0; flex: 1; overflow-y: auto; padding: 10px 12px; }
+
 .chat-panel__empty, .chat-panel__system { margin: 6px 0; color: #8b98a5; font-size: 11.5px; text-align: center; }
+
 .chat-panel__message { position: relative; display: flex; align-items: flex-start; gap: 8px; margin-top: 1px; padding: 1px 4px; border-radius: 6px; }
+
 .chat-panel__message.is-first { margin-top: 8px; }
+
 .chat-panel__message:hover { background: rgba(255, 255, 255, .04); }
+
 .chat-panel__avatar { display: block; width: 24px; flex: none; }
+
 .chat-panel__body { min-width: 0; flex: 1; }
+
 .chat-panel__meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; margin: 0; font-size: 12px; }
+
 .chat-panel__name { font-weight: 700; color: #cbd5e1; }
+
 .chat-panel__name a { color: inherit; text-decoration: none; }
+
 .chat-panel__name a:hover { text-decoration: underline; }
+
 .chat-panel__name--blue { color: #57b8ff; }
+
 .chat-panel__name--red { color: #ff7166; }
+
 .chat-panel__tag { border-radius: 4px; padding: 0 5px; background: rgba(34, 211, 238, .14); color: #5fd4f0; font-size: 10px; font-weight: 700; line-height: 16px; }
+
 .chat-panel__time { color: #8b98a5; font-size: 11px; }
+
 .chat-panel__text { margin: 0; overflow-wrap: anywhere; color: #e6edf3; font-size: 13px; line-height: 1.4; }
+
 .chat-panel__report { align-self: flex-start; opacity: 0; transition: opacity 120ms ease; }
+
 .chat-panel__message:hover .chat-panel__report, .chat-panel__message:focus-within .chat-panel__report, .chat-panel__report:has(.chat-report[open]) { opacity: 1; }
+
 @media (hover: none) { .chat-panel__report { opacity: 1; } }
+
 .chat-panel__form { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 8px; padding: 10px; border-top: 1px solid #262c33; }
+
 .chat-panel__form input { min-width: 0; height: 36px; border: 1px solid #262c33; border-radius: 8px; background: #12181d; padding: 0 10px; color: #e6edf3; font: inherit; font-size: 13px; outline: none; }
+
 .chat-panel__form input:focus { border-color: #3aa6c9; }
+
 .chat-panel__form button { display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 8px; padding: 0; background: #1f6f8b; color: #fff; }
+
 .chat-panel__form button:hover:not(:disabled) { background: #2088ac; }
+
 .chat-panel__form :disabled { cursor: not-allowed; opacity: .48; }
+
 .match-chat { position: fixed; right: 1rem; bottom: 1rem; z-index: 60; width: 22rem; height: 24rem; background: rgba(15, 20, 24, .97); box-shadow: 0 18px 48px rgba(0, 0, 0, .46); }
+
 .match-chat--minimized { width: auto; height: auto; overflow: visible; }
+
 .match-chat__restore { display: flex; align-items: center; gap: 8px; }
+
 .match-chat__restore svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+
 .chat-report { position: relative; flex: 0 0 auto; }
+
 .chat-report__toggle { cursor: pointer; color: #8b98a5; font: 600 11px/1.4 "IBM Plex Sans", sans-serif; }
+
 .chat-report__toggle:hover, .chat-report__toggle:focus-visible { color: #fde68a; }
+
 .chat-report__form { position: absolute; z-index: 20; top: 1.25rem; right: 0; display: grid; width: min(17rem, calc(100vw - 2rem)); gap: 8px; padding: 12px; border: 1px solid #475569; background: #091521; box-shadow: 0 12px 35px #0009; color: #cbd5e1; font-size: 11px; }
+
 .chat-report__label { display: grid; gap: 4px; }
+
 .chat-report__label select, .chat-report__label textarea { width: 100%; border: 1px solid #475569; background: #202427; padding: 6px 8px; color: #f8fafc; font: inherit; }
+
 .chat-report__form button { justify-self: start; border: 1px solid #fbbf24aa; padding: 6px 10px; color: #fde68a; font-size: 10px; font-weight: 700; }
+
 .chat-report__form button:disabled { cursor: not-allowed; opacity: .5; }
+
 .chat-report__status { margin: 0; color: #cbd5e1; font-size: 10px; }
+
 .match-chat__restore {
   position: relative;
   display: grid;
@@ -334,20 +403,26 @@ html,
   letter-spacing: 0;
 }
 
+
 .match-chat__restore:hover:not(:disabled) {
   border-color: #67e8f9;
   background: #347895;
   color: #ffffff;
 }
 
+
 .match-chat__restore svg {
   width: 17px;
   height: 17px;
 }
+
 .match-chat__unread { position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border: 2px solid #050f19; border-radius: 999px; background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, .65); }
 
+
 .custom-lobby-chat .chat-panel__messages { height: 11rem; flex: none; }
+
 .custom-lobby-chat--compact .chat-panel__messages { height: 9.5rem; }
+
 
 .home-grid {
   position: relative;
@@ -358,18 +433,22 @@ html,
   background-size: 32px 32px, 32px 32px, auto;
 }
 
+
 .home-dashboard {
   overflow-x: clip;
   background-color: #1b252c;
 }
 
+
 .home-dashboard::before {
   display: none;
 }
 
+
 .auth-shell.home-dashboard {
   background-color: #1b252c;
 }
+
 
 .home-grid::after {
   position: absolute;
@@ -379,10 +458,12 @@ html,
   pointer-events: none;
 }
 
+
 .home-dashboard:not(.auth-shell)::after {
   z-index: 0;
   background: radial-gradient(ellipse at center, transparent 28%, rgba(10, 12, 14, .2) 100%);
 }
+
 
 .asset-loading-bot {
   display: block;
@@ -392,14 +473,17 @@ html,
   animation: asset-loading-bot-follow 1.2s linear infinite;
 }
 
+
 @keyframes asset-loading-bot-follow {
   from { transform: rotate(180deg); }
   to { transform: rotate(-180deg); }
 }
 
+
 @media (prefers-reduced-motion: reduce) {
   .asset-loading-bot { animation: none; }
 }
+
 
 .home-title {
   font-family: "Chakra Petch", sans-serif;
@@ -410,19 +494,23 @@ html,
   text-shadow: 0 5px 16px rgba(0, 0, 0, .72);
 }
 
+
 .home-title-bot,
 .home-title-fight {
   -webkit-text-stroke: 2px #101214;
   paint-order: stroke fill;
 }
 
+
 .home-title-bot {
   color: #57b8ff;
 }
 
+
 .home-title-fight {
   color: #ff7166;
 }
+
 
 @media (min-width: 640px) {
   .home-title {
@@ -430,9 +518,11 @@ html,
   }
 }
 
+
 .form-error {
   overflow-wrap: anywhere;
 }
+
 
 @media (max-width: 640px) {
   .app-navbar {
@@ -448,6 +538,7 @@ html,
   }
 
 }
+
 
 @media (max-width: 480px) {
   .auth-shell {
@@ -472,19 +563,23 @@ html,
   }
 }
 
+
 .ability-catalogue {
   background-color: #171a1c;
   scroll-behavior: smooth;
 }
 
+
 .conditional-catalogue {
   background-color: #171a1c;
 }
+
 
 .tutorial-catalogue {
   background-color: #171a1c;
   scroll-behavior: smooth;
 }
+
 
 .tutorial-node-visual {
   margin: 1.25rem 0 0;
@@ -494,15 +589,18 @@ html,
   padding: 1rem;
 }
 
+
 .tutorial-node-visual--configuration {
   overflow-x: auto;
 }
+
 
 .tutorial-config-preview {
   display: grid;
   min-width: min(100%, 28rem);
   gap: 1rem;
 }
+
 
 .tutorial-node-visual .tutorial-code-inspector-preview {
   position: relative;
@@ -518,25 +616,30 @@ html,
   pointer-events: none;
 }
 
+
 @media (max-width: 720px) {
   .tutorial-node-visual {
     padding: .75rem;
   }
 }
 
+
 .conditional-row {
   transition: background-color 140ms ease;
 }
 
+
 .conditional-row:hover {
   background-color: rgba(30, 41, 59, 0.24);
 }
+
 
 .ability-card {
   background-color: #202427;
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.025), 0 12px 30px rgba(0, 0, 0, 0.2);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
+
 
 .ability-card-art {
   position: absolute;
@@ -553,6 +656,7 @@ html,
   transition: opacity 160ms ease, filter 160ms ease, transform 160ms ease;
 }
 
+
 .ability-card-art-wide {
   top: 4%;
   width: 90%;
@@ -560,11 +664,13 @@ html,
   padding: 0;
 }
 
+
 .ability-card-art-square {
   top: 3%;
   width: 76%;
   height: 94%;
 }
+
 
 .ability-card-gradient {
   position: absolute;
@@ -574,14 +680,17 @@ html,
   background: linear-gradient(90deg, rgba(23, 26, 28, .98) 0%, rgba(23, 26, 28, .91) 30%, rgba(23, 26, 28, .57) 65%, rgba(23, 26, 28, .18) 100%);
 }
 
+
 .ability-card-content {
   z-index: 2;
   background: linear-gradient(180deg, rgba(23, 26, 28, 0) 0%, rgba(23, 26, 28, .68) 35%, rgba(23, 26, 28, .94) 100%);
 }
 
+
 .ability-card:hover {
   transform: translateY(-3px);
 }
+
 
 .ability-card:hover .ability-card-art,
 .ability-card:focus-visible .ability-card-art,
@@ -590,16 +699,19 @@ html,
   filter: brightness(1.12) saturate(1.08);
 }
 
+
 .ability-card-selected {
   border-color: #72b65d !important;
   box-shadow: 0 0 0 2px rgba(114, 182, 93, .32), 0 18px 42px rgba(0, 0, 0, .34);
 }
+
 
 .ability-card-1,
 .ability-card-2,
 .ability-card-3 {
   border-color: #72b65d;
 }
+
 
 .ability-card-1:hover,
 .ability-card-2:hover,
@@ -608,9 +720,11 @@ html,
   box-shadow: 0 18px 40px rgba(0, 0, 0, .32);
 }
 
+
 .ability-modal {
   position: relative;
 }
+
 
 .back-to-top {
   position: fixed;
@@ -633,9 +747,13 @@ html,
   transition: opacity 160ms ease, background-color 160ms ease;
 }
 
+
 .back-to-top.is-visible { opacity: 1; pointer-events: auto; }
+
 .back-to-top:hover { background: #232c35; }
+
 .back-to-top:active { border-bottom-width: 1px; transform: translateY(2px); }
+
 
 @media (prefers-reduced-motion: reduce) {
   .ability-catalogue {
@@ -651,6 +769,7 @@ html,
     transform: none;
   }
 }
+
 
 @media (max-width: 480px) {
   .ability-card-art {
@@ -673,12 +792,14 @@ html,
   }
 }
 
+
 /* The code editor is intentionally compact: dense labels should read as words,
    not widely tracked display copy. */
 
 button {
   cursor: pointer;
 }
+
 
 .modal-close-button {
   display: inline-flex;
@@ -698,11 +819,13 @@ button {
   transition: color 150ms ease;
 }
 
+
 .modal-close-button:hover {
   border-color: transparent;
   background: transparent;
   color: #fb7185;
 }
+
 
 .app-brand-link {
   border: 0;
@@ -713,12 +836,14 @@ button {
   transition: background-color 140ms ease, color 140ms ease;
 }
 
+
 .app-navbar-slot {
   position: relative;
   z-index: 100;
   min-height: 72px;
   flex: 0 0 72px;
 }
+
 
 .app-navbar {
   position: fixed;
@@ -731,6 +856,7 @@ button {
   will-change: transform;
 }
 
+
 .app-navbar--in-page-flow {
   position: sticky;
   top: 0;
@@ -740,28 +866,34 @@ button {
   z-index: 100;
 }
 
+
 .app-navbar-slot--in-page-flow {
   display: contents;
 }
+
 
 .app-navbar--charcoal-page {
   border-bottom-color: #2b353a;
 }
 
+
 .app-navbar--hidden {
   transform: translate3d(0, calc(-100% - 1px), 0);
 }
+
 
 .app-navbar:focus-within,
 body.has-ability-modal .app-navbar--hidden {
   transform: translate3d(0, 0, 0);
 }
 
+
 @media (prefers-reduced-motion: reduce) {
   .app-navbar {
     transition-duration: .01ms;
   }
 }
+
 
 .app-navbar-control {
   border: 1px solid transparent;
@@ -771,9 +903,11 @@ body.has-ability-modal .app-navbar--hidden {
   transition: background-color 140ms ease, color 140ms ease;
 }
 
+
 .app-navbar-icon-control {
   padding: 0;
 }
+
 
 /* One hover style for every navbar item: light fill and white text, using the item's own radius. */
 .app-navbar-control:hover:not(:disabled),
@@ -786,9 +920,11 @@ body.has-ability-modal .app-navbar--hidden {
   color: #ffffff;
 }
 
+
 .app-navbar-control[aria-current="page"] {
   color: #ffffff;
 }
+
 
 .app-navbar .app-navbar-control:focus-visible,
 .app-navbar .app-brand-link:focus-visible,
@@ -797,6 +933,7 @@ body.has-ability-modal .app-navbar--hidden {
   outline-offset: 2px;
   box-shadow: none;
 }
+
 
 .player-avatar {
   display: inline-grid;
@@ -810,6 +947,7 @@ body.has-ability-modal .app-navbar--hidden {
   user-select: none;
 }
 
+
 /* Keep keyboard focus obvious on dark panels, colored cards, and image-backed
    controls without forcing the same ring onto ordinary mouse clicks. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
@@ -818,19 +956,23 @@ body.has-ability-modal .app-navbar--hidden {
   box-shadow: 0 0 0 2px rgba(8, 18, 29, .95), 0 0 0 5px rgba(254, 240, 138, .35);
 }
 
+
 /* Inputs keep their local cyan/error focus treatment without the global yellow ring. */
 :where(input, select, textarea):focus-visible {
   outline: none;
   box-shadow: none;
 }
 
+
 :where(a, button, input, select, textarea, [tabindex]):focus:not(:focus-visible) {
   outline: none;
 }
 
+
 :where(input, select, textarea)[aria-invalid="true"] {
   border-color: #fb7185;
 }
+
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -843,23 +985,6 @@ body.has-ability-modal .app-navbar--hidden {
   }
 }
 
-/* Workspace toolbar controls intentionally live after the global button rules.
-   Their idle surfaces must remain visibly distinct from the toolbar itself. */
-
-.coding-add-icon {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  flex: none;
-  overflow: visible;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  pointer-events: none;
-}
-
-.coding-add-icon--large { width: 18px; height: 18px; }
 
 /* Logic graph nodes use a framed, stacked-card treatment so the editable
    controls read as a deliberate form instead of one dense toolbar row. */
@@ -875,6 +1000,7 @@ body.has-ability-modal .app-navbar--hidden {
   min-height: 100dvh;
 }
 
+
 @supports (height: 100dvh) {
   html,
   body,
@@ -888,6 +1014,7 @@ body.has-ability-modal .app-navbar--hidden {
   }
 }
 
+
 .arena-content-shell {
   min-height: 0;
   overflow-x: hidden;
@@ -896,11 +1023,13 @@ body.has-ability-modal .app-navbar--hidden {
   -webkit-overflow-scrolling: touch;
 }
 
+
 @media (max-width: 1180px) {
   .arena-content-shell {
     overflow-x: auto;
   }
 }
+
 
 .pixi-arena-surface,
 .pixi-arena-surface canvas {
@@ -908,10 +1037,12 @@ body.has-ability-modal .app-navbar--hidden {
   overscroll-behavior: contain;
 }
 
+
 .pixi-arena-help {
   max-width: calc(100% - 12px);
   white-space: normal;
 }
+
 
 @media (max-width: 600px) {
 
@@ -919,15 +1050,18 @@ body.has-ability-modal .app-navbar--hidden {
      These controls intentionally opt out of mobile browser focus enlargement. */
 }
 
+
 /* Shared action surface for non-workspace rooms. Keep the bot-code workspace
    on its own palette while matching the home dashboard's main buttons. */
 .gray-button-surface {
   background: #2a3136;
 }
 
+
 .gray-button-surface:hover:not(:disabled) {
   background: #354047;
 }
+
 
 /* Tutorial actions use the same compact graphite control language as the
    arena toolbar while keeping catalogue actions full width. */
@@ -946,11 +1080,13 @@ body.has-ability-modal .app-navbar--hidden {
   font-variant-numeric: tabular-nums;
 }
 
+
 .arena-setup input[type="number"]::-webkit-inner-spin-button,
 .arena-setup input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
 
 /* On phones, the tutorial guide is a compact fixed step control. Expanding it
    opens a popover above the control without changing the arena layout. */
@@ -962,6 +1098,7 @@ body.has-ability-modal .app-navbar--hidden {
   isolation: isolate;
 }
 
+
 .puzzle-search-input {
   border: 1px solid #343c42;
   border-radius: 5px;
@@ -969,15 +1106,18 @@ body.has-ability-modal .app-navbar--hidden {
   transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
 }
 
+
 .puzzle-search-input::placeholder {
   color: #9aa8b2;
 }
+
 
 .puzzle-search-input:focus {
   border-color: #35c7e8;
   background: #1b2226;
   box-shadow: none;
 }
+
 
 .puzzle-search-icon {
   position: absolute;
@@ -989,12 +1129,14 @@ body.has-ability-modal .app-navbar--hidden {
   transform: translateY(-50%);
 }
 
+
 .puzzle-list-frame {
   overflow: hidden;
   border: 1px solid #343c42;
   border-radius: 12px;
   background: #151a1d;
 }
+
 
 .puzzle-list-row {
   display: flex;
@@ -1006,13 +1148,16 @@ body.has-ability-modal .app-navbar--hidden {
   transition: background-color 140ms ease;
 }
 
+
 .puzzle-list-row:first-of-type {
   border-top: 0;
 }
 
+
 .puzzle-list-row:hover {
   background: #1b2226;
 }
+
 
 .puzzle-list-open-button {
   display: grid;
@@ -1030,10 +1175,12 @@ body.has-ability-modal .app-navbar--hidden {
   transition: background-color 140ms ease, color 140ms ease;
 }
 
+
 .puzzle-list-open-button:hover {
   border: 0;
   background: transparent;
 }
+
 
 .puzzle-list-open-button:focus-visible {
   outline: 2px solid #35c7e8;
@@ -1041,12 +1188,14 @@ body.has-ability-modal .app-navbar--hidden {
   box-shadow: none;
 }
 
+
 .puzzle-row-number {
   color: #9aa8b2;
   font-family: "Cousine", "Courier New", Courier, monospace;
   font-size: .82rem;
   font-variant-numeric: tabular-nums;
 }
+
 
 .puzzle-edit-button {
   display: grid;
@@ -1061,6 +1210,7 @@ body.has-ability-modal .app-navbar--hidden {
   transition: color 140ms ease;
 }
 
+
 .puzzle-edit-button:hover {
   border: 0;
   background: transparent;
@@ -1068,11 +1218,13 @@ body.has-ability-modal .app-navbar--hidden {
   transform: none;
 }
 
+
 .puzzle-edit-button:focus-visible {
   outline: 2px solid #35c7e8;
   outline-offset: -2px;
   box-shadow: none;
 }
+
 
 .puzzle-list-message {
   border-top: 1px solid #252d32;
@@ -1083,6 +1235,7 @@ body.has-ability-modal .app-navbar--hidden {
   letter-spacing: .12em;
   text-align: center;
 }
+
 
 .puzzle-inline-action {
   min-height: 2.2rem;
@@ -1098,11 +1251,13 @@ body.has-ability-modal .app-navbar--hidden {
   transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
 }
 
+
 .puzzle-inline-action:hover {
   border-color: #35c7e8;
   background: #1b2226;
   color: #f2f4f5;
 }
+
 
 @media (max-width: 700px) {
 
@@ -1120,6 +1275,7 @@ body.has-ability-modal .app-navbar--hidden {
   }
 }
 
+
 @media (max-width: 520px) {
 
   .puzzle-list-open-button {
@@ -1131,6 +1287,7 @@ body.has-ability-modal .app-navbar--hidden {
   }
 }
 
+
 @media (prefers-reduced-motion: reduce) {
   .puzzle-list-row,
 .puzzle-list-open-button,
@@ -1140,6 +1297,7 @@ body.has-ability-modal .app-navbar--hidden {
     transition: none;
   }
 }
+
 
 .puzzle-search-clear {
   position: absolute;
@@ -1163,11 +1321,13 @@ body.has-ability-modal .app-navbar--hidden {
   transition: color 140ms ease, text-shadow 140ms ease;
 }
 
+
 .puzzle-search-clear:hover {
   border: 0 !important;
   background: transparent !important;
   color: #35c7e8;
 }
+
 
 .puzzle-search-clear:focus-visible {
   border: 0 !important;
@@ -1175,16 +1335,19 @@ body.has-ability-modal .app-navbar--hidden {
   outline-offset: 2px;
 }
 
+
 .profile-page {
   background: #181b1c;
   color: #f2f4f5;
 }
+
 
 .profile-page .rounded-2xl {
   border-color: #343c42;
   background: #151a1d;
   box-shadow: none;
 }
+
 
 .profile-page > section .rounded-full {
   border-color: #35c7e8;
@@ -1193,21 +1356,25 @@ body.has-ability-modal .app-navbar--hidden {
   color: #35c7e8;
 }
 
+
 .profile-page [class*="border-cyan-800"],
 .profile-page [class*="border-slate-700"] {
   border-color: #343c42;
 }
+
 
 .profile-page [class*="border-cyan-900"],
 .profile-page [class*="border-slate-800"] {
   border-color: #252d32;
 }
 
+
 .profile-page [class~="text-white"],
 .profile-page [class~="text-slate-100"],
 .profile-page [class~="text-slate-200"] {
   color: #f2f4f5;
 }
+
 
 .profile-page [class~="text-slate-300"],
 .profile-page [class~="text-slate-400"],
@@ -1216,10 +1383,12 @@ body.has-ability-modal .app-navbar--hidden {
   color: #9aa8b2;
 }
 
+
 .profile-page [class~="text-cyan-300"],
 .profile-page [class~="text-cyan-400"] {
   color: #35c7e8;
 }
+
 
 .profile-page input,
 .profile-page textarea {
@@ -1229,10 +1398,12 @@ body.has-ability-modal .app-navbar--hidden {
   box-shadow: none;
 }
 
+
 .profile-page input::placeholder,
 .profile-page textarea::placeholder {
   color: #9aa8b2;
 }
+
 
 .profile-page input:focus,
 .profile-page textarea:focus {
@@ -1241,9 +1412,11 @@ body.has-ability-modal .app-navbar--hidden {
   box-shadow: none;
 }
 
+
 .profile-page [class*="hover:bg-cyan-950"]:hover {
   background: #1b2226;
 }
+
 
 .info-circle-icon {
   display: block;
@@ -1253,12 +1426,14 @@ body.has-ability-modal .app-navbar--hidden {
   filter: brightness(0) saturate(100%) invert(68%) sepia(95%) saturate(1685%) hue-rotate(164deg) brightness(101%) contrast(102%);
 }
 
+
 @media (max-width: 1180px) {
   .puzzle-info-panel {
     max-height: calc(100svh - 84px - env(safe-area-inset-top));
     overflow-y: auto;
   }
 }
+
 
 /* Keep code editors modal and bounded at every viewport size. The fixed layer
    sits above the navbar without changing the document's layout or scroll. */
@@ -1291,6 +1466,7 @@ body.has-ability-modal .app-navbar--hidden {
     max-width: calc(100vw - 2rem);
   }
 }
+
 
 /* Variable-operation symbols use the same font characters in the inspector and graph nodes. */
 
@@ -1357,11 +1533,13 @@ body.has-ability-modal .app-navbar--hidden {
   font-family: var(--hud-body);
 }
 
+
 .hud-stack {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
+
 
 .hud-card {
   display: flex;
@@ -1372,6 +1550,7 @@ body.has-ability-modal .app-navbar--hidden {
   padding: 1rem;
   background-color: #111820;
 }
+
 
 .hud-card__title {
   display: flex;
@@ -1384,6 +1563,7 @@ body.has-ability-modal .app-navbar--hidden {
   font-weight: 700;
 }
 
+
 /* Scoreboard */
 .hud-scoreboard {
   display: grid;
@@ -1394,6 +1574,7 @@ body.has-ability-modal .app-navbar--hidden {
   font-family: var(--hud-display);
 }
 
+
 .hud-score {
   display: flex;
   min-height: 4.5rem;
@@ -1402,8 +1583,11 @@ body.has-ability-modal .app-navbar--hidden {
   padding: .5rem .75rem;
 }
 
+
 .hud-score--blue { align-items: flex-start; background-color: #1b4a7c; }
+
 .hud-score--red { align-items: flex-end; background-color: #6a2528; }
+
 
 .hud-score__team {
   font-size: .75rem;
@@ -1411,8 +1595,11 @@ body.has-ability-modal .app-navbar--hidden {
   letter-spacing: .1em;
 }
 
+
 .hud-score--blue .hud-score__team { color: #8ec5f5; }
+
 .hud-score--red .hud-score__team { color: #ffa8a1; }
+
 
 .hud-score__value {
   color: #ffffff;
@@ -1421,6 +1608,7 @@ body.has-ability-modal .app-navbar--hidden {
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
+
 
 .hud-score-mid {
   display: flex;
@@ -1432,6 +1620,7 @@ body.has-ability-modal .app-navbar--hidden {
   background-color: #10151b;
 }
 
+
 .hud-score-mid__round {
   color: #9fb0c0;
   font-size: .75rem;
@@ -1440,6 +1629,7 @@ body.has-ability-modal .app-navbar--hidden {
   white-space: nowrap;
 }
 
+
 .hud-score-mid__clock {
   color: #fbbf24;
   font-size: 1.75rem;
@@ -1447,6 +1637,7 @@ body.has-ability-modal .app-navbar--hidden {
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
+
 
 /* Budget counts */
 .hud-budget {
@@ -1457,12 +1648,19 @@ body.has-ability-modal .app-navbar--hidden {
   font-size: .8125rem;
 }
 
+
 .hud-budget > div { display: flex; align-items: baseline; gap: .375rem; }
+
 .hud-budget dt, .hud-budget dd { margin: 0; }
+
 .hud-budget dd { font-family: var(--hud-display); font-variant-numeric: tabular-nums; }
+
 .hud-budget b { color: #f1f5f9; font-weight: 700; }
+
 .hud-budget .is-near b { color: #fbbf24; }
+
 .hud-budget .is-full b { color: #f87171; }
+
 
 /* Chunky buttons */
 .hud-btn {
@@ -1488,10 +1686,15 @@ body.has-ability-modal .app-navbar--hidden {
   transition: filter 120ms ease;
 }
 
+
 .hud-btn:hover:not(:disabled) { filter: brightness(1.14); }
+
 .hud-btn:active:not(:disabled) { border-bottom-width: 1px; transform: translateY(2px); }
+
 .hud-btn:focus-visible, .hud-switch-row:focus-visible, .hud-link:focus-visible { outline: 2px solid #5fd4f0; outline-offset: 2px; }
+
 .hud-btn:disabled { cursor: not-allowed; opacity: .4; }
+
 
 .hud-btn--lg {
   min-height: 2.875rem;
@@ -1500,10 +1703,15 @@ body.has-ability-modal .app-navbar--hidden {
   letter-spacing: .06em;
 }
 
+
 .hud-btn--primary { --btn-bg: #22a35a; --btn-edge: #136538; --btn-fg: #ffffff; width: 100%; text-transform: uppercase; }
+
 .hud-btn--play { --btn-bg: #1fa8cf; --btn-edge: #0e6683; --btn-fg: #04212b; width: 100%; text-transform: uppercase; }
+
 .hud-btn--wide { width: 100%; }
+
 .hud-btn--icon { width: 2.75rem; min-width: 2.75rem; padding: 0; font-size: 1.25rem; }
+
 
 .hud-row, .hud-grid {
   display: grid;
@@ -1511,10 +1719,13 @@ body.has-ability-modal .app-navbar--hidden {
   gap: .5rem;
 }
 
+
 .hud-row > :only-child { grid-column: 1 / -1; }
+
 
 /* Switch rows */
 .hud-switches { display: flex; flex-direction: column; gap: .125rem; }
+
 
 .hud-switch-row {
   display: flex;
@@ -1532,8 +1743,11 @@ body.has-ability-modal .app-navbar--hidden {
   cursor: pointer;
 }
 
+
 .hud-switch-row:disabled { cursor: not-allowed; opacity: .4; }
+
 .hud-switch-row__label { display: inline-flex; align-items: center; gap: .5rem; }
+
 
 .hud-switch {
   position: relative;
@@ -1544,6 +1758,7 @@ body.has-ability-modal .app-navbar--hidden {
   background-color: #2a333d;
   transition: background-color 150ms ease;
 }
+
 
 .hud-switch__knob {
   position: absolute;
@@ -1556,8 +1771,11 @@ body.has-ability-modal .app-navbar--hidden {
   transition: transform 150ms ease, background-color 150ms ease;
 }
 
+
 .hud-switch-row[aria-checked="true"] .hud-switch { background-color: #1d86a6; }
+
 .hud-switch-row[aria-checked="true"] .hud-switch__knob { background-color: #ffffff; transform: translateX(1rem); }
+
 
 /* Quiet text actions */
 .hud-link {
@@ -1571,10 +1789,15 @@ body.has-ability-modal .app-navbar--hidden {
   cursor: pointer;
 }
 
+
 .hud-link:hover:not(:disabled) { color: #e6edf3; }
+
 .hud-link:disabled { cursor: not-allowed; opacity: .4; }
+
 .hud-link--danger { color: #f0736b; }
+
 .hud-link--danger:hover:not(:disabled) { color: #ff9a92; }
+
 
 .hud-surrender {
   display: inline-flex;
@@ -1584,6 +1807,7 @@ body.has-ability-modal .app-navbar--hidden {
   align-self: flex-start;
 }
 
+
 .hud-confirm {
   display: flex;
   flex-wrap: wrap;
@@ -1592,6 +1816,7 @@ body.has-ability-modal .app-navbar--hidden {
   color: #fca5a5;
   font-size: .875rem;
 }
+
 
 /* Notices and messages */
 .hud-notice {
@@ -1605,16 +1830,24 @@ body.has-ability-modal .app-navbar--hidden {
   font-weight: 500;
 }
 
+
 .hud-notice--red { border-color: #5a2a2d; background-color: #2a1517; color: #fca5a5; }
+
 .hud-notice--green { border-color: #1f5a37; background-color: #10261a; color: #86efac; }
+
 .hud-notice--cyan { border-color: #1c4a5a; background-color: #0e2028; color: #a5e9f7; }
 
+
 .hud-message { margin: 0; font-size: .8125rem; line-height: 1.4; }
+
 .hud-message--error { color: #fca5a5; }
+
 .hud-message--warn { color: #fcd34d; }
+
 
 /* Mobile-only pieces are hidden until the phone breakpoint. */
 .hud-actionbar, .hud-sheet, .hud-sheet-backdrop { display: none; }
+
 
 /* Tablet and narrow desktop: the panel sits below the arena in two columns. */
 @media (max-width: 1180px) {
@@ -1628,6 +1861,7 @@ body.has-ability-modal .app-navbar--hidden {
   .hud-stack > * { flex: 1 1 100%; }
   .hud-stack > .hud-card { flex: 1 1 calc(50% - .5rem); min-width: 16rem; }
 }
+
 
 /* Phones: slim scoreboard above the arena, bottom action bar, tools in a sheet. */
 @media (max-width: 639px) {
@@ -1686,37 +1920,6 @@ body.has-ability-modal .app-navbar--hidden {
   .hud-sheet .hud-btn--icon { min-height: 2.75rem; }
 }
 
-/* ==== Add-action and add-variable pickers (tool surface: flat, IBM Plex Sans, sentence case) ==== */
-.pk {
-  position: absolute;
-  top: 1rem;
-  left: 5rem;
-  z-index: 40;
-  display: flex;
-  width: 20rem;
-  max-width: calc(100% - 1rem);
-  max-height: min(460px, calc(100% - 1rem));
-  flex-direction: column;
-  overflow: hidden;
-  overscroll-behavior: contain;
-  border: 1px solid #262c33;
-  border-radius: 10px;
-  background-color: #111519;
-  color: #e6edf3;
-  font-size: 13px;
-}
-
-.pk, .pk * { font-family: "IBM Plex Sans", system-ui, sans-serif !important; }
-.pk kbd { font-family: "Cousine", "Courier New", monospace !important; }
-
-.pk kbd {
-  border: 1px solid #2f363e;
-  border-radius: 4px;
-  padding: 0 .3125rem;
-  color: #9aa7b4;
-  font-size: 11px;
-  line-height: 1.5;
-}
 
 /* Phones: pickers open as bottom sheets with 44px rows. */
 @media (max-width: 639px) {
@@ -1735,6 +1938,7 @@ body.has-ability-modal .app-navbar--hidden {
   }
 }
 
+
 /* .code-workspace sets a 2px radius on every button and input; restate ours with more weight. */
 
 /* Modify custom variable: node summary chip and panel. */
@@ -1751,29 +1955,13 @@ body.has-ability-modal .app-navbar--hidden {
   --pk-neutral-border: #3a444d; --pk-neutral-head: #232a31; --pk-neutral-text: #c3cdd6;
 }
 
-/* Headers scroll with their card. Cards do not clip, so round the ends by hand. */
-
-/* Close button beside the search field. */
-
-/* Modify custom variable: compact 32px rows. */
-
-/* Condition row: one 32px control height, and a Num | Var toggle under the right-hand value. */
-
-/* Puzzle room: right panel and info card. */
-.puzzle-back-link {
-  align-self: flex-start;
-  border: 0;
-  background: transparent;
-  padding: .25rem 0;
-  color: #8b98a5;
-  font: 500 12px "IBM Plex Sans", system-ui, sans-serif;
-  cursor: pointer;
-}
-.puzzle-back-link:hover { color: #e6edf3; }
 
 .hud-btn--half { width: auto; flex: 1 1 0; text-transform: none; }
+
 .hud-btn--auto { width: auto; text-transform: none; }
+
 .hud-row .hud-btn { flex: 1 1 0; }
+
 
 .puzzle-submissions-row {
   display: flex;
@@ -1791,23 +1979,37 @@ body.has-ability-modal .app-navbar--hidden {
   font: 500 13px "IBM Plex Sans", system-ui, sans-serif;
   cursor: pointer;
 }
+
 .puzzle-submissions-row:hover { border-color: #3a444d; color: #fff; }
+
 .puzzle-submissions-row__last { font-size: 12px; color: #8b98a5; text-transform: capitalize; }
+
 .puzzle-submissions-row__last--solved { color: #34d399; }
+
 .puzzle-submissions-row__last--failed { color: #f87171; }
+
 .puzzle-submissions-row__last--error { color: #fbbf24; }
 
+
 .puzzle-info-card { width: min(21rem, calc(100vw - 2rem)); }
+
 .puzzle-info-card .puzzle-info__body { max-height: min(26rem, calc(100svh - 17rem)); }
+
 .puzzle-strip { display: block; border: 0; border-radius: 4px; padding: .375rem .5rem; }
 
+
 .tg-fab--amber { background: #d99a1c; border-bottom-color: #8f6410; color: #1a1408; }
+
 .tg-fab__badge--solved { background: #34d399; color: #04261a; }
+
 
 /* Indeterminate loading bar (ArenaLoadingScreen). */
 @keyframes arena-loading-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+
 .arena-loading-indeterminate { animation: arena-loading-slide 1.2s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) { .arena-loading-indeterminate { animation: none; width: 100%; opacity: .5; } }
+
 
 /* Toasts: bottom-centre above any action bar on desktop, top on phones. */
 .toast-stack {
@@ -1824,14 +2026,23 @@ body.has-ability-modal .app-navbar--hidden {
   transform: translateX(-50%);
 }
 
+
 @media (max-width: 639px) {
   .toast-stack { top: calc(.75rem + env(safe-area-inset-top)); bottom: auto; }
 }
 
-/* Puzzle rules workspace: win and lose rule roots and toolbar buttons. */
 
-/*  Code workspace (toolbar, nodes, wires, panels, variables dialog), from the 8d46135 design  */
+.cx-trash { display: inline-grid; width: 30px; height: 30px; place-items: center; padding: 0; }
 
+
+/* Order buttons in a condition or action panel footer. */
+.cx-order-group { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ---- Code workspace: the overhaul editor (8d46135), without chain rules ---- */
+
+
+
+/* Blueprint Combat: Unreal-inspired graphite structure with blue conditions and green actions. */
 .code-workspace {
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   --code-steel: #929ca2;
@@ -1840,9 +2051,11 @@ body.has-ability-modal .app-navbar--hidden {
   --code-red: #c44747;
 }
 
+
 .code-graph-node--action {
   border-color: #72b65d;
 }
+
 
 .code-compact-footer > button.code-action-add-button {
   border-color: #72b65d;
@@ -1850,19 +2063,23 @@ body.has-ability-modal .app-navbar--hidden {
   color: #ffffff;
 }
 
+
 .code-compact-footer > button.code-action-add-button:hover:not(:disabled) {
   border-color: #72b65d;
   background: #3f7049;
   color: #fff;
 }
 
+
 .code-graph-node--conditional {
   border-color: #43a6d1;
 }
 
+
 .code-node-header--conditional {
   background: #286583;
 }
+
 
 .code-node-badge {
   border-color: #43a6d1;
@@ -1870,25 +2087,32 @@ body.has-ability-modal .app-navbar--hidden {
   color: #ffffff;
 }
 
+
 .code-graph-node.is-selected,
 .code-graph-node.is-inspected {
   border-color: #d4d9dc;
   box-shadow: 0 0 0 2px #43a6d1;
 }
 
+
 .code-inspector-header span {
   color: #ffffff;
 }
+
 
 .tutorial-code-inspector-preview .code-inspector-body {
   flex: none;
   overflow: visible;
 }
 
+
+/* The code editor is intentionally compact: dense labels should read as words,
+   not widely tracked display copy. */
 .code-workspace .font-mono,
 .code-workspace .font-display {
   letter-spacing: 0.015em !important;
 }
+
 
 .code-workspace button,
 .code-workspace input,
@@ -1897,11 +2121,13 @@ body.has-ability-modal .app-navbar--hidden {
   border-radius: 2px;
 }
 
+
 .code-workspace:focus,
 .code-workspace:focus-visible {
   outline: none;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, .25);
 }
+
 
 .code-workspace :where(a, button, [tabindex]):focus,
 .code-workspace :where(a, button, [tabindex]):focus-visible {
@@ -1909,11 +2135,16 @@ body.has-ability-modal .app-navbar--hidden {
   box-shadow: none;
 }
 
+
 .code-workspace :where(input, select, textarea):focus,
 .code-workspace :where(input, select, textarea):focus-visible {
   outline: none;
   box-shadow: none;
 }
+
+
+/* Workspace toolbar controls intentionally live after the global button rules.
+   Their idle surfaces must remain visibly distinct from the toolbar itself. */
 
 .code-toolbar-icon {
   flex: none;
@@ -1923,7 +2154,25 @@ body.has-ability-modal .app-navbar--hidden {
   letter-spacing: 0;
 }
 
+
+.coding-add-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+
+.coding-add-icon--large { width: 18px; height: 18px; }
+
 .code-toolbar-icon.coding-add-icon { width: 14px; height: 14px; font-size: initial; }
+
 
 .code-workspace .code-tab {
   position: relative;
@@ -1943,11 +2192,13 @@ body.has-ability-modal .app-navbar--hidden {
   white-space: nowrap;
 }
 
+
 .code-workspace .code-tab:hover {
   border-color: rgba(148, 163, 184, 0.15);
   background: rgba(43, 49, 55, 0.68);
   color: #e4e8eb;
 }
+
 
 .code-workspace .code-tab.is-active,
 .code-workspace .code-tab.is-active:hover {
@@ -1955,6 +2206,7 @@ body.has-ability-modal .app-navbar--hidden {
   background: rgba(22, 28, 33, 0.95);
   color: #8be5e6;
 }
+
 
 .code-workspace .code-tab.is-active::after {
   position: absolute;
@@ -1966,6 +2218,7 @@ body.has-ability-modal .app-navbar--hidden {
   content: "";
 }
 
+
 .code-bot-selector__arrow {
   border: 0;
   background: rgba(29, 34, 39, 0.62);
@@ -1975,15 +2228,18 @@ body.has-ability-modal .app-navbar--hidden {
   line-height: 1;
 }
 
+
 .code-bot-selector__arrow:hover:not(:disabled) {
   background: rgba(43, 49, 55, 0.82);
   color: #f6f8fa;
 }
 
+
 .code-bot-selector__arrow:disabled {
   cursor: default;
   opacity: 0.35;
 }
+
 
 .code-loadout-selector__arrow {
   width: 44px;
@@ -1998,15 +2254,18 @@ body.has-ability-modal .app-navbar--hidden {
   line-height: .8;
 }
 
+
 .code-loadout-selector__arrow:hover:not(:disabled) {
   background: transparent;
   color: #f6f8fa;
   transform: scale(1.08);
 }
 
+
 .code-loadout-selector__arrow:disabled {
   background: transparent;
 }
+
 
 .code-board {
   background-color: #15191d;
@@ -2014,6 +2273,9 @@ body.has-ability-modal .app-navbar--hidden {
   background-size: 20px 20px;
 }
 
+
+/* Logic graph nodes use a framed, stacked-card treatment so the editable
+   controls read as a deliberate form instead of one dense toolbar row. */
 .code-graph-node {
   cursor: grab;
   isolation: isolate;
@@ -2024,13 +2286,16 @@ body.has-ability-modal .app-navbar--hidden {
   transition: outline-color 150ms ease;
 }
 
+
 .code-graph-node:active { cursor: grabbing; }
+
 
 .code-graph-node:hover {
   box-shadow: none;
   filter: none;
   outline: 2px solid rgba(255, 255, 255, .72);
 }
+
 
 .code-graph-node--root {
   height: 144px;
@@ -2040,9 +2305,11 @@ body.has-ability-modal .app-navbar--hidden {
   box-shadow: none;
 }
 
+
 .code-graph-node--root:hover {
   box-shadow: none;
 }
+
 
 .code-root-name {
   display: block;
@@ -2056,15 +2323,18 @@ body.has-ability-modal .app-navbar--hidden {
   font: 700 10px/1 "Cousine", monospace;
 }
 
+
 .code-root-name--puzzle {
   display: flex;
   align-items: center;
 }
 
+
 .code-root-name:focus {
   border-color: #cbd5e1;
   outline: none;
 }
+
 
 .code-compact-footer > button:not(.code-condition-node-remove) {
   display: inline-flex;
@@ -2073,15 +2343,18 @@ body.has-ability-modal .app-navbar--hidden {
   gap: .35rem;
 }
 
+
 .code-graph-node.is-inspected {
   border-color: #fff;
   box-shadow: none;
 }
 
+
 .code-graph-node.is-selected {
   outline: 2px solid #fff;
   outline-offset: 1px;
 }
+
 
 .code-selection-marquee {
   position: absolute;
@@ -2090,6 +2363,7 @@ body.has-ability-modal .app-navbar--hidden {
   background: rgba(148, 163, 184, .14);
   pointer-events: none;
 }
+
 
 .code-compact-header {
   display: flex;
@@ -2101,6 +2375,7 @@ body.has-ability-modal .app-navbar--hidden {
   font: 700 11px/1.2 "Cousine", "Courier New", monospace;
 }
 
+
 .code-compact-header .code-node-badge {
   flex: none;
   border-radius: 3px;
@@ -2109,6 +2384,7 @@ body.has-ability-modal .app-navbar--hidden {
   letter-spacing: .08em;
 }
 
+
 .code-compact-condition {
   display: grid;
   width: max-content;
@@ -2116,6 +2392,7 @@ body.has-ability-modal .app-navbar--hidden {
   align-items: center;
   gap: 5px;
 }
+
 
 .code-operator-socket {
   display: flex;
@@ -2134,6 +2411,7 @@ body.has-ability-modal .app-navbar--hidden {
   white-space: nowrap;
 }
 
+
 .code-operator-socket { min-width: 64px; padding: 0 20px 0 8px; border-color: rgba(125, 211, 252, .68); color: #bae6fd; color-scheme: dark; cursor: pointer; font-size: 11px; }
 
 .code-operator-socket:hover { background: rgba(8, 47, 73, .68); }
@@ -2147,6 +2425,7 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-condition-boolean-input option:checked { background-color: #334155; }
 
+
 .code-condition-input {
   display: flex;
   width: max-content;
@@ -2159,6 +2438,7 @@ body.has-ability-modal .app-navbar--hidden {
   border-radius: 4px;
   background: rgba(8, 17, 29, .94);
 }
+
 
 .code-condition-input.is-variable { border-color: rgba(52, 211, 153, .52); }
 
@@ -2175,6 +2455,7 @@ body.has-ability-modal .app-navbar--hidden {
   outline-offset: 1px;
 }
 
+
 .code-condition-input-value,
 .code-condition-input-placeholder {
   display: flex;
@@ -2187,6 +2468,7 @@ body.has-ability-modal .app-navbar--hidden {
   font: 700 9px/1 "Cousine", "Courier New", monospace;
   white-space: nowrap;
 }
+
 
 .code-condition-input-value:hover { background: rgba(6, 78, 59, .28); color: #fff; }
 
@@ -2285,6 +2567,7 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-condition-input-unit { padding: 0 4px 0 0; }
 
+
 .code-condition-input > input,
 .code-condition-input > select {
   min-width: 0;
@@ -2302,7 +2585,9 @@ body.has-ability-modal .app-navbar--hidden {
   -webkit-user-select: text;
 }
 
+
 .code-condition-input.is-raw > input { caret-color: transparent; }
+
 
 .code-condition-input-toggle {
   display: flex;
@@ -2321,6 +2606,7 @@ body.has-ability-modal .app-navbar--hidden {
   font: 700 14px/1 "Cousine", monospace;
   transition: color 150ms ease;
 }
+
 
 .code-condition-input-toggle:hover:not(:disabled) { background: transparent; color: #cffafe; }
 
@@ -2343,9 +2629,12 @@ body.has-ability-modal .app-navbar--hidden {
   transition: background-color 140ms ease, color 140ms ease;
 }
 
+
 .code-condition-row-remove:hover:not(:disabled) { background: rgba(127, 29, 29, .38); color: #fff; }
 
+
 .code-compact-condition-wrap + .code-compact-condition-wrap { margin-top: 10px; }
+
 
 .code-compact-footer {
   display: flex;
@@ -2359,6 +2648,7 @@ body.has-ability-modal .app-navbar--hidden {
   letter-spacing: .06em;
 }
 
+
 .code-compact-footer > button:not(.code-condition-node-remove) {
   min-height: 30px;
   border: 1px solid rgba(56, 189, 248, .42);
@@ -2367,7 +2657,9 @@ body.has-ability-modal .app-navbar--hidden {
   padding: 0 10px;
 }
 
+
 .code-compact-footer > button:not(.code-condition-node-remove) > .coding-add-icon { width: 12px; height: 12px; }
+
 
 .code-compact-footer > button:not(.code-condition-node-remove):hover:not(:disabled) { border-color: #7dd3fc; background: rgba(8, 47, 73, .68); color: #fff; }
 
@@ -2424,14 +2716,17 @@ body.has-ability-modal .app-navbar--hidden {
   border-left-color: #e89090;
 }
 
+
 .code-compact-footer button:disabled { opacity: .32; }
 
 .code-compact-footer > .code-condition-node-remove:disabled { opacity: 1; }
+
 
 .code-action-label {
   max-width: 100%;
   white-space: nowrap;
 }
+
 
 .code-inspector {
   position: absolute;
@@ -2446,6 +2741,7 @@ body.has-ability-modal .app-navbar--hidden {
   color: #e2e8f0;
 }
 
+
 .code-inspector--secondary {
   right: min(440px, 42vw);
   z-index: 36;
@@ -2453,6 +2749,7 @@ body.has-ability-modal .app-navbar--hidden {
   border-right: 1px solid rgba(71, 85, 105, .95);
   box-shadow: -18px 0 42px rgba(0, 0, 0, .22);
 }
+
 
 .code-inspector-header {
   display: flex;
@@ -2464,6 +2761,7 @@ body.has-ability-modal .app-navbar--hidden {
   padding: 14px 16px;
 }
 
+
 .code-inspector-header span { color: #67e8f9; font: 700 8px/1 "Cousine", monospace; letter-spacing: .14em; }
 
 .code-inspector-header h2 { margin-top: 6px; color: #fff; font: 700 15px/1.2 "Cousine", monospace; }
@@ -2474,6 +2772,7 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-inspector-body { min-height: 0; flex: 1; overflow-y: auto; padding: 16px; }
 
+
 .code-inspector-field {
   display: block;
   margin-bottom: 15px;
@@ -2481,6 +2780,7 @@ body.has-ability-modal .app-navbar--hidden {
   font: 700 9px/1.2 "Cousine", monospace;
   letter-spacing: .05em;
 }
+
 
 .code-inspector-field > input,
 .code-inspector-field > select,
@@ -2542,6 +2842,7 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-selectable-picker-unavailable small { color: #cbd5e1; font: 9px/1.45 "Cousine", monospace; }
 
+
 .code-selectable-picker {
   display: flex;
   width: 100%;
@@ -2551,6 +2852,7 @@ body.has-ability-modal .app-navbar--hidden {
   margin-top: 7px;
 }
 
+
 .code-inspector-body .code-selectable-picker-note {
   display: block;
   margin-top: 0;
@@ -2559,25 +2861,30 @@ body.has-ability-modal .app-navbar--hidden {
   letter-spacing: 0;
 }
 
+
 .code-graph-node--conditional {
   border-color: rgba(14, 165, 233, .94);
   box-shadow: none;
 }
+
 
 .code-graph-node--action {
   border-color: rgba(217, 70, 239, .94);
   box-shadow: none;
 }
 
+
 .code-node-header--conditional {
   background: #0d2f50;
 }
+
 
 .code-node-badge {
   border: 1px solid rgba(125, 211, 252, .56);
   background: rgba(2, 15, 30, .62);
   color: #dbeafe;
 }
+
 
 .code-condition-prefix {
   display: flex;
@@ -2591,9 +2898,11 @@ body.has-ability-modal .app-navbar--hidden {
   letter-spacing: .08em;
 }
 
+
 .code-condition-join-toggle:not(:disabled) {
   cursor: pointer;
 }
+
 
 .code-condition-join-toggle:not(:disabled):hover,
 .code-condition-join-toggle:not(:disabled):focus-visible {
@@ -2601,6 +2910,7 @@ body.has-ability-modal .app-navbar--hidden {
   background: rgba(14, 116, 144, .5);
   color: #ecfeff;
 }
+
 
 .code-workspace .code-history-button {
   display: grid;
@@ -2616,26 +2926,21 @@ body.has-ability-modal .app-navbar--hidden {
   line-height: 1;
 }
 
+
 .code-workspace .code-history-button:hover:not(:disabled) {
   border-color: rgba(103, 223, 225, 0.26);
   background: rgba(8, 89, 91, 0.26);
   color: #8be5e6;
 }
 
+
 .code-workspace .code-history-button:disabled {
   cursor: not-allowed;
   opacity: 0.25;
 }
 
-@media (max-width: 1280px) {
 
-  .code-workspace .code-tab {
-    padding-right: 8px;
-    padding-left: 8px;
-  }
-
-}
-
+/* Final semantic overrides for the Blueprint Combat theme. */
 .code-graph-node--root {
   background: linear-gradient(180deg, #353c43 0%, #292e32 48%, #202427 100%);
 }
@@ -2676,9 +2981,11 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-inspector-header span { color: #ffffff; }
 
+
 .code-workspace-overlay {
   overscroll-behavior: none;
 }
+
 
 .code-workspace {
   min-width: 0;
@@ -2689,97 +2996,33 @@ body.has-ability-modal .app-navbar--hidden {
   height: min(90dvh, 820px);
 }
 
+
 .code-board {
   min-width: 0;
   min-height: 0;
   overscroll-behavior: contain;
 }
 
+
 .code-graph-surface {
   touch-action: none;
   overscroll-behavior: contain;
 }
+
 
 .code-inspector-body {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 
+
 .code-custom-variables-overlay {
   overscroll-behavior: none;
 }
 
-@media (max-width: 900px) {
-  .code-toolbar-icon {
-    font-size: 13px;
-  }
 
-  .code-inspector {
-    width: min(440px, 80vw);
-  }
-}
-
-@media (max-width: 600px) {
-  .code-history-rail {
-    width: 44px;
-    padding-right: 6px;
-    padding-left: 6px;
-  }
-
-  .code-workspace .code-history-button {
-    width: 32px;
-    height: 32px;
-    font-size: 18px;
-  }
-
-  .code-inspector,
-  .code-inspector--secondary {
-    inset: auto 0 0 0;
-    right: 0;
-    width: 100%;
-    max-width: none;
-    max-height: 78%;
-    overflow: hidden;
-    border-right: 0;
-    border-left: 0;
-    border-top: 1px solid rgba(71, 85, 105, .95);
-    border-radius: 12px 12px 0 0;
-    box-shadow: 0 -12px 32px rgba(0, 0, 0, .5);
-  }
-
-  .code-inspector::before,
-  .code-inspector--secondary::before {
-    content: "";
-    display: block;
-    flex: none;
-    width: 36px;
-    height: 4px;
-    margin: 8px auto 0;
-    border-radius: 2px;
-    background: rgba(148, 163, 184, .55);
-  }
-
-  .code-inspector-header {
-    min-height: 64px;
-    padding: 10px 12px;
-  }
-
-  .code-inspector-body {
-    padding: 12px;
-  }
-
-  .code-custom-variables-overlay {
-    align-items: center;
-    padding: .5rem;
-  }
-  .code-workspace input,
-  .code-workspace select,
-  .code-workspace textarea {
-    font-size: clamp(9px, 2.7vw, 11px) !important;
-    line-height: 1.2;
-  }
-}
-
+/* Keep code editors modal and bounded at every viewport size. The fixed layer
+   sits above the navbar without changing the document's layout or scroll. */
 .code-workspace-overlay {
   box-sizing: border-box;
   align-items: center;
@@ -2787,6 +3030,7 @@ body.has-ability-modal .app-navbar--hidden {
   overflow: hidden;
   padding: clamp(.5rem, 2vh, 1.25rem) clamp(.5rem, 2vw, 1.25rem);
 }
+
 
 .code-workspace-overlay > .code-workspace {
   width: min(94vw, 1440px);
@@ -2797,44 +3041,9 @@ body.has-ability-modal .app-navbar--hidden {
   max-height: calc(100dvh - 1rem);
 }
 
-@media (max-width: 1350px) {
 
-  .code-workspace .code-tab {
-    padding: 0 6px;
-    font-size: clamp(7px, .75vw, 9px);
-  }
-
-}
-
-@media (max-width: 600px) {
-  .code-workspace-overlay {
-    align-items: center;
-    padding: .5rem;
-  }
-
-  .code-workspace-overlay > .code-workspace {
-    width: 100%;
-    max-width: none;
-    height: min(90vh, 820px);
-    height: min(90dvh, 820px);
-    max-height: calc(100vh - 1rem);
-    max-height: calc(100dvh - 1rem);
-    border-right: 1px solid rgba(148, 163, 184, .42);
-    border-left: 1px solid rgba(148, 163, 184, .42);
-    border-radius: 3px;
-  }
-
-  .code-workspace .code-tab {
-    padding: 0 5px;
-    font-size: 7px;
-  }
-
-  .code-toolbar-icon {
-    font-size: 11px;
-  }
-
-}
-
+/* Follow-up responsive polish: the workspace is a true viewport modal even
+   when it is opened from the narrow, scrollable arena column. */
 .code-workspace-overlay {
   position: fixed !important;
   inset: 0 !important;
@@ -2842,6 +3051,12 @@ body.has-ability-modal .app-navbar--hidden {
   isolation: isolate;
 }
 
+
+/* Keep only the zoom symbols interactive. The percentage remains centered,
+   and equal grid columns/padding keep both symbols evenly inset. */
+
+/* Keep the tutorial coach attached to the toolbar's actual height while it
+   floats over the graph instead of taking another layout row. */
 .code-workspace-top-layer {
   position: relative;
   z-index: 30;
@@ -2854,6 +3069,9 @@ body.has-ability-modal .app-navbar--hidden {
   gap: 6px;
 }
 
+
+
+/* Variable-operation symbols use the same font characters in the inspector and graph nodes. */
 .code-variable-operator-picker { position: relative; width: 100%; min-width: 0; }
 
 .code-variable-action-operator-button {
@@ -2946,6 +3164,9 @@ body.has-ability-modal .app-navbar--hidden {
 .code-variable-expression-operator .code-variable-operator-glyph,
 .code-variable-expression-operator .coding-add-icon.code-variable-operator-glyph { width: 13px; height: 13px; font-size: 13px; }
 
+
+/* Execution order: siblings run left to right (Unreal-style). The badge is
+   read-only; the arrows appear on the selected node to nudge it past a neighbour. */
 .code-order-controls { display: inline-flex; align-items: center; gap: 3px; margin-left: 12px; vertical-align: middle; }
 
 .code-order-badge {
@@ -2968,12 +3189,12 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-branch-kind.is-else { color: #94a3b8; }
 
-@media (pointer: coarse) {
-  .code-workspace input,
-.code-workspace select,
-.code-workspace textarea { font-size: 16px !important; }
-}
 
+/* ==========================================================================
+   Behavior-tree canvas nodes ("Unreal stack"): compact root pill, conditional
+   decorator strips, and purple task cards. Node text is IBM Plex Sans; small labels
+   (join words, channels, order badges) stay monospace.
+   ========================================================================== */
 .code-bt-node,
 .code-bt-node * {
   font-family: "IBM Plex Sans", system-ui, sans-serif !important;
@@ -2985,6 +3206,7 @@ body.has-ability-modal .app-navbar--hidden {
 .code-bt-node .code-bt-x {
   font-family: "Cousine", ui-monospace, monospace !important;
 }
+
 
 .code-bt-node { color: #e6edf3; font-size: 13px; box-sizing: border-box; }
 
@@ -3005,10 +3227,8 @@ body.has-ability-modal .app-navbar--hidden {
 .code-bt-node.is-selected .code-bt-x,
 .code-bt-x:focus-visible { opacity: 1; }
 
-@media (pointer: coarse) {
-  .code-bt-x { opacity: 1; }
-}
 
+/* Root pill */
 .code-bt-root {
   background: #23292f; border: 1px solid #46515c; border-radius: 3px;
   box-shadow: 0 6px 18px #0007; padding: 8px 10px;
@@ -3031,6 +3251,8 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-bt-root input.code-root-name:focus { border-color: #67e8f9; box-shadow: 0 0 0 2px rgba(103, 232, 249, .25); }
 
+
+/* Conditional: decorator strips stacked on a dark node */
 .code-bt-cond {
   background: #20262c; border: 1px solid #3a4550; border-radius: 0;
   box-shadow: 0 6px 18px #0007; box-sizing: border-box;
@@ -3066,8 +3288,13 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-bt-count { font-size: 11px; color: #8b98a5; white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
+/* Green + hanging from the bottom-right corner of the node: adds a child conditional or an action. */
 .code-bt-add-below { position: absolute; top: 100%; right: -1px; z-index: 4; margin-top: 0; }
 
+/* Small + hanging from the bottom edge of the lowest condition, right of centre: adds a condition
+   immediately. Selected node only. */
+
+/* Task (action) card */
 .code-bt-task {
   background: #3f7049; border: 1px solid #72b65d; border-radius: 0;
   box-shadow: 0 6px 18px #0007; padding: 6px 9px; box-sizing: border-box;
@@ -3095,6 +3322,8 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-bt-task .code-variable-action-expression { font-size: 11.5px; color: #e2f3dc; }
 
+
+/* Behavior-tree nodes: override the older framed-card sizing/clipping. */
 .code-graph-node.code-bt-root { height: 84px; overflow: visible; background: #23292f; border-color: #46515c; }
 
 .code-graph-node.code-bt-root.is-selected { border-color: #67e8f9; }
@@ -3107,6 +3336,11 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-graph-node.code-bt-task.is-inspected { border-color: #b8e6a3; }
 
+
+/* Conditional inspector: editable condition rows in the side panel.
+   Cards use IBM Plex Sans 13-14px text, the join word (IF / AND / OR) is
+   amber Cousine, and controls are 34px tall. The existing coarse-pointer rules
+   for the panel already force 16px inputs, so no override is needed. */
 .code-cond-row {
   display: flex;
   flex-direction: column;
@@ -3154,6 +3388,10 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-cond-row button:disabled { opacity: .5; cursor: not-allowed; }
 
+
+/* Inspector panel typography: forces Cousine on everything, so the
+   side panel opts its values, buttons, inputs, notes and titles back into IBM Plex
+   Sans. Eyebrows, field labels and join words stay in Cousine. */
 .code-inspector,
 .code-inspector * {
   font-family: "IBM Plex Sans", system-ui, sans-serif !important;
@@ -3176,8 +3414,11 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-inspector .code-selectable-picker-unavailable strong { font-size: 13px; }
 
+/* Keep an open "+" menu above neighbouring nodes (e.g. the action cards below). */
 .code-graph-node.code-bt-node.is-menu-open { z-index: 30; }
 
+
+/* Conditional inspector: collapsed summaries, static AND, settings, hints */
 .code-cond-settings {
   display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid rgba(71, 85, 105, .6);
 }
@@ -3207,12 +3448,15 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-inspector-title { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 
+
 .code-bt-strip.is-clickable { cursor: pointer; }
 
 .code-bt-strip.is-clickable:hover { background: #235d82; }
 
 .code-bt-strip.is-active { box-shadow: inset 3px 0 0 #fcd34d; background: #235d82; }
 
+
+/* IF / ELSE IF tab sticking out of the top-left corner of a conditional node */
 .code-bt-kind-tab {
   position: absolute; left: 50%; transform: translateX(-50%); bottom: 100%; padding: 3px 12px 2px;
   border: 1px solid #3a4550; border-bottom: 0; border-radius: 4px 4px 0 0;
@@ -3221,6 +3465,8 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-bt-cond.is-inspected .code-bt-kind-tab { border-color: #67e8f9; }
 
+
+/* The code workspace fills the whole window. */
 .code-workspace-overlay { padding: 0 !important; }
 
 .code-workspace-overlay > .code-workspace {
@@ -3234,17 +3480,26 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-bt-cond.is-inspected .code-bt-kind-tab { box-shadow: 0 0 0 2px #43a6d1; clip-path: inset(-6px -6px 0 -6px); }
 
+
+/* Action card: words and boxed chips, like the condition strips. */
 .code-bt-task-line { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 5px; line-height: 18px; font-size: 12.5px; }
 
 .code-bt-task .code-bt-entity { background: #1f3a25; color: #e2f3dc; }
 
 .code-bt-task .code-bt-value { color: #fff; }
 
+
+/* Action panel shares the condition panel's row design. */
 .code-action-row .code-cond-settings { border-top: 0; padding-top: 0; }
 
+/* Labels are written in sentence case in the source; nothing is re-cased here (a flex label row never took ::first-letter). */
 .code-cond-settings .code-inspector-field > span,
 .code-cond-settings .code-movement-label-row { text-transform: none; }
 
+
+/* Elbow connector tying "Compare to a variable" / "Use a number" to the input above it. */
+
+/* ---- Code workspace toolbar: one calm bar ---- */
 .code-tb {
   display: flex; flex: none; align-items: center; gap: 14px; min-height: 56px; box-sizing: border-box; padding: 0 16px;
   border-bottom: 1px solid rgba(255, 255, 255, .1); background: #12161a;
@@ -3348,6 +3603,7 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-tb-close:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 
+/* Zoom cluster floating at the bottom-right of the canvas. */
 .code-zoom-cluster {
   position: absolute; right: 16px; bottom: 16px; z-index: 36; display: flex; align-items: center; gap: 2px; padding: 3px;
   border: 1px solid rgba(71, 85, 105, .9); border-radius: 6px; background: rgba(13, 18, 22, .94); box-shadow: 0 6px 18px #0008;
@@ -3377,32 +3633,9 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-tb-chips { align-items: center; gap: 8px; }
 
-@media (max-width: 900px) {
-  .code-workspace:not([data-stage]) .code-tb { gap: 10px; padding: 0 10px; }
-  .code-workspace:not([data-stage]) .code-tb-meters { display: none; }
-  .code-workspace:not([data-stage]) .code-tb-chips { display: flex; }
-  .code-workspace:not([data-stage]) .code-tb-label { display: none; }
-  .code-workspace:not([data-stage]) .code-tb-btn:not(.is-primary) { padding: 0 9px; }
-  .code-workspace:not([data-stage]) .code-tb-search { min-width: 150px; }
-}
 
-@media (max-width: 640px) {
-  .code-workspace:not([data-stage]) .code-tb { flex-wrap: wrap; align-items: center; gap: 8px 8px; padding: 8px 10px; }
-  .code-workspace:not([data-stage]) .code-tb-bot { order: 1; flex: 1 1 0; }
-  .code-workspace:not([data-stage]) .code-tb-close { order: 2; }
-  .code-workspace:not([data-stage]) .code-tb-divider { display: none; }
-  .code-workspace:not([data-stage]) .code-tb-break { display: block; order: 3; flex: 0 0 100%; height: 0; }
-  .code-workspace:not([data-stage]) .code-tb-chips { order: 4; }
-  .code-workspace:not([data-stage]) .code-tb-spacer { order: 5; }
-  .code-workspace:not([data-stage]) .code-tb-search, .code-tb-btn { order: 6; }
-  .code-workspace:not([data-stage]) .code-tb-search, .code-tb-btn, .code-tb-close { width: 34px; min-width: 34px; height: 34px; justify-content: center; padding: 0; }
-  .code-workspace:not([data-stage]) .code-tb-search-text, .code-tb-label, .code-tb-search .code-tb-kbd, .code-tb-btn .code-tb-kbd { display: none; }
-  .code-workspace:not([data-stage]) .code-tb-toggle-wide { display: none; }
-  .code-workspace:not([data-stage]) .code-tb-toggle-phone { display: inline-flex; }
-  .code-workspace:not([data-stage]) .code-tb-bot-text.has-toggle .code-tb-bot-meta { display: none; }
-  .code-workspace:not([data-stage]) .code-tb-bot-meta { max-width: none; }
-}
 
+/* ---- Workspace stages (from the workspace's own width): full > 1100px, mid 640-1100px, phone < 640px ---- */
 .code-tb-icon-compact { display: none; }
 
 .code-tb-more { position: relative; display: inline-flex; }
@@ -3425,7 +3658,11 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-tb-menu-divider { height: 0; margin: 4px 2px; border-top: 1px solid rgba(255, 255, 255, .12); }
 
+
+/* Mid: compact chips, icon-only Search / Variables / + Node, rarer tools in "More". */
 .code-workspace[data-stage="mid"] .code-tb { gap: 10px; padding: 0 10px; }
+
+.code-workspace[data-stage="mid"] .code-tb-meters, .code-workspace[data-stage="mid"] .cx-step-meter { display: none; }
 
 .code-workspace[data-stage="mid"] .code-tb-chips { display: flex; }
 
@@ -3440,13 +3677,20 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-workspace[data-stage="mid"] .code-tb-icon-compact { display: inline-flex; }
 
+
+/* Phone: two top rows (identity, search, close / chips) and a bottom action bar. */
 .code-workspace[data-stage="phone"] .code-tb { flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; }
+
+.code-workspace[data-stage="phone"] .code-tb-bot, .code-workspace[data-stage="phone"] .cx-crumb { order: 1; flex: 1 1 0; min-width: 0; }
 
 .code-workspace[data-stage="phone"] .code-tb-search { order: 2; width: 34px; min-width: 34px; height: 34px; padding: 0; justify-content: center; }
 
 .code-workspace[data-stage="phone"] .code-tb-search-text, .code-workspace[data-stage="phone"] .code-tb-search .code-tb-kbd { display: none; }
 
 .code-workspace[data-stage="phone"] .code-tb-close { order: 3; width: 34px; height: 34px; }
+
+.code-workspace[data-stage="phone"] .code-tb-divider, .code-workspace[data-stage="phone"] .code-tb-spacer,
+.code-workspace[data-stage="phone"] .code-tb-meters, .code-workspace[data-stage="phone"] .cx-step-meter { display: none; }
 
 .code-workspace[data-stage="phone"] .code-tb-break { display: block; order: 4; flex: 0 0 100%; height: 0; }
 
@@ -3470,6 +3714,9 @@ body.has-ability-modal .app-navbar--hidden {
 
 .code-workspace[data-stage="phone"] .code-wire-banner { top: auto; bottom: 66px; }
 
+
+/* The bar floats over the canvas bottom (the side-panel sheet and picker sheets sit above it), and fades out
+   while a chain block is carried so the bottom of the canvas is a drop and auto-scroll area. */
 .code-phone-bar {
   position: absolute; z-index: 15; left: 0; right: 0; bottom: 0; display: flex; height: 56px; align-items: stretch; justify-content: space-around;
   border-top: 1px solid rgba(255, 255, 255, .1); background: #12161a; transition: opacity .12s;
@@ -3524,12 +3771,16 @@ div.code-sheet-row { cursor: default; }
 
 .code-sheet-value { color: #94a3b8; font: 500 14px "Cousine", ui-monospace, monospace; }
 
+
+/* ---- Code workspace fonts: the toolbar and dialogs opt out of ---- */
 .code-tb, .code-tb *,
 .code-zoom-cluster, .code-zoom-cluster * { font-family: "IBM Plex Sans", system-ui, sans-serif !important; }
 
 .code-tb kbd, .code-tb .code-tb-meter-text b, .code-tb .code-tb-chip b,
 .code-zoom-cluster .code-zoom-value { font-family: "Cousine", "Courier New", monospace !important; }
 
+
+/* ---- Variables dialog (ref docs/previews/variables-dialog.html) ---- */
 .code-cv, .code-cv * { font-family: "IBM Plex Sans", system-ui, sans-serif !important; text-transform: none; letter-spacing: 0; box-sizing: border-box; }
 
 .code-cv .code-cv-mono, .code-cv input.code-cv-mono { font-family: "Cousine", "IBM Plex Mono", "Courier New", monospace !important; }
@@ -3663,30 +3914,32 @@ div.code-sheet-row { cursor: default; }
 
 .code-cv-delete:disabled { opacity: .5; cursor: not-allowed; }
 
-@media (max-width: 640px) {
-  .code-cv { width: calc(100vw - 1rem); height: calc(100dvh - 1rem); border-radius: 14px; }
-  .code-cv-body { grid-template-columns: minmax(0, 1fr); }
-  .code-cv-list-pane { border-right: 0; }
-  .code-cv-detail { display: none; }
-  .code-cv[data-screen="detail"] .code-cv-list-pane, .code-cv[data-screen="uses"] .code-cv-list-pane { display: none; }
-  .code-cv[data-screen="detail"] .code-cv-detail, .code-cv[data-screen="uses"] .code-cv-detail { display: block; }
-  .code-cv-row { height: 44px; grid-template-columns: minmax(0, 1fr) auto auto auto; }
-  .code-cv-row-chevron { display: inline; }
-  .code-cv-row-value { display: none; }
-  .code-cv-new { height: 40px; }
-  .code-cv-detail-head { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; color: #e6edf3; font-size: 14px; }
-  .code-cv-back { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #8b98a5; font-size: 22px; cursor: pointer; }
-  .code-cv-field { height: 40px; }
-  .code-cv-input { height: 34px; }
-  .code-cv-segmented button { height: 32px; }
-  .code-cv-input-name { width: 150px; }
-  .code-cv-usedrow { display: flex; height: 40px; width: 100%; align-items: center; justify-content: space-between; cursor: pointer; }
-  .code-cv-usedrow-go { display: inline; }
-  .code-cv[data-screen="detail"] .code-cv-uses { display: none; }
-  .code-cv[data-screen="uses"] .code-cv-field, .code-cv[data-screen="uses"] .code-cv-rule, .code-cv[data-screen="uses"] .code-cv-delete { display: none; }
-  .code-cv[data-screen="uses"] .code-cv-usedrow-go { display: none; }
-  .code-cv-use { height: 40px; }
+
+/* ==== Add-action and add-variable pickers (tool surface: flat, IBM Plex Sans, sentence case) ==== */
+.pk {
+  position: absolute;
+  top: 1rem;
+  left: 5rem;
+  z-index: 40;
+  display: flex;
+  width: 20rem;
+  max-width: calc(100% - 1rem);
+  max-height: min(460px, calc(100% - 1rem));
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  border: 1px solid #262c33;
+  border-radius: 10px;
+  background-color: #111519;
+  color: #e6edf3;
+  font-size: 13px;
 }
+
+
+.pk, .pk * { font-family: "IBM Plex Sans", system-ui, sans-serif !important; }
+
+.pk kbd { font-family: "Cousine", "Courier New", monospace !important; }
+
 
 .pk-search {
   display: flex;
@@ -3699,6 +3952,7 @@ div.code-sheet-row { cursor: default; }
   color: #8b98a5;
 }
 
+
 .pk-search input {
   min-width: 0;
   flex: 1;
@@ -3710,9 +3964,11 @@ div.code-sheet-row { cursor: default; }
   box-shadow: none;
 }
 
+
 .pk-search input::placeholder { color: #6b7886; }
 
 .pk-search:focus-within { color: #5fd4f0; }
+
 
 .pk-chips {
   display: flex;
@@ -3723,6 +3979,7 @@ div.code-sheet-row { cursor: default; }
   padding: .5rem .75rem;
   scrollbar-width: thin;
 }
+
 
 .pk-chip {
   flex: none;
@@ -3737,9 +3994,11 @@ div.code-sheet-row { cursor: default; }
   cursor: pointer;
 }
 
+
 .pk-chip:hover { border-color: #465160; color: #e6edf3; }
 
 .pk-chip.is-active { border-color: #3aa6c9; background-color: rgba(58, 166, 201, .18); color: #5fd4f0; }
+
 
 .pk-list {
   min-height: 0;
@@ -3748,6 +4007,7 @@ div.code-sheet-row { cursor: default; }
   overscroll-behavior: contain;
   padding: .25rem 0;
 }
+
 
 .pk-group-title {
   display: flex;
@@ -3760,7 +4020,9 @@ div.code-sheet-row { cursor: default; }
   font-weight: 400;
 }
 
+
 .pk-group-hint { color: #8b98a5; }
+
 
 .pk-row {
   display: flex;
@@ -3778,13 +4040,16 @@ div.code-sheet-row { cursor: default; }
   cursor: pointer;
 }
 
+
 .pk-row:hover, .pk-row.is-active, .pk-row:focus-visible {
   border-left-color: #3aa6c9;
   background-color: #182027;
   outline: none;
 }
 
+
 .pk-row__text { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+
 
 .pk-row__name {
   overflow: hidden;
@@ -3795,6 +4060,7 @@ div.code-sheet-row { cursor: default; }
   white-space: nowrap;
 }
 
+
 .pk-row__name mark {
   background: transparent;
   color: inherit;
@@ -3802,6 +4068,7 @@ div.code-sheet-row { cursor: default; }
   text-decoration-color: #5fd4f0;
   text-underline-offset: 2px;
 }
+
 
 .pk-row__desc {
   overflow: hidden;
@@ -3811,6 +4078,7 @@ div.code-sheet-row { cursor: default; }
   white-space: nowrap;
 }
 
+
 .pk-tag {
   flex: none;
   border-radius: 4px;
@@ -3819,11 +4087,13 @@ div.code-sheet-row { cursor: default; }
   line-height: 1.5;
 }
 
+
 .pk-tag--number { background-color: rgba(95, 212, 240, .12); color: #7dd8ef; }
 
 .pk-tag--boolean { background-color: rgba(167, 139, 250, .14); color: #c4b5fd; }
 
 .pk-tag--base { background-color: #1e252c; color: #8b98a5; }
+
 
 .pk-icon {
   position: relative;
@@ -3837,11 +4107,14 @@ div.code-sheet-row { cursor: default; }
   background-color: #1a2026;
 }
 
+
 .pk-icon img { position: absolute; inset: 0; width: 100%; height: 100%; padding: 2px; object-fit: contain; }
 
 .pk-icon__text { color: #cbd5e1; font-size: 10px; font-weight: 700; }
 
+
 .pk-empty { margin: 0; padding: .75rem; color: #8b98a5; }
+
 
 .pk-footer {
   display: flex;
@@ -3855,11 +4128,23 @@ div.code-sheet-row { cursor: default; }
   font-size: 12px;
 }
 
+
 .pk-hints { display: inline-flex; align-items: center; gap: .25rem; }
 
 .pk-hints kbd { margin-left: .25rem; }
 
 .pk-hints kbd:first-child { margin-left: 0; }
+
+
+.pk kbd {
+  border: 1px solid #2f363e;
+  border-radius: 4px;
+  padding: 0 .3125rem;
+  color: #9aa7b4;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 
 .pk-footer-button {
   flex: none;
@@ -3873,21 +4158,13 @@ div.code-sheet-row { cursor: default; }
   cursor: pointer;
 }
 
+
 .pk-footer-button:hover { background-color: #182027; color: #e6edf3; }
 
 .pk-footer-button:focus-visible, .pk-chip:focus-visible { outline: 2px solid #5fd4f0; outline-offset: 1px; }
 
-@media (max-width: 639px) {
 
-  .pk-search { height: 3rem; }
-  .pk-search input { font-size: 16px; }
-  .pk-chip { min-height: 2.25rem; padding-inline: .875rem; }
-  .pk-row { min-height: 2.75rem; }
-  .pk-hints { display: none; }
-  .pk-footer { justify-content: flex-end; }
-  .pk-footer-button { min-height: 2.75rem; padding-inline: .75rem; }
-}
-
+/* .code-workspace sets a 2px radius on every button and input; restate ours with more weight. */
 .pk .pk-chip { border-radius: 999px; }
 
 .pk .pk-row { border-radius: 0; }
@@ -3896,10 +4173,8 @@ div.code-sheet-row { cursor: default; }
 
 .pk .pk-search input { border-radius: 0; }
 
-@media (max-width: 639px) {
-  .pk--action .pk-footer { display: none; }
-}
 
+/* Modify custom variable: node summary chip and panel. */
 .code-bt-task .code-action-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .code-va-field { display: grid; gap: 4px; color: #8b98a5; font: 500 11px "IBM Plex Sans", sans-serif; }
@@ -3934,6 +4209,7 @@ div.code-sheet-row { cursor: default; }
 
 .code-va-preview strong { color: #e6edf3; font: 700 12px "Cousine", monospace; }
 
+
 .pk-group.pk-tone--red { --cat-border: var(--pk-red-border); --cat-head: var(--pk-red-head); --cat-text: var(--pk-red-text); }
 
 .pk-group.pk-tone--purple { --cat-border: var(--pk-purple-border); --cat-head: var(--pk-purple-head); --cat-text: var(--pk-purple-text); }
@@ -3950,6 +4226,7 @@ div.code-sheet-row { cursor: default; }
 
 .pk-group.pk-tone--neutral { --cat-border: var(--pk-neutral-border); --cat-head: var(--pk-neutral-head); --cat-text: var(--pk-neutral-text); }
 
+
 .pk-list {
   display: flex;
   flex-direction: column;
@@ -3957,6 +4234,7 @@ div.code-sheet-row { cursor: default; }
   padding: 8px;
   background-color: #0d1114;
 }
+
 
 .pk-group {
   --cat-border: var(--pk-neutral-border);
@@ -3968,6 +4246,8 @@ div.code-sheet-row { cursor: default; }
   background-color: #151b20;
 }
 
+
+/* Headers scroll with their card. Cards do not clip, so round the ends by hand. */
 .pk-group-title {
   padding: .375rem .75rem;
   border-radius: 6px 6px 0 0;
@@ -3980,6 +4260,7 @@ div.code-sheet-row { cursor: default; }
   text-transform: uppercase;
 }
 
+
 .pk-group-hint { color: var(--cat-text); font-weight: 600; letter-spacing: 0; text-transform: none; }
 
 .pk-group .pk-row:last-child { border-radius: 0 0 6px 6px; }
@@ -3988,9 +4269,12 @@ div.code-sheet-row { cursor: default; }
 
 .pk-list .pk-empty { padding: .75rem .25rem; }
 
+
+/* Close button beside the search field. */
 .pk-search { gap: .25rem; padding-right: .25rem; }
 
 .pk-search__field { display: flex; min-width: 0; height: 100%; flex: 1; align-items: center; gap: .5rem; }
+
 
 .pk .pk-close {
   display: grid;
@@ -4007,14 +4291,13 @@ div.code-sheet-row { cursor: default; }
   cursor: pointer;
 }
 
+
 .pk .pk-close:hover { background-color: #182027; color: #e6edf3; }
 
 .pk .pk-close:focus-visible { outline: 2px solid #5fd4f0; outline-offset: 1px; }
 
-@media (max-width: 639px) {
-  .pk .pk-close { width: 2.75rem; height: 2.75rem; }
-}
 
+/* Modify custom variable: compact 32px rows. */
 .code-va-row { grid-template-columns: 44px minmax(0, 1fr) auto 24px; gap: 6px; }
 
 .code-va-row--no-operator { grid-template-columns: minmax(0, 1fr) auto 24px; }
@@ -4035,6 +4318,8 @@ div.code-sheet-row { cursor: default; }
 
 .code-va-row .code-condition-row-remove { height: 32px; }
 
+
+/* Condition row: one 32px control height, and a Num | Var toggle under the right-hand value. */
 .code-inspector-body .code-cond-row select,
 .code-inspector-body .code-cond-row input { height: 32px; }
 
@@ -4044,8 +4329,24 @@ div.code-sheet-row { cursor: default; }
 
 .code-inspector-body .code-cond-row select.code-cond-value-select { height: 32px; }
 
+
+/* Puzzle room: right panel and info card. */
+.puzzle-back-link {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  padding: .25rem 0;
+  color: #8b98a5;
+  font: 500 12px "IBM Plex Sans", system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.puzzle-back-link:hover { color: #e6edf3; }
+
 .puzzle-strip.code-bt-strip { min-height: 0; }
 
+
+/* Puzzle rules workspace: win and lose rule roots and toolbar buttons. */
 .code-tb-title { margin: 0; color: #e6edf3; font-size: 15px; font-weight: 700; white-space: nowrap; }
 
 .code-tb-btn--win { border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .1); color: #86efac; }
@@ -4064,6 +4365,8 @@ div.code-sheet-row { cursor: default; }
 
 .code-bt-root--lose .code-bt-root-label { color: #fca5a5; }
 
+
+/* Walk sprint setting: a ~32px switch row with an info tooltip. */
 .code-sprint-row {
   display: flex;
   min-height: 34px;
@@ -4074,6 +4377,11 @@ div.code-sheet-row { cursor: default; }
 
 .code-sprint-row .hud-switch-row { min-height: 34px; flex: 1 1 auto; }
 
+
+/* Every node is a gray frame (like a border) around the actual node. The pin bars live in the frame's
+   top and bottom strips, flush INSIDE its edges: the input bar's top edge is the frame's top edge and the
+   output bar's bottom edge is the frame's bottom edge, so wires meet the bar centres on those edges. The
+   hit area is at least 24px (34px on touch), kept inside the frame. */
 .code-graph-node.code-bt-node { box-sizing: border-box; padding: 20px 6px; overflow: visible; border: 1px solid #4b5563; border-radius: 6px; background: #2f363d; }
 
 .code-graph-node.code-bt-root { padding-top: 6px; }
@@ -4116,6 +4424,7 @@ div.code-sheet-row { cursor: default; }
 
 .code-bt-core--cond { position: relative; padding-bottom: 6px; }
 
+/* The kind (IF / ELSE IF / ELSE) sits alone on a lighter-blue row with the order badge; conditions are darker rows below. */
 .code-bt-cond-head { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 6px 2px 10px; }
 
 .code-bt-cond-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
@@ -4156,11 +4465,10 @@ div.code-sheet-row { cursor: default; }
 
 .code-wire-banner { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 8px 12px; border: 1px solid #3aa6c9; background: #111519; color: #e6edf3; font-size: 12px; }
 
-@media (pointer: coarse) {
-    .code-pin-bar { height: max(16px, min(calc(34px / var(--code-zoom, 1)), 34%)); }
-    .code-pin-add-condition { min-height: 34px; }
-}
 
+/* Side panels (conditions and actions, both editors): one flat row per setting, label left, control right.
+   No indentation or guide lines. Controls size to their content (truncating at ~200px), numbers are a fixed
+   72px monospace box with the unit outside, segmented controls show only the options that exist. */
 .code-inspector .code-cond-row { gap: 0; }
 
 .code-inspector .code-cond-row .code-inspector-field {
@@ -4186,12 +4494,14 @@ div.code-sheet-row { cursor: default; }
 
 .code-inspector .code-cond-row .code-inspector-field select.code-cond-comparator { min-width: 44px; text-align: center; }
 
+/* Numbers: one fixed width for five digits; the unit is muted text outside the box. */
 .code-inspector .code-cond-row .code-inspector-field input { width: 72px; flex: none; font-family: ui-monospace, "Cousine", monospace !important; text-align: left; }
 
 .code-inspector .ci-number, .code-inspector .code-cond-number { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 
 .code-inspector .code-cond-unit, .code-inspector .code-inspector-field-unit { color: #9ba4ad; font-size: 12px; }
 
+/* Pickers: a button sized to its text, truncated with a tooltip (title). */
 .code-inspector .code-cond-row .code-inspector-field .code-cond-variable {
   display: inline-flex; width: auto; max-width: 200px; min-height: 28px; height: 28px; padding: 0 8px 0 10px; border: 1px solid #262c33;
   border-radius: 5px; background: #0b1015; color: #e6edf3; font-size: 13px; gap: 8px;
@@ -4201,6 +4511,7 @@ div.code-sheet-row { cursor: default; }
 
 .code-inspector .code-cond-change { color: #9ba4ad; }
 
+/* Segmented: only the available options, each as wide as its text. */
 .code-inspector .code-cond-row .code-segmented, .code-inspector .code-cond-row .code-va-segmented {
   display: inline-flex; margin: 0 0 0 auto; border: 1px solid #262c33; border-radius: 5px; overflow: hidden; background: transparent;
 }
@@ -4213,6 +4524,7 @@ div.code-sheet-row { cursor: default; }
 
 .code-inspector .code-cond-row .code-segmented button.is-active, .code-inspector .code-cond-row .code-va-segmented button.is-active { background: #1f3a44; color: #e6edf3; }
 
+/* Hairlines around Compare; ⓘ sits inline right after its label. */
 .code-inspector .ci-sep { height: 0; margin: 6px 0; border-top: 1px solid #262c33; }
 
 .code-inspector .ci-sub { margin: 0; padding: 0; border: 0; }
@@ -4226,16 +4538,22 @@ div.code-sheet-row { cursor: default; }
   background: #0d1218; color: #cbd5e1; font: 400 12px/1.45 "IBM Plex Sans", system-ui, sans-serif; white-space: normal; box-shadow: 0 8px 20px #0008;
 }
 
+/* Kind / category label: yellow, sentence-weight, not a tiny letter-spaced tag. */
 .code-inspector .code-inspector-header div > span {
   color: #facc15; font: 700 11px/1.2 "IBM Plex Sans", system-ui, sans-serif !important; letter-spacing: .02em; text-transform: none;
 }
 
 .code-inspector .code-inspector-header h2 { margin-top: 3px; font: 600 14px/1.25 "IBM Plex Sans", system-ui, sans-serif !important; }
 
+/* Remove: a quiet red text button, not a boxed bar. */
+
+/* ⓘ popovers stay inside the panel: right-aligned when the hint sits at the end of a row. */
 .code-inspector .code-info-hint-text { max-width: min(220px, calc(100vw - 48px)); }
 
 .code-inspector .code-inspector-field > .code-info-hint .code-info-hint-text { right: 0; left: auto; }
 
+
+/* Action node anatomy (main brain and chains): 1 yellow label + x, 2 name on a darker green, 3 settings (only if any). */
 .code-bt-task-core.code-an { padding: 0; overflow: hidden; background: #31583a; border-color: #72b65d; }
 
 .code-an-r1 { position: relative; display: flex; align-items: center; gap: 8px; min-height: 24px; padding: 0 28px 0 10px; }
@@ -4250,27 +4568,35 @@ div.code-sheet-row { cursor: default; }
 
 .code-an-r3 { padding: 5px 10px; background: #1c3823; color: #cfe9c6; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 
+/* "+ Condition" in the main brain: a small dashed button sized to its text, left-aligned under the rows. */
 .code-bt-core--cond .code-pin-add-condition, .code-pin-add-condition {
   display: inline-block; width: auto; min-height: 0; margin: 0 0 0 6px; padding: 1px 8px; border: 1px dashed rgba(125, 211, 252, .7); border-radius: 2px;
   background: transparent; color: #bfe3f2; font-size: 12px; text-align: left; cursor: pointer;
 }
 
+
+/* Trash icons on nodes and in config: icon only, no words. */
 .code-bt-x .code-trash-icon { display: block; }
 
-.cx-trash { display: inline-grid; width: 30px; height: 30px; place-items: center; padding: 0; }
-
+/* x on a single condition row: sits in the gap right of the text. */
 .code-bt-cond-row { position: relative; padding-right: 26px; }
 
 .code-bt-row-x { position: absolute; top: 3px; right: 4px; }
 
 .code-bt-cond-row:hover .code-bt-row-x { opacity: 1; }
 
+/* "+ Condition" lights up on hover, like the other dashed buttons. */
 .code-bt-core--cond .code-pin-add-condition:hover:not(:disabled), .code-pin-add-condition:hover:not(:disabled) { background: rgba(255, 255, 255, .1); border-color: #bfe3f2; color: #fff; }
 
+/* Floating canvas controls stay under the config panel (z 35). */
 .code-zoom-cluster { z-index: 30; }
 
+
+/* An unselected root shows its name as text so the press drags the node (the input appears once selected). */
 .code-bt-root .code-root-name--static { display: flex; align-items: center; overflow: hidden; white-space: nowrap; cursor: grab; }
 
+
+/* Target picker: each control is its own labeled row (the panel's row rhythm); this styles the Number stepper and the note. */
 .code-inspector .code-cond-row .code-inspector-field .ts-stepper { display: inline-flex; align-items: stretch; height: 28px; margin-left: auto; border: 1px solid #262c33; border-radius: 5px; overflow: hidden; background: #0b1015; }
 
 .code-inspector .code-cond-row .code-inspector-field .ts-stepper button { width: 28px; border: 0; background: transparent; color: #9ba4ad; font: 400 14px/1 "IBM Plex Sans", system-ui, sans-serif; cursor: pointer; }
@@ -4287,6 +4613,41 @@ div.code-sheet-row { cursor: default; }
 
 .code-inspector .code-cond-settings .code-selectable-picker-note { max-width: 100%; margin: 0; color: #8b98a5; font: 400 12px/1.4 "IBM Plex Sans", system-ui, sans-serif; text-align: right; }
 
+
+/* Dropdown (MenuSelect): the panel's input shape, with a compact menu and a check on the current choice. */
+.ms-trigger { display: inline-flex; align-items: center; gap: 8px; min-width: 120px; max-width: 100%; height: 28px; padding: 0 10px; border: 1px solid #262c33; border-radius: 5px; background: #0b1015; color: #e6edf3; font: 500 13px "IBM Plex Sans", system-ui, sans-serif; text-align: left; cursor: pointer; }
+
+.ms-trigger:hover:not(:disabled) { border-color: #4a5a68; }
+
+.ms-trigger.is-open, .ms-trigger:focus-visible { border-color: #5fd4f0; outline: 0; }
+
+.ms-trigger:disabled { opacity: .5; cursor: not-allowed; }
+
+.ms-prefix { flex: none; color: #8b98a5; }
+
+.ms-value { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ms-caret { flex: none; color: #8b98a5; font-size: 10px; }
+
+.ms-menu { position: fixed; z-index: 1200; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid #262c33; border-radius: 10px; background: #12171b; box-shadow: 0 6px 18px #0009; color: #cbd5e1; font: 400 13px "IBM Plex Sans", system-ui, sans-serif; }
+
+.ms-group { padding: 8px 8px 4px; color: #8b98a5; font-size: 11px; }
+
+.ms-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 30px; padding: 0 8px; border-radius: 6px; cursor: pointer; }
+
+.ms-item.is-active { background: rgba(255, 255, 255, .06); color: #fff; }
+
+.ms-item.is-selected { color: #5fd4f0; }
+
+.ms-item.is-disabled { opacity: .45; cursor: not-allowed; }
+
+.ms-check { font-size: 11px; text-align: center; }
+
+.ms-hint { color: #8b98a5; font-size: 11px; }
+
+
+/* One control shape for every config menu: the variable button is the standard (28px, 6px radius, quiet fill and hairline).
+   Dropdowns, number boxes, the entity picker, steppers, segmented toggles and variable-action inputs all follow it. */
 .code-inspector {
   --ctl-h: 28px; --ctl-radius: 5px; --ctl-bg: #0b1015; --ctl-border: #262c33; --ctl-border-hover: #3a4550; --ctl-text: #e6edf3;
 }
@@ -4320,6 +4681,12 @@ div.code-sheet-row { cursor: default; }
 
 .code-inspector.code-inspector .ts-stepper input { height: 100%; min-height: 0; border: 0; border-radius: 0; background: transparent; font: 400 13px "Cousine", monospace; }
 
+.ms-menu { border-radius: 8px; }
+
+.ms-item { border-radius: 5px; }
+
+
+/* "Used by" in an action's panel: the parents of a shared action, styled like "Used in" in the variables dialog. */
 .code-usedby { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; padding-top: 8px; border-top: 1px solid #262c33; }
 
 .code-usedby-title { height: 28px; display: flex; align-items: center; color: #8b98a5; font-size: 13px; }
@@ -4334,10 +4701,145 @@ div.code-sheet-row { cursor: default; }
 
 .code-usedby-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+
+@media (max-width: 1280px) {
+
+  .code-workspace .code-tab {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+}
+
+
+@media (max-width: 900px) {
+  .code-toolbar-icon {
+    font-size: 13px;
+  }
+
+  .code-inspector {
+    width: min(440px, 80vw);
+  }
+}
+
+
+@media (max-width: 600px) {
+  .code-history-rail {
+    width: 44px;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .code-workspace .code-history-button {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+
+  .code-inspector,
+  .code-inspector--secondary {
+    inset: auto 0 0 0;
+    right: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 78%;
+    overflow: hidden;
+    border-right: 0;
+    border-left: 0;
+    border-top: 1px solid rgba(71, 85, 105, .95);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, .5);
+  }
+
+  .code-inspector::before,
+  .code-inspector--secondary::before {
+    content: "";
+    display: block;
+    flex: none;
+    width: 36px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 2px;
+    background: rgba(148, 163, 184, .55);
+  }
+
+  .code-inspector-header {
+    min-height: 64px;
+    padding: 10px 12px;
+  }
+
+  .code-inspector-body {
+    padding: 12px;
+  }
+
+  .code-custom-variables-overlay {
+    align-items: center;
+    padding: .5rem;
+  }
+
+  /* Keep graph and inspector typography proportional to the compact canvas.
+     These controls intentionally opt out of mobile browser focus enlargement. */
+  .code-workspace input,
+  .code-workspace select,
+  .code-workspace textarea {
+    font-size: clamp(9px, 2.7vw, 11px) !important;
+    line-height: 1.2;
+  }
+}
+
+@media (pointer: coarse) {
+  .code-bt-x { opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  .code-workspace:not([data-stage]) .code-tb { gap: 10px; padding: 0 10px; }
+  .code-workspace:not([data-stage]) .code-tb-meters { display: none; }
+  .code-workspace:not([data-stage]) .code-tb-chips { display: flex; }
+  .code-workspace:not([data-stage]) .code-tb-label { display: none; }
+  .code-workspace:not([data-stage]) .code-tb-btn:not(.is-primary) { padding: 0 9px; }
+  .code-workspace:not([data-stage]) .code-tb-search { min-width: 150px; }
+}
+
+@media (max-width: 640px) {
+  .code-cv { width: calc(100vw - 1rem); height: calc(100dvh - 1rem); border-radius: 14px; }
+  .code-cv-body { grid-template-columns: minmax(0, 1fr); }
+  .code-cv-list-pane { border-right: 0; }
+  .code-cv-detail { display: none; }
+  .code-cv[data-screen="detail"] .code-cv-list-pane, .code-cv[data-screen="uses"] .code-cv-list-pane { display: none; }
+  .code-cv[data-screen="detail"] .code-cv-detail, .code-cv[data-screen="uses"] .code-cv-detail { display: block; }
+  .code-cv-row { height: 44px; grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .code-cv-row-chevron { display: inline; }
+  .code-cv-row-value { display: none; }
+  .code-cv-new { height: 40px; }
+  .code-cv-detail-head { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; color: #e6edf3; font-size: 14px; }
+  .code-cv-back { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #8b98a5; font-size: 22px; cursor: pointer; }
+  .code-cv-field { height: 40px; }
+  .code-cv-input { height: 34px; }
+  .code-cv-segmented button { height: 32px; }
+  .code-cv-input-name { width: 150px; }
+  .code-cv-usedrow { display: flex; height: 40px; width: 100%; align-items: center; justify-content: space-between; cursor: pointer; }
+  .code-cv-usedrow-go { display: inline; }
+  .code-cv[data-screen="detail"] .code-cv-uses { display: none; }
+  .code-cv[data-screen="uses"] .code-cv-field, .code-cv[data-screen="uses"] .code-cv-rule, .code-cv[data-screen="uses"] .code-cv-delete { display: none; }
+  .code-cv[data-screen="uses"] .code-cv-usedrow-go { display: none; }
+  .code-cv-use { height: 40px; }
+}
+
+
+@media (max-width: 639px) {
+  .pk--action .pk-footer { display: none; }
+}
+
+
+@media (max-width: 639px) {
+  .pk .pk-close { width: 2.75rem; height: 2.75rem; }
+}
+
+@media (pointer: coarse) {
+    .code-pin-bar { height: max(16px, min(calc(34px / var(--code-zoom, 1)), 34%)); }
+    .code-pin-add-condition { min-height: 34px; }
+}
+
+@media (pointer: coarse) { .ms-trigger { height: 34px; } .ms-item { min-height: 38px; } }
+
 @media (max-width: 639px) { .code-usedby-title, .code-usedby-item { height: 40px; } }
-
-/* Hint on a root that has no children yet. */
-.code-root-hint { position: absolute; z-index: 1; pointer-events: none; color: #8b98a5; font-size: 11px; white-space: nowrap; }
-
-/* Order buttons in a condition or action panel footer. */
-.cx-order-group { display: inline-flex; align-items: center; gap: 8px; }

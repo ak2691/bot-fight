@@ -185,6 +185,36 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void unconnectedNodesNeverChangeTheSimulation() throws Exception {
+        String roots = """
+                [{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1}],"children":[]}]}]
+                """;
+        JsonNode plainBrain = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","loadout":{"abilities":[1]},"roots":%s}
+                """.formatted(roots));
+        JsonNode orphanBrain = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","loadout":{"abilities":[1]},"roots":%s,
+                 "orphans":[
+                   {"id":"loose-act","kind":"action","action":1},
+                   {"id":"loose-cond","kind":"conditional","branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":20}],"children":[]}
+                 ]}
+                """.formatted(roots));
+        JsonNode idleBrain = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","loadout":{"abilities":[]},"roots":[]}
+                """);
+        DuelArenaRequest arena = new DuelArenaRequest(1000, 1000, 10_000);
+
+        MatchPlaybackDTO plain = service.simulate(request(arena,
+                bot("bot-1", "One", 1, 480, 500, "custom", plainBrain),
+                bot("bot-2", "Two", 2, 520, 500, "custom", idleBrain)));
+        MatchPlaybackDTO withOrphans = service.simulate(request(arena,
+                bot("bot-1", "One", 1, 480, 500, "custom", orphanBrain),
+                bot("bot-2", "Two", 2, 520, 500, "custom", idleBrain)));
+
+        assertThat(withOrphans).usingRecursiveComparison().isEqualTo(plain);
+    }
+
+    @Test
     void canonicalTreePrioritiesOrderRootsAndConditionalSiblings() throws Exception {
         JsonNode canonicalBrain = jsonMapper.readTree("""
                 {

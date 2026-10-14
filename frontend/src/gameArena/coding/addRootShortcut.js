@@ -37,7 +37,7 @@ export function isAddRootShortcutKeydown(event, shortcut) {
 // Workspace shortcuts: one letter or number each, saved on this browser. No two actions share a key.
 export const WORKSPACE_SHORTCUTS = Object.freeze({
     addRoot: { storageKey: ADD_ROOT_SHORTCUT_STORAGE_KEY, fallback: DEFAULT_ADD_ROOT_SHORTCUT, label: "Add root key", hint: "Adds a root when nothing is selected in the code workspace." },
-    addNode: { storageKey: "botfight.workspace.addNodeShortcut", fallback: "f", label: "Add node key", hint: "Adds a node under the selected root or conditional." },
+    addNode: { storageKey: "botfight.workspace.addNodeShortcut", fallback: "f", label: "Add node key", hint: "Opens the node menu in the code workspace." },
     search: { storageKey: "botfight.workspace.searchShortcut", fallback: "s", label: "Search key", hint: "Opens the root search, even when the code workspace is closed." },
 });
 

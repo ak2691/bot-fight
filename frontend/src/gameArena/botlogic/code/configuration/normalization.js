@@ -5,6 +5,7 @@ import {
     coordinateVersionFor,
 } from "./constants.js";
 import { uniquePrioritiesForNodes } from "./identifiers.js";
+import { normalizeOrphans } from "./rootNormalizer.js";
 import { NODE_POSITIONS_FIELD, normalizeNodePositions } from "./nodePositions.js";
 
 export function normalizeConfiguration(configuration, operations) {
@@ -16,10 +17,13 @@ export function normalizeConfiguration(configuration, operations) {
     const priorities = uniquePrioritiesForNodes(boundedRoots);
     const roots = boundedRoots
         .map((root, rootIndex) => operations.normalizeRoot(root, rootIndex, remaining, customVariables, priorities[rootIndex], coordinateVersion));
+    // Connected roots take the budget first; unconnected nodes get what is left and are never run.
+    const orphans = normalizeOrphans(configuration?.orphans, remaining, customVariables, operations, coordinateVersion);
     return {
         version: coordinateVersion,
         roots,
         customVariables,
+        ...(orphans.length ? { orphans } : {}),
         ...(Object.prototype.hasOwnProperty.call(configuration ?? {}, NODE_POSITIONS_FIELD)
             ? { [NODE_POSITIONS_FIELD]: remapNodePositions(configuration?.[NODE_POSITIONS_FIELD], sourceRoots, roots) }
             : {}),

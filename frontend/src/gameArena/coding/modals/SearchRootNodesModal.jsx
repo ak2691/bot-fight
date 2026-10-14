@@ -68,10 +68,10 @@ export default function SearchRootNodesModal({
         return !normalizedQuery
             || `${name} ${label} ${priorityLabel} root-${priority} ${priority}`.toLocaleLowerCase().includes(normalizedQuery);
     });
+    // Keyboard navigation and Enter work on the list of roots.
     const matchingItems = matchingNodes;
     // Short lists are read at a glance, so the filter box only appears once there is something to filter.
-    const itemCount = roots.length;
-    const showFilter = itemCount > FILTER_MIN_ITEMS || query !== "";
+    const showFilter = roots.length > FILTER_MIN_ITEMS || query !== "";
     // Without the filter box the arrow keys start on the first row.
     useEffect(() => {
         if (showFilter || !matchingItems.length) return;
@@ -179,7 +179,7 @@ export default function SearchRootNodesModal({
     };
     return <aside ref={dialogRef} onWheel={(event) => event.stopPropagation()} style={popoverStyle} className={`code-rs ${quick ? "code-rs--quick" : ""}`} role="dialog" aria-modal="true" aria-label="Roots">
         <div className="code-rs-top">
-            {showFilter ? <label className="code-rs-search"><SearchGlyph /><span className="sr-only">Filter roots</span><input ref={searchInputRef} aria-label="Filter roots" name="root-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); setMenuRowId(null); optionRefs.current = []; }} onKeyDown={moveFromSearch} placeholder="Filter roots" autoComplete="off" /><kbd className="code-rs-kbd">{readWorkspaceShortcut("search").toUpperCase()}</kbd></label> : <strong className="code-rs-title">"Roots"</strong>}
+            {showFilter ? <label className="code-rs-search"><SearchGlyph /><span className="sr-only">Filter roots</span><input ref={searchInputRef} aria-label="Filter roots" name="root-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); setMenuRowId(null); optionRefs.current = []; }} onKeyDown={moveFromSearch} placeholder="Filter roots" autoComplete="off" /><kbd className="code-rs-kbd">{readWorkspaceShortcut("search").toUpperCase()}</kbd></label> : <strong className="code-rs-title">Roots</strong>}
             <button type="button" className="code-rs-cancel" onClick={onClose}>Cancel</button>
         </div>
         <div className="code-rs-results" role="list">{drag && drag.lineY != null && <div className="code-rs-drop-line" style={{ top: drag.lineY }} />}{drag && <div className="code-rs-ghost" style={{ top: drag.top, left: drag.left, width: drag.width, height: drag.height }}>{drag.label}</div>}{matchingNodes.length ? matchingNodes.map((node, index) => {

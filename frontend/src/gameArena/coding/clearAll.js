@@ -4,6 +4,7 @@ const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one :
 export function clearAllCounts(configuration) {
     return {
         roots: configuration?.roots?.length ?? 0,
+        unconnected: configuration?.orphans?.length ?? 0,
         variables: configuration?.customVariables?.length ?? 0,
     };
 }
@@ -11,6 +12,7 @@ export function clearAllCounts(configuration) {
 export function clearAllMessage(counts) {
     const parts = [
         counts.roots && plural(counts.roots, "root"),
+        counts.unconnected && plural(counts.unconnected, "unconnected node"),
         counts.variables && plural(counts.variables, "variable"),
     ].filter(Boolean);
     if (!parts.length) return "";
@@ -18,8 +20,8 @@ export function clearAllMessage(counts) {
     return `Delete ${list}?`;
 }
 
-// Roots (with everything under them), variables and node positions all go in one edit,
+// Roots, unconnected nodes, variables and node positions all go in one edit,
 // so a single undo restores everything.
 export function clearedConfiguration(configuration) {
-    return { ...configuration, roots: [], customVariables: [], nodePositions: {} };
+    return { ...configuration, roots: [], orphans: [], customVariables: [], nodePositions: {} };
 }

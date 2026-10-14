@@ -1,15 +1,12 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-    ACTION_TYPES,
     createExpressionCondition,
     defaultSelectableForVariable,
-    MAX_LOGIC_BLOCKS,
-    MAX_TOTAL_CONDITIONS,
-    MAX_CONDITIONS_PER_BRANCH,
     normalizeRoots,
     removeLogicBranch,
     setLogicRootPriority as setRootPriority,
 } from "../botlogic/code/BotCode.js";
+import { MAX_LOGIC_BLOCKS, MAX_TOTAL_CONDITIONS } from "../botlogic/code/configuration/constants.js";
 import {
     applyPositionOrder,
     groupKeyForNode,
@@ -48,19 +45,16 @@ import {
     newTreeBranch,
     nextBranchPriority,
 } from "./nodes/GraphNodes.jsx";
-import { attachNewNode, attachTargetFor, newActionEntry, wireBlockReason, wireNodes } from "./treeWiring.js";
-import { actionTypesForLoadout } from "../gameconfig/CombatLoadouts.js";
-import { tapOpensPanel } from "./selectionRules.js";
-import { freeSlotX, newRootSlot } from "./placement.js";
+import { brainFromEditorRoots, editorRootsFor, wireBlockReason, wireNodes, disconnectNode, removeRootKeepingChildren } from "./treeWiring.js";
+import { carryPositions, topLeftForCenter } from "./nodePlacement.js";
 import { graphEdgePath } from "./graphEdgeGeometry.js";
 import { actionOperandValueType, withActionOperand, withActionOperandVariable } from "./nodes/actionOperandEdits.js";
-import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "../botlogic/graph/CodeEditorGraph.js";
-import { coordinateVersionFor } from "../botlogic/code/configuration/constants.js";
 import {
     nodePositionsForGraph,
-    offsetsForGraphPositions,
+    normalizeNodePositions,
 } from "../botlogic/code/configuration/nodePositions.js";
 import { isAddRootShortcutKeydown, readAddRootShortcut, readWorkspaceShortcut } from "./addRootShortcut.js";
+import { createEditorNodeId } from "../botlogic/code/configuration/identifiers.js";
 
 const LOGIC_CANVAS_WIDTH = 10000;
 const LOGIC_CANVAS_HEIGHT = 6000;
@@ -70,12 +64,6 @@ const GRAPH_SIBLING_GAP = 72;
 const LOGIC_MIN_ZOOM = 0.25;
 const LOGIC_MAX_ZOOM = 1.35;
 
-// A node's canvas rectangle, including its dragged offset.
-function liveRect(node, offsets) {
-    const offset = offsets[node.id] ?? { x: 0, y: 0 };
-    return { x: node.x + offset.x, y: node.y + offset.y, width: node.width, height: node.height };
-}
-
 function graphNodesForGraph(graph) {
     return [
         ...graph.roots,
@@ -84,6 +72,17 @@ function graphNodesForGraph(graph) {
         ...graph.variables,
         ...graph.targets,
     ];
+}
+
+// The offset that puts a node's top-left at `absolute`, kept on the canvas.
+function offsetForAbsolute(node, absolute) {
+    const x = clamp(Number(absolute.x), 0, LOGIC_CANVAS_WIDTH - node.width);
+    const y = clamp(Number(absolute.y), 0, LOGIC_CANVAS_HEIGHT - (node.height ?? 0));
+    return { x: x - node.x, y: y - node.y };
+}
+
+function offsetsForAbsolutePositions(nodes, positions) {
+    return Object.fromEntries(nodes.map((node) => [node.id, offsetForAbsolute(node, positions[node.id] ?? { x: node.x, y: node.y })]));
 }
 
 function sameGraphPath(first, second) {
@@ -163,6 +162,9 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     const [frameGeometry, setFrameGeometry] = useState({});
     const [nodeOffsets, setNodeOffsets] = useState({});
     const nodeOffsetsRef = useRef({});
+    // The graph the offsets belong to, and the configuration this board last emitted.
+    const placedRef = useRef(null);
+    const emittedConfigurationRef = useRef(null);
     const [nodePicker, setNodePicker] = useState(null);
     const [inspectedNode, setInspectedNode] = useState(null);
     const [selectedNodeIds, setSelectedNodeIds] = useState([]);
@@ -183,8 +185,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         onSearchCloseRef.current = onSearchClose;
         onCloseExternalConfigurationRef.current = onCloseExternalConfiguration;
     }, [onCloseExternalConfiguration, onSearchClose]);
-    const roots = useMemo(() => normalizeRoots(configuration.roots ?? []), [configuration]);
-    const coordinateVersion = coordinateVersionFor(configuration);
+    const roots = useMemo(() => normalizeRoots(editorRootsFor(configuration)), [configuration]);
     const graphActionCount = countActions(configuration);
     const graphConditionCount = countLogicConditions(configuration);
     const graph = useMemo(() => buildLogicGraph(roots, stateVariables, selectedLoadout, selectableTypes, configuration.customVariables), [configuration.customVariables, roots, selectedLoadout, stateVariables, selectableTypes]);
@@ -225,17 +226,21 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         nodeOffsetsRef.current = next;
         setNodeOffsets(next);
     }, []);
+    // Node positions are absolute. A structure change keeps every surviving node where it was (nodePlacement.js).
+    // A configuration this board did not emit (undo, redo, a reload) is placed the same way; a reload with no
+    // earlier placement takes the saved positions.
     useEffect(() => {
-        const savedOffsets = offsetsForGraphPositions(graphNodes, configuration?.nodePositions);
-        setNodeOffsets((current) => {
-            const next = Object.fromEntries(graphNodes.map((node) => [
-                node.id,
-                savedOffsets[node.id] ?? current[node.id] ?? { x: 0, y: 0 },
-            ]));
-            nodeOffsetsRef.current = next;
-            return next;
-        });
-    }, [configuration?.nodePositions, graphNodes]);
+        if (configuration === emittedConfigurationRef.current) return;
+        const previous = placedRef.current;
+        const saved = normalizeNodePositions(configuration?.nodePositions);
+        const carried = previous
+            ? carryPositions({ nodes: previous.nodes, roots: previous.roots, positions: nodePositionsForGraph(previous.nodes, nodeOffsetsRef.current) }, { nodes: graphNodes, roots })
+            : {};
+        const next = Object.fromEntries(graphNodes.map((node) => [node.id, offsetForAbsolute(node, carried[node.id] ?? saved[node.id] ?? { x: node.x, y: node.y })]));
+        placedRef.current = { nodes: graphNodes, roots };
+        nodeOffsetsRef.current = next;
+        setNodeOffsets(next);
+    }, [configuration, graphNodes, roots]);
     useEffect(() => {
         const savedPositions = configuration?.nodePositions;
         const hasAllPositions = graphNodes.length > 0 && graphNodes.every((node) => {
@@ -327,11 +332,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             return current.includes(nodeId) ? current : [...current, nodeId];
         });
         // Clicking the node whose panel is already open keeps it open; only clicking something else closes it.
-        if (!additive) {
-            const alreadySelected = selectedNodeIds.length === 1 && selectedNodeIds[0] === nodeId;
-            if (tapOpensPanel({ isAction: graphNodeById.get(nodeId)?.actionIndex != null, alreadySelected })) setInspectedNode({ kind: "action", id: nodeId });
-            else setInspectedNode((current) => (current?.id === nodeId ? current : null));
-        }
+        if (!additive) setInspectedNode((current) => (current?.id === nodeId ? current : null));
         setOperandPicker(null);
         setActionOperandInspector(null);
         setNodePicker(null);
@@ -349,8 +350,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         setActionOperandInspector(null);
         setNodePicker(null);
         // A click only selects; a double-click, Enter / E, the right-click menu (or a phone's second tap) opens it.
-        const opens = open || tapOpensPanel({ onRow: true, alreadySelected: selectedNodeIds.length === 1 && selectedNodeIds[0] === node.id });
-        if (!opens) { setSelectedRow({ id: node.id, rowIndex }); setInspectedNode(null); return; }
+        if (!open) { setSelectedRow({ id: node.id, rowIndex }); setInspectedNode(null); return; }
         setInspectedNode({ kind: "condition-row", id: node.id, rowIndex });
     };
     const editNode = (node, rowIndex = node && selectedRow?.id === node.id ? selectedRow.rowIndex : 0) => {
@@ -365,42 +365,28 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     };
     const canEditNode = (node) => Boolean(node) && (node.actionIndex != null
         || (node.path && Boolean(treeBranchAt(roots[node.rootIndex]?.branches, node.path)?.conditions?.length)));
+    // The one place a structure change is committed. Surviving nodes keep their absolute positions; the overrides
+    // place new nodes. The emitted configuration stores every node's absolute position.
     const commitConfiguration = (nextConfiguration, preserveGraphPositions = true, positionOverrides = {}) => {
         const clean = { ...nextConfiguration, roots: nextConfiguration.roots === configuration.roots ? roots : nextConfiguration.roots };
-        if (Array.isArray(clean.roots)) clean.roots = normalizeRoots(clean.roots);
-        if (clean.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION) clean.editorGraph = sanitizeCodeEditorGraph(clean.editorGraph);
         if (Array.isArray(clean.roots)) {
+            clean.roots = normalizeRoots(clean.roots);
             const nextGraph = buildLogicGraph(clean.roots, stateVariables, selectedLoadout, selectableTypes, configuration.customVariables);
-            const nextGraphNodes = graphNodesForGraph(nextGraph);
-            const currentPositions = nodePositionsForGraph(graphNodes, nodeOffsetsRef.current);
-            const savedOffsets = offsetsForGraphPositions(nextGraphNodes, clean.nodePositions ?? currentPositions);
-            let nextOffsets = Object.fromEntries(nextGraphNodes.map((node) => [
-                node.id,
-                savedOffsets[node.id] ?? nodeOffsetsRef.current[node.id] ?? { x: 0, y: 0 },
-            ]));
-            if (preserveGraphPositions) {
-                nextGraphNodes.forEach((node) => {
-                    const previousNode = graphNodes.find((previous) => node.path && previous.path && previous.branchId === node.branchId && previous.actionIndex === node.actionIndex);
-                    const previousPosition = currentPositions[node.id] ?? (previousNode ? currentPositions[previousNode.id] : null);
-                    if (!previousPosition) return;
-                    nextOffsets[node.id] = {
-                        x: clamp(previousPosition.x - node.x, -node.x, canvasWidth - node.x - node.width),
-                        y: clamp(previousPosition.y - node.y, -node.y, canvasHeight - node.y - node.height),
-                    };
-                });
-            }
+            const nextNodes = graphNodesForGraph(nextGraph);
+            const previous = placedRef.current ?? { nodes: graphNodes, roots };
+            const previousState = { nodes: previous.nodes, roots: previous.roots, positions: nodePositionsForGraph(previous.nodes, nodeOffsetsRef.current) };
+            const positions = preserveGraphPositions ? carryPositions(previousState, { nodes: nextNodes, roots: clean.roots }) : {};
             Object.entries(positionOverrides).forEach(([nodeId, position]) => {
-                const node = nextGraphNodes.find((candidate) => candidate.id === nodeId);
-                if (!node || !Number.isFinite(Number(position?.x)) || !Number.isFinite(Number(position?.y))) return;
-                nextOffsets[nodeId] = {
-                    x: clamp(Number(position.x) - node.x, -node.x, canvasWidth - node.x - node.width),
-                    y: clamp(Number(position.y) - node.y, -node.y, canvasHeight - node.y - node.height),
-                };
+                if (Number.isFinite(Number(position?.x)) && Number.isFinite(Number(position?.y))) positions[nodeId] = { x: Number(position.x), y: Number(position.y) };
             });
+            const nextOffsets = offsetsForAbsolutePositions(nextNodes, positions);
+            placedRef.current = { nodes: nextNodes, roots: clean.roots };
             updateNodeOffsets(nextOffsets);
-            clean.nodePositions = nodePositionsForGraph(nextGraphNodes, nextOffsets);
+            clean.nodePositions = nodePositionsForGraph(nextNodes, nextOffsets);
         }
-        onChange(clean);
+        const emitted = brainFromEditorRoots(clean, clean.roots);
+        emittedConfigurationRef.current = emitted;
+        onChange(emitted);
     };
 const clampPan = (nextPan, nextZoom = zoom) => {
         const rect = viewportRef.current?.getBoundingClientRect();
@@ -453,16 +439,17 @@ const clampPan = (nextPan, nextZoom = zoom) => {
     const tidyLayout = () => {
         if (disabled) return;
         const sortedRoots = normalizeRoots(sortTreeByPriority(roots));
-        const nextGraph = buildLogicGraph(sortedRoots, stateVariables, selectedLoadout, selectableTypes, configuration.customVariables);
-        const nextNodes = graphNodesForGraph(nextGraph);
-        commitConfiguration({ ...configuration, roots: sortedRoots, nodePositions: nodePositionsForGraph(nextNodes, {}) }, false);
+        const nextNodes = graphNodesForGraph(buildLogicGraph(sortedRoots, stateVariables, selectedLoadout, selectableTypes, configuration.customVariables));
+        commitConfiguration({ ...configuration, roots: sortedRoots }, false);
         fitNodesInView(nextNodes, {});
     };
     useImperativeHandle(ref, () => ({
+        addNode() { openNodePicker({ unconnected: true }); },
+        addConditional() { createUnconnectedNode(); },
         tidy() { tidyLayout(); },
-        addNode() { openAttachPicker(null); },
         // The phone bottom bar's commands for the one selected node.
         editSelection() { editNode(graphNodes.find((candidate) => candidate.id === selectedNodeIds[0])); },
+        disconnectSelection() { disconnectIfWired(graphNodes.find((candidate) => candidate.id === selectedNodeIds[0])); },
         nudgeSelection(delta) {
             const node = graphNodes.find((candidate) => candidate.id === selectedNodeIds[0]);
             if (node) orderProps(node).onNudge?.(delta);
@@ -487,37 +474,22 @@ const clampPan = (nextPan, nextZoom = zoom) => {
             return true;
         },
         cancelWire() { if (!armedWire) return false; setArmedWire(null); return true; },
+        // "Add root" puts the new root's centre on the centre of the visible canvas. Everything else keeps its place.
         placeRootAtCenter(nextRoots, rootIndex) {
-            const nextGraph = buildLogicGraph(normalizeRoots(nextRoots), stateVariables, selectedLoadout, selectableTypes, configuration.customVariables);
+            const rect = viewportRef.current?.getBoundingClientRect();
+            const nextEditorRoots = normalizeRoots(editorRootsFor({ ...configuration, roots: nextRoots }));
+            const nextGraph = buildLogicGraph(nextEditorRoots, stateVariables, selectedLoadout, selectableTypes, configuration.customVariables);
             const rootNode = nextGraph.roots.find((node) => node.rootIndex === rootIndex);
-            if (!rootNode) return null;
-            // Right of the rightmost existing root, on the first root's top (the canvas origin when there are none).
-            const slot = newRootSlot(graph.roots.filter((node) => node.rootIndex < rootIndex).map((node) => liveRect(node, nodeOffsetsRef.current)));
-            const delta = { x: slot.x - rootNode.x, y: slot.y - rootNode.y };
-            const treeNodes = [...nextGraph.roots, ...nextGraph.conditions, ...nextGraph.actions, ...nextGraph.variables, ...nextGraph.targets]
-                .filter((node) => node.rootIndex === rootNode.rootIndex);
-            // The new root shifts the base layout of everything after it; re-derive the other offsets so every
-            // existing node keeps its place on the canvas.
-            const keptOffsets = offsetsForGraphPositions(
-                [...nextGraph.roots, ...nextGraph.conditions, ...nextGraph.actions, ...nextGraph.variables, ...nextGraph.targets],
-                nodePositionsForGraph(graphNodes, nodeOffsetsRef.current),
+            if (!rect || !rootNode) return null;
+            const center = { x: (rect.width / 2 - pan.x) / zoom, y: (rect.height / 2 - pan.y) / zoom };
+            const nextNodes = graphNodesForGraph(nextGraph);
+            const previous = placedRef.current ?? { nodes: graphNodes, roots };
+            const carried = carryPositions(
+                { nodes: previous.nodes, roots: previous.roots, positions: nodePositionsForGraph(previous.nodes, nodeOffsetsRef.current) },
+                { nodes: nextNodes, roots: nextEditorRoots },
+                { [rootNode.id]: topLeftForCenter(center, rootNode) },
             );
-            const nextOffsets = {
-                ...nodeOffsetsRef.current,
-                ...keptOffsets,
-                ...Object.fromEntries(treeNodes.map((node) => [node.id, {
-                    x: clamp(delta.x, -node.x, canvasWidth - node.x - node.width),
-                    y: clamp(delta.y, -node.y, canvasHeight - node.y - node.height),
-                }]))
-            };
-            updateNodeOffsets(nextOffsets);
-            return nodePositionsForGraph([
-                ...nextGraph.roots,
-                ...nextGraph.conditions,
-                ...nextGraph.actions,
-                ...nextGraph.variables,
-                ...nextGraph.targets,
-            ], nextOffsets);
+            return nodePositionsForGraph(nextNodes, offsetsForAbsolutePositions(nextNodes, carried));
         },
     }));
     const beginPan = (event) => {
@@ -616,7 +588,7 @@ const clampPan = (nextPan, nextZoom = zoom) => {
             const end = (nextEvent) => {
                 const current = touchGestureRef.current;
                 if (!current) return;
-                if (!current.moved && !current.pinch && current.empty && nextEvent.type === "pointerup") { setArmedWire(null); }
+                if (!current.moved && !current.pinch && current.empty && nextEvent.type === "pointerup") { dropLiftedWire(); setArmedWire(null); }
                 current.points.delete(nextEvent.pointerId);
                 if (current.points.size < 2) clearTouchGesture();
             };
@@ -655,8 +627,8 @@ const clampPan = (nextPan, nextZoom = zoom) => {
         beginPan(event);
     };
     const updateRoot = (rootIndex, updates) => commitConfiguration({ ...configuration, roots: roots.map((rootNode, index) => index === rootIndex ? { ...rootNode, ...updates } : rootNode) });
-    // Deleting a root deletes everything under it.
-    const removeRootNode = (rootIndex) => commitConfiguration({ ...configuration, roots: roots.filter((_, index) => index !== rootIndex) }, true);
+    // Deleting a root only deletes the root; what hung from it becomes unconnected (puzzle rules have no orphans).
+    const removeRootNode = (rootIndex) => commitConfiguration({ ...configuration, roots: puzzleMode ? roots.filter((_, index) => index !== rootIndex) : removeRootKeepingChildren(roots, rootIndex) }, true);
     const removeGraphAction = (rootIndex, path, actionIndex) => {
         if (puzzleMode && roots[rootIndex]?.kind === "modify") {
             removeRootNode(rootIndex);
@@ -777,36 +749,34 @@ const clampPan = (nextPan, nextZoom = zoom) => {
             y: (event.clientY - rect.top - pan.y) / zoom,
         };
     };
-    // Every node has one parent on main, so a wire is only ever made by moving a node. `move` is set when a lifted
-    // input moves its node; a click on an output never takes a node that already has a parent.
-    const finishConnection = (parent, child, { move = false } = {}) => {
-        const reason = wireBlockReason(roots, parent, child, { move });
+    const finishConnection = (parent, child) => {
+        const reason = wireBlockReason(roots, parent, child);
         if (reason) { setWireToast(reason); return; }
         // Siblings run left to right: a newly wired conditional lands among them by its current X.
         const branchX = (branch) => {
             const frame = graphNodes.find((candidate) => candidate.branchId === branch.id && candidate.actionIndex == null && Array.isArray(candidate.path));
             return frame ? absoluteGraphNodePosition(frame, nodeOffsetsRef.current).x : undefined;
         };
-        const nextRoots = wireNodes(roots, parent, child, { xOf: branchX, move });
+        const nextRoots = wireNodes(roots, parent, child, { xOf: branchX });
         if (!nextRoots) return;
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, configuration.customVariables);
-        const currentPositions = nodePositionsForGraph(graphNodes, nodeOffsetsRef.current);
-        const overrides = {};
-        for (const nextNode of graphNodesForGraph(nextGraph)) {
-            const previous = graphNodeById.get(nextNode.id) ?? (nextNode.path ? graphNodes.find((node) => node.path && nextNode.branchId === node.branchId && nextNode.actionIndex === node.actionIndex) : null);
-            if (previous && currentPositions[previous.id]) overrides[nextNode.id] = currentPositions[previous.id];
-        }
-        // A moved conditional keeps its place on the canvas.
-        if (child.actionIndex == null && currentPositions[child.id]) {
-            const nextNode = graphNodesForGraph(nextGraph).find((node) => node.branchId === child.branchId);
-            if (nextNode) overrides[nextNode.id] = currentPositions[child.id];
-        }
-        commitConfiguration({ ...configuration, roots: nextRoots }, true, overrides);
+        commitConfiguration({ ...configuration, roots: nextRoots });
         setArmedWire(null); setSelectedWire(null);
     };
     // Press and hold: moving more than a few px from an output bar drags a wire; releasing over a node connects
-    // (refusals toast like clicks), anywhere else drops it. Lifting an input bar moves its node: released on empty
-    // space it goes back where it was. No movement leaves the press to click-to-arm.
+    // (refusals toast like clicks), anywhere else drops it. No movement leaves the press to click-to-arm.
+    // Lifting a wire (input mode) and then letting go on empty space disconnects it: the child becomes an orphan.
+    // Cuts the wire into `node`, if it has one.
+    // Cuts the wire into `node`: the node becomes unconnected and keeps where it is.
+    const cutWire = (node) => {
+        const next = disconnectNode(roots, node);
+        if (next) commitConfiguration({ ...configuration, roots: next });
+    };
+    const disconnectIfWired = (node) => {
+        if (!node || !graph.edges.some((edge) => edge.toId === node.id)) return;
+        cutWire(node);
+        setSelectedWire(null);
+    };
+    const dropLiftedWire = () => { if (armedWire?.mode === "input") disconnectIfWired(graphNodeById.get(armedWire.id)); };
     const beginWireHold = (event, node, mode = "output") => {
         if (disabled || event.button !== 0) return;
         const start = { x: event.clientX, y: event.clientY };
@@ -833,9 +803,9 @@ const clampPan = (nextPan, nextZoom = zoom) => {
             if (next.type === "pointercancel") return;
             const frame = document.elementFromPoint(next.clientX, next.clientY)?.closest?.("[data-graph-node-id]");
             const target = frame ? graphNodeById.get(frame.dataset.graphNodeId) : null;
-            // From an output the target is the child; from an input (a lifted node) the target is the parent.
-            if (target) finishConnection(...(mode === "output" ? [node, target, { move: false }] : [target, node, { move: true }]));
-            else if (mode === "output") openAttachPicker(node);
+            // From an output the target is the child; from an input (a lifted or new wire) the target is the parent.
+            if (target) finishConnection(...(mode === "output" ? [node, target] : [target, node]));
+            else if (mode === "input") disconnectIfWired(node);
         };
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", end);
@@ -843,54 +813,61 @@ const clampPan = (nextPan, nextZoom = zoom) => {
     };
     const clickOutput = (event, node, pointerType) => {
         if (disabled) return;
-        if (armedWire?.mode === "input") { finishConnection(node, graphNodeById.get(armedWire.id), { move: true }); return; }
+        if (armedWire?.mode === "input") { finishConnection(node, graphNodeById.get(armedWire.id)); return; }
         setArmedWire({ mode: "output", id: node.id, touch: pointerType === "touch" });
         setWireCursor(canvasPoint(event)); setSelectedWire(null);
     };
     const clickInput = (event, node, pointerType) => {
         if (disabled) return;
-        if (armedWire?.mode === "output") { finishConnection(graphNodeById.get(armedWire.id), node, { move: false }); return; }
-        // A lifted input moves its node: the next output clicked becomes its new parent.
+        if (armedWire?.mode === "output") { finishConnection(graphNodeById.get(armedWire.id), node); return; }
         setArmedWire({ mode: "input", id: node.id, touch: pointerType === "touch" });
         setWireCursor(canvasPoint(event)); setSelectedWire(null);
+    };
+    // "+ Node" and F put the node's centre on the centre of the visible canvas; a double-click puts its corner on
+    // the click. A new node is never wired to anything.
+    const createUnconnectedNode = (actionId = null) => {
+        if (disabled || (actionId ? graphActionCount >= maxLogicBlocks : graphConditionCount >= maxTotalConditions)) return;
+        const id = createEditorNodeId("node");
+        const entry = actionId ? { ...graphBranchActions(addGraphAction({ actions: [], conditions: [] }, selectedLoadout, actionId, configuration.customVariables ?? []))[0], id, kind: "action" }
+            : { ...newTreeBranch("if", defaultVariable, 1), conditions: [{ type: "always" }], id, kind: "conditional" };
+        if (actionId && !entry.action) return;
+        const next = { ...configuration, orphans: [...(configuration.orphans ?? []), entry] };
+        const nextRoots = normalizeRoots(editorRootsFor(next));
+        // The new node is the top node of the last (unconnected) group.
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, configuration.customVariables);
+        const created = [...nextGraph.conditions, ...nextGraph.actions]
+            .find((node) => node.rootIndex === nextRoots.length - 1 && node.orphan && node.path?.length === 1 && (node.actionIndex ?? 0) === 0);
+        const rect = viewportRef.current?.getBoundingClientRect();
+        const center = { x: ((rect?.width ?? 800) / 2 - pan.x) / zoom, y: ((rect?.height ?? 600) / 2 - pan.y) / zoom };
+        const spawn = nodePicker?.point ?? (created ? topLeftForCenter(center, created) : center);
+        if (created) commitConfiguration({ ...next, roots: nextRoots }, true, { [created.id]: spawn });
+        else commitConfiguration({ ...next, roots: nextRoots }, true);
+        setNodePicker(null);
     };
     useEffect(() => {
         const keydown = (event) => {
             if (event.target?.closest?.("input,textarea,select,[contenteditable=\"true\"]")) return;
             if (event.key === "Escape" && armedWire) { event.preventDefault(); event.stopImmediatePropagation(); setArmedWire(null); }
+            if (!disabled && selectedWire && ["Delete", "Backspace"].includes(event.key)) {
+                event.preventDefault(); event.stopImmediatePropagation();
+                const wire = graph.edges.find((edge) => edge.id === selectedWire);
+                const child = wire ? graphNodeById.get(wire.toId) : null;
+                if (child) cutWire(child);
+                setSelectedWire(null);
+            }
         };
         window.addEventListener("keydown", keydown, true);
         return () => window.removeEventListener("keydown", keydown, true);
     });
     const wirePinState = (node) => {
-        if (armedWire?.mode === "output") {
-            const reason = wireBlockReason(roots, graphNodeById.get(armedWire.id), node);
-            return { validInput: !reason, blockedReason: reason };
-        }
-        // A lifted node (armed input) can go under any valid output: the node to move is the armed one.
-        if (armedWire?.mode === "input" && armedWire.id !== node.id) {
-            const reason = wireBlockReason(roots, node, graphNodeById.get(armedWire.id), { move: true });
-            return { validInput: false, blockedReason: reason };
-        }
-        return { validInput: false, blockedReason: null };
+        if (armedWire?.mode !== "output") return { validInput: false, blockedReason: null };
+        const reason = wireBlockReason(roots, graphNodeById.get(armedWire.id), node);
+        return { validInput: !reason, blockedReason: reason };
     };
     const pinProps = (node) => ({
         onOutput: (event, pointerType) => clickOutput(event, node, pointerType), onOutputPress: (event) => beginWireHold(event, node), onInputPress: (event) => beginWireHold(event, node, "input"), onInput: (event, pointerType) => clickInput(event, node, pointerType), armed: armedWire?.id === node.id,
         ...wirePinState(node),
     });
-    // "Used by" in an action's panel: selects that parent and brings it into view.
-    const selectParentNode = (nodeId) => {
-        const node = graphNodes.find((candidate) => candidate.id === nodeId);
-        if (!node) return;
-        setInspectedNode(null);
-        setSelectedRow(null);
-        setSelectedNodeIds([nodeId]);
-        const rect = viewportRef.current?.getBoundingClientRect();
-        if (rect) {
-            const offset = nodeOffsetsRef.current[node.id] ?? { x: 0, y: 0 };
-            onPanChange(clampPan({ x: rect.width / 2 - (node.x + offset.x + node.width / 2) * zoom, y: rect.height / 2 - (node.y + offset.y + (node.height ?? 0) / 2) * zoom }));
-        }
-    };
     const inspectedOrderNode = inspectedNode ? graph.conditions.find((node) => node.id === inspectedNode.id) : null;
     const inspectedOrder = inspectedOrderNode ? orderProps(inspectedOrderNode) : null;
     const orderInfo = inspectedOrderNode ? { label: treeBranchAt(roots[inspectedOrderNode.rootIndex]?.branches, inspectedOrderNode.path)?.branchType === "else" ? "ELSE" : inspectedOrder.rank === 1 ? "IF" : "ELSE IF",
@@ -901,89 +878,11 @@ const clampPan = (nextPan, nextZoom = zoom) => {
     const previewEdge = armedFrame && wireCursor ? armedWire.mode === "output"
         ? { x1: armedFrame.x + armedFrame.width / 2, y1: armedFrame.y + armedFrame.height, x2: wireCursor.x, y2: wireCursor.y }
         : { x1: wireCursor.x, y1: wireCursor.y, x2: armedFrame.x + armedFrame.width / 2, y2: armedFrame.y } : null;
-    // "+ Node", F, a double-click on empty canvas and a wire released on empty canvas all open the node picker to attach
-    // the picked node: under the selected root or conditional (else the last root), or under the wire's output.
-    const pendingSelectRef = useRef(null);
-    const openAttachPicker = (fromNode = null) => {
-        if (disabled) return;
-        const node = fromNode ?? graphNodes.find((candidate) => candidate.id === selectedNodeIds[0]);
-        openNodePicker({ attach: attachTargetFor(roots, node ? { rootIndex: node.rootIndex, path: node.path ?? null } : null) });
-    };
-    const attachPick = (pick) => {
-        const target = nodePicker?.attach;
-        setNodePicker(null);
-        if (!target) return;
-        if (pick.kind === "conditional" && graphConditionCount >= maxTotalConditions) { setWireToast("No condition room left in this brain"); return; }
-        if (pick.kind === "action" && graphActionCount >= maxLogicBlocks) { setWireToast("No action room left in this brain"); return; }
-        const actionDefinition = pick.kind === "action" ? actionTypesForLoadout(ACTION_TYPES, selectedLoadout).find((candidate) => candidate.id === pick.actionId) : null;
-        if (pick.kind === "action" && !actionDefinition) return;
-        const result = attachNewNode(roots, target, pick.kind === "conditional"
-            ? { kind: "conditional", branch: newTreeBranch("if", defaultVariable, 1) }
-            : { kind: "action", entry: newActionEntry(actionDefinition, configuration.customVariables ?? []) });
-        if (result.reason) { setWireToast(result.reason); return; }
-        pendingSelectRef.current = result.select;
-        commitConfiguration({ ...configuration, roots: result.roots }, true);
-    };
-    // Selects the node an attach just created, once the graph has caught up with it.
-    // Runs after every render on purpose: it only acts while a pending selection is set, and clears it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => {
-        const want = pendingSelectRef.current;
-        if (!want) return;
-        const node = want.actionIndex != null
-            ? graph.actions.find((candidate) => candidate.rootIndex === want.rootIndex && sameGraphPath(candidate.path, want.path) && candidate.actionIndex === want.actionIndex)
-            : graph.conditions.find((candidate) => candidate.rootIndex === want.rootIndex && sameGraphPath(candidate.path, want.path));
-        if (!node) return;
-        // Below its parent, offset right by its sibling index (the spacing Tidy uses), so wires run top to bottom.
-        const parentPath = want.actionIndex != null ? want.path : want.path.slice(0, -1);
-        const parent = parentPath.length
-            ? graph.conditions.find((candidate) => candidate.rootIndex === want.rootIndex && sameGraphPath(candidate.path, parentPath))
-            : graph.roots.find((candidate) => candidate.rootIndex === want.rootIndex);
-        if (!parent) return;
-        const siblingIndex = want.actionIndex ?? want.path.at(-1);
-        const parentOffset = nodeOffsetsRef.current[parent.id] ?? { x: 0, y: 0 };
-        const gap = parentPath.length ? CONDITION_TO_CHILD_GAP : ROOT_TO_CONDITION_GAP;
-        const startX = parent.x + parentOffset.x + (parent.width - node.width) / 2 + siblingIndex * (node.width + GRAPH_SIBLING_GAP);
-        const y = parent.y + parentOffset.y + parent.height + gap;
-        // Shift right until the new node overlaps nothing already on the canvas.
-        const others = [...graph.roots, ...graph.conditions, ...graph.actions]
-            .filter((candidate) => candidate.id !== node.id)
-            .map((candidate) => liveRect(candidate, nodeOffsetsRef.current));
-        const x = freeSlotX({ x: startX, y, width: node.width, height: node.height }, others, node.width + GRAPH_SIBLING_GAP);
-        const offset = {
-            x: clamp(x - node.x, -node.x, canvasWidth - node.x - node.width),
-            y: clamp(y - node.y, -node.y, canvasHeight - node.y - node.height),
-        };
-        pendingSelectRef.current = null;
-        updateNodeOffsets((current) => ({ ...current, [node.id]: offset }));
-        persistNodePositions();
-        setSelectedNodeIds([node.id]);
-    });
-    useEffect(() => {
-        const onKeyDown = (event) => {
-            const workspace = viewportRef.current?.closest(".code-workspace");
-            if (!workspace || !isAddRootShortcutKeydown(event, readWorkspaceShortcut("addNode"))) return;
-            const targetIsOutside = event.target !== document.body && event.target !== document.documentElement && !workspace.contains(event.target);
-            const anotherDialogIsOpen = [...document.querySelectorAll('[aria-modal="true"]')].some((dialog) => dialog !== workspace && !workspace.contains(dialog));
-            if (targetIsOutside || anotherDialogIsOpen) return;
-            event.preventDefault();
-            openAttachPicker(null);
-        };
-        window.addEventListener("keydown", onKeyDown);
-        return () => window.removeEventListener("keydown", onKeyDown);
-    });
     const beginMarquee = (event) => {
         if (disabled || event.pointerType === "touch" || event.button !== 0 || event.target !== event.currentTarget) return;
-        // A wire armed from an output and then clicked on empty canvas opens the picker there, attached to that output.
-        if (armedWire?.mode === "output") {
-            const armedNode = graphNodeById.get(armedWire.id);
-            setArmedWire(null);
-            setSelectedWire(null);
-            if (armedNode) openAttachPicker(armedNode);
-            return;
-        }
         event.preventDefault();
         event.stopPropagation();
+        dropLiftedWire();
         setArmedWire(null);
         setSelectedWire(null);
         const start = canvasPoint(event);
@@ -1057,7 +956,7 @@ const clampPan = (nextPan, nextZoom = zoom) => {
         }));
         let keptRoots = roots;
         if (puzzleMode) keptRoots = roots.filter((_, rootIndex) => !selectedRootIndices.has(rootIndex));
-        else keptRoots = roots.filter((_, rootIndex) => !selectedRootIndices.has(rootIndex));
+        else [...selectedRootIndices].sort((a, b) => b - a).forEach((rootIndex) => { keptRoots = removeRootKeepingChildren(keptRoots, rootIndex); });
         const nextRoots = keptRoots
             .map((root) => ({
                 ...root,
@@ -1125,11 +1024,26 @@ const clampPan = (nextPan, nextZoom = zoom) => {
     useEffect(() => {
         if (!onSelectionChange) return;
         if (phoneSelectionKey === "none") { onSelectionChange(null); return; }
-        const [kind, , up, down] = phoneSelectionKey.split(":");
-        onSelectionChange({ kind, canEdit: kind !== "root", canUp: up === "1", canDown: down === "1", canDelete: canRemove });
+        const [kind, wired, up, down] = phoneSelectionKey.split(":");
+        onSelectionChange({ kind, canEdit: kind !== "root", canDisconnect: wired === "1", canUp: up === "1", canDown: down === "1", canDelete: canRemove });
     }, [phoneSelectionKey, onSelectionChange, canRemove]);
     useEffect(() => () => onSelectionChange?.(null), [onSelectionChange]);
     // The add-node key opens the node menu (nothing selected, no other panel open).
+    useEffect(() => {
+        if (disabled || puzzleMode || selectedNodeIds.length || isSearchOpen || isExternalConfigurationOpen || nodePicker
+            || operandPicker || actionOperandInspector || inspectedNode || selectionBox) return undefined;
+        const onKeyDown = (event) => {
+            const workspace = viewportRef.current?.closest(".code-workspace");
+            if (!workspace || !isAddRootShortcutKeydown(event, readWorkspaceShortcut("addNode"))) return;
+            const targetIsOutside = event.target !== document.body && event.target !== document.documentElement && !workspace.contains(event.target);
+            const anotherDialogIsOpen = [...document.querySelectorAll('[aria-modal="true"]')].some((dialog) => dialog !== workspace && !workspace.contains(dialog));
+            if (targetIsOutside || anotherDialogIsOpen) return;
+            event.preventDefault();
+            openNodePicker({ unconnected: true });
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    });
     const openOperandPicker = (rootIndex, path, rowIndex, operand) => {
         if (disabled) return;
         closeExternalMenus();
@@ -1226,7 +1140,10 @@ const clampPan = (nextPan, nextZoom = zoom) => {
         const replacementBranch = addGraphAction(setGraphActions(branch, otherActions), selectedLoadout, actionId, configuration.customVariables ?? []);
         const fresh = graphBranchActions(replacementBranch)[otherActions.length];
         if (!fresh) return;
-        updateBranch(rootIndex, path, (current) => setGraphActions(current, graphBranchActions(current).map((entry, index) => index === actionIndex ? fresh : entry)));
+        // The replacement stays the same node: it keeps its id.
+        const previous = actions[actionIndex];
+        const replacement = { ...fresh, ...(previous?.id ? { id: previous.id } : {}) };
+        updateBranch(rootIndex, path, (current) => setGraphActions(current, graphBranchActions(current).map((entry, index) => index === actionIndex ? replacement : entry)));
         setNodePicker(null);
     };
     const inspectActionOperand = (rootIndex, path, actionIndex, termIndex) => {
@@ -1293,7 +1210,7 @@ const clampPan = (nextPan, nextZoom = zoom) => {
             {isSearchOpen && <SearchRootNodesModal roots={roots} nodes={graph.roots} disabled={disabled} canRemove={canRemove} quick={isQuickSearchOpen} onSelect={centerOnRoot} onPriorityChange={setRootOrder} onMoveRoot={moveRootInOrder} onRemove={removeRootNode} onDeleteAll={() => { if (window.confirm("Delete all roots?")) commitConfiguration({ ...configuration, roots: [] }); }} onClose={onSearchClose} />}
             {wireToast && <ToastStack><Toast tone="warning" onDismiss={() => setWireToast(null)}>{wireToast}</Toast></ToastStack>}
             {armedWire?.touch && <div className="code-wire-banner" role="status">Tap an input to connect. Tap empty space to cancel.</div>}
-            {!isSearchOpen && !isExternalConfigurationOpen && nodePicker && <NodeKindPicker type={nodePicker.type} stateVariables={stateVariables} selectableTypes={selectableTypes} selectedLoadout={selectedLoadout} title={nodePicker.attach ? "Add node" : nodePicker.actionIndex == null ? "Add action" : "Change action"} onCancel={() => setNodePicker(null)} onChooseConditional={nodePicker.attach ? () => attachPick({ kind: "conditional" }) : null} onChooseAction={(actionId) => nodePicker.attach ? attachPick({ kind: "action", actionId }) : nodePicker.actionIndex == null ? addAction(nodePicker.rootIndex, nodePicker.path, actionId) : replaceAction(nodePicker.rootIndex, nodePicker.path, nodePicker.actionIndex, actionId)} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && nodePicker && <NodeKindPicker type={nodePicker.type} stateVariables={stateVariables} selectableTypes={selectableTypes} selectedLoadout={selectedLoadout} title={nodePicker.unconnected ? "Add node" : nodePicker.actionIndex == null ? "Add action" : "Change action"} onCancel={() => setNodePicker(null)} flowOptions={nodePicker.unconnected ? [{ id: "conditional", label: "Conditional", head: "flow" }] : []} onChooseFlow={() => createUnconnectedNode()} onChooseAction={(actionId) => nodePicker.unconnected ? createUnconnectedNode(actionId) : nodePicker.actionIndex == null ? addAction(nodePicker.rootIndex, nodePicker.path, actionId) : replaceAction(nodePicker.rootIndex, nodePicker.path, nodePicker.actionIndex, actionId)} />}
             {!isSearchOpen && !isExternalConfigurationOpen && !nodePicker && operandPicker && <VariableOperandPicker operand={operandPicker.kind === "action" ? 2 : operandPicker.operand} numericOnly={operandPicker.kind === "action" && pickerActionValueType === "number"} valueType={operandPicker.kind === "action" ? pickerActionValueType : null} stateVariables={stateVariables} onChoose={chooseOperandVariable} onUseRawNumber={operandPicker.kind === "action" ? () => setRawActionInput(operandPicker.rootIndex, operandPicker.path, operandPicker.actionIndex, operandPicker.termIndex, pickerActionValueType) : null} onClose={() => setOperandPicker(null)} />}
             <div onPointerMove={(event) => { if (armedWire && event.pointerType !== "touch") setWireCursor(canvasPoint(event)); }} onClickCapture={(event) => {
                 const frame = event.target.closest?.("[data-graph-node-id]");
@@ -1301,16 +1218,12 @@ const clampPan = (nextPan, nextZoom = zoom) => {
                 clickLogRef.current.record(frame ? `${frame.dataset.graphNodeId}:${row ? row.dataset.condRow : ""}` : "canvas");
             }} onDoubleClick={(event) => {
                 if (disabled || !clickLogRef.current.isDoubleClick()) return;
-                if (event.target === event.currentTarget) { openAttachPicker(null); return; }
+                if (event.target === event.currentTarget) { openNodePicker({ unconnected: true, point: canvasPoint(event) }); return; }
                 const frame = event.target.closest?.("[data-graph-node-id]");
                 if (phone || !frame || event.target.closest("button,input,select,textarea")) return;
                 const rowElement = event.target.closest("[data-cond-row]");
                 editNode(graphNodeById.get(frame.dataset.graphNodeId), rowElement ? Number(rowElement.dataset.condRow) : 0);
             }} onPointerDown={beginMarquee} className="code-graph-surface absolute left-0 top-0 bg-[#171b20] bg-[radial-gradient(circle,rgba(100,116,139,.24)_1px,transparent_1px)] bg-[size:20px_20px]" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", "--code-zoom": zoom }}>
-                {graph.roots.filter((node) => !roots[node.rootIndex]?.branches?.length).map((node) => {
-                    const offset = nodeOffsets[node.id] ?? { x: 0, y: 0 };
-                    return <div key={`hint-${node.id}`} className="code-root-hint" style={{ left: node.x + offset.x, top: node.y + offset.y + node.height + 10 }}>{phone ? "Tap Add to add a node" : "Press F or double-click to add a node"}</div>;
-                })}
                 <svg className="pointer-events-none absolute inset-0 overflow-hidden" width={canvasWidth} height={canvasHeight}>
                     {graph.edges.filter((edge) => !(armedWire?.mode === "input" && !armedWire.touch && edge.toId === armedWire.id)).map((edge) => <g key={edge.id}><path d={graphEdgePath(edge, nodeOffsets, frameGeometry)} fill="none" stroke={selectedWire === edge.id ? "#5fd4f0" : "rgba(165,180,252,.72)"} strokeWidth="2" /><path d={graphEdgePath(edge, nodeOffsets, frameGeometry)} fill="none" stroke="transparent" strokeWidth="16" style={{ pointerEvents: "stroke" }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setSelectedNodeIds([]); setSelectedWire(edge.id); }} /></g>)}
                     {previewEdge && !armedWire?.touch && <path d={graphEdgePath(previewEdge)} fill="none" stroke="#5fd4f0" strokeWidth="2" strokeDasharray="6 4" />}
@@ -1376,7 +1289,7 @@ const clampPan = (nextPan, nextZoom = zoom) => {
                         onRemove={() => removeGraphAction(node.rootIndex, node.path, node.actionIndex)} />;
                 })}
             </div>
-            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector coordinateVersion={coordinateVersion} orderInfo={orderInfo} inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} defaultVariable={defaultVariable} puzzleMode={puzzleMode} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickConditionOperand={openOperandPicker} onSelectParent={selectParentNode} onDeleteNode={(nodeId) => removeSelectedNodes([nodeId])} onChangeAction={(rootIndex, path, actionIndex) => openNodePicker({ type: "action", rootIndex, path, actionIndex })} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector orderInfo={orderInfo} inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} defaultVariable={defaultVariable} puzzleMode={puzzleMode} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickConditionOperand={openOperandPicker} onChangeAction={(rootIndex, path, actionIndex) => openNodePicker({ type: "action", rootIndex, path, actionIndex })} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} />}
             {!isSearchOpen && !isExternalConfigurationOpen && actionOperandInspector && actionOperandDefinition && <ActionVariableInspector definition={actionOperandDefinition} operand={actionOperand} selectableTypes={selectableTypes} disabled={disabled} onChange={(operand) => updateActionOperand(actionOperandInspector.rootIndex, actionOperandInspector.path, actionOperandInspector.actionIndex, actionOperandInspector.termIndex, operand)} onClose={() => setActionOperandInspector(null)} />}
         </div>
     );

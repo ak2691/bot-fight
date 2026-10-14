@@ -4,7 +4,7 @@ import {
     priorityForNode,
     rootIdForIndex,
 } from "./identifiers.js";
-import { BOT_LOGIC_TREE_VERSION, MAX_ROOT_NAME_LENGTH } from "./constants.js";
+import { BOT_LOGIC_TREE_VERSION, MAX_LOGIC_BLOCKS, MAX_ROOT_NAME_LENGTH, MAX_TOTAL_CONDITIONS } from "./constants.js";
 import { BOT_CODE_SELECTABLES } from "../contracts/BotLogicContracts.js";
 
 export function normalizeRoot(
@@ -65,6 +65,35 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
             conditions,
             children,
         });
+    }
+    return normalized;
+}
+
+/**
+ * Unconnected nodes (`orphans`): a conditional keeps its subtree, a bare action is one entry. They draw from the same
+ * budgets as connected nodes (they are normalized after the roots) and are never selected at runtime.
+ */
+export function normalizeOrphans(source, remaining, customVariables, operations, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
+    if (!Array.isArray(source)) return [];
+    const seen = new Set();
+    const normalized = [];
+    for (let index = 0; index < source.length && index < MAX_LOGIC_BLOCKS + MAX_TOTAL_CONDITIONS; index += 1) {
+        const node = source[index];
+        let id = stableNodeId(node?.id, `orphan-${index + 1}`);
+        for (let suffix = 2; seen.has(id); suffix += 1) id = `${stableNodeId(node?.id, `orphan-${index + 1}`)}-${suffix}`;
+        seen.add(id);
+        if (node?.kind === "action") {
+            const block = operations.normalizeBlock({ actions: [node] }, index, customVariables, coordinateVersion);
+            const entry = block.actions.find((candidate) => candidate.action !== "none");
+            if (!entry) continue;
+            const cost = actionEntryCost(entry);
+            if (remaining.actions < cost) continue;
+            remaining.actions -= cost;
+            normalized.push({ ...entry, id, kind: "action" });
+        } else if (node?.kind === "conditional") {
+            const [branch] = normalizeBranches([node], remaining, customVariables, operations, id, 1, coordinateVersion);
+            if (branch) normalized.push({ ...branch, id, kind: "conditional" });
+        }
     }
     return normalized;
 }

@@ -86,6 +86,7 @@ export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId
             ...root,
             branches: Array.isArray(root?.branches) ? root.branches.map(sanitizeBlock) : [],
         })) : [],
+        ...(Array.isArray(source.orphans) && source.orphans.length ? { orphans: source.orphans.map((node) => (node?.kind === "action" ? sanitizeAction(node) : sanitizeBlock(node))) } : {}),
         ...(editorGraph ? { editorGraph } : {}),
     };
 }

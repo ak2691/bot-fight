@@ -44,11 +44,11 @@ test("add-root shortcut ignores typing, modifiers, and repeated presses", () => 
     assert.equal(isAddRootShortcutKeydown({ ...keydown, key: "T" }, "r"), false);
 });
 
-test("workspace search shortcut defaults to S and refuses keys another action uses", () => {
+test("workspace shortcuts default to F and S and refuse keys another action uses", () => {
     const storage = storageWith(null);
-    assert.equal(readWorkspaceShortcut("search", storage), "s");
-    assert.equal(readWorkspaceShortcut("addNode", storage), "f");
+    assert.deepEqual(["addNode", "search"].map((action) => readWorkspaceShortcut(action, storage)), ["f", "s"]);
     assert.match(saveWorkspaceShortcut("search", "r", storage), /already used/);
     assert.equal(saveWorkspaceShortcut("search", "g", storage), null);
     assert.equal(readWorkspaceShortcut("search", storage), "g");
+    assert.ok(saveWorkspaceShortcut("addNode", "-", storage));
 });
