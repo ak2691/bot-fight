@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
-import { advanceArenaPreviewTick } from "../modelPayloads/arenaPreviewSimulation.js";
+import { AUTO_STEP_MS } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { advanceArenaPreviewTick } from "../../../../shared/engine/modelPayloads/arenaPreviewSimulation.js";
 
 /** Owns the browser-only fixed-step preview loop and its Play/Pause lifecycle. */
 export function useArenaAutoPlay({

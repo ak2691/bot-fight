@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { advanceArenaPreviewTick } from "../gameArena/modelPayloads/arenaPreviewSimulation.js";
+import { advanceArenaPreviewTick } from "../../../shared/engine/modelPayloads/arenaPreviewSimulation.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "../gameArena/modelPayloads/previewBaseline.js";
-import { toSimulationBotShape } from "../gameArena/modelPayloads/arenaShapes.js";
+import { toSimulationBotShape } from "../../../shared/engine/modelPayloads/arenaShapes.js";
 import { sanitizeStrategyConfigurationForLoadout } from "../gameArena/persistence/arenaStrategyStorage.js";
 import { TUTORIAL_COMPLETION_PREFIX, loadTutorialBooleanState } from "../gameArena/persistence/tutorialStorage.js";
 import { buildTutorialArenaShapes, getTutorialScenario, TUTORIAL_ACTIONS } from "./TutorialPresets.js";

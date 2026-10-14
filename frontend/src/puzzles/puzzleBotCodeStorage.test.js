@@ -3,7 +3,7 @@ import test from "node:test";
 import {
     createDefaultAbilityStrategyConfiguration,
     normalizeAbilityStrategyConfiguration,
-} from "../gameArena/botlogic/code/BotCode.js";
+} from "../../../shared/engine/botlogic/code/BotCode.js";
 import {
     puzzleBotCodeStorageKey,
     readPuzzleBotCodeDraft,

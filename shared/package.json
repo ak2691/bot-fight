@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test engine/match/tests/simulateMatch.test.js engine/match/tests/replayMapping.test.js engine/match/tests/puzzleOutcome.test.js engine/match/tests/goldens.test.js",
+    "golden:update": "node scripts/update-match-goldens.mjs"
+  }
+}

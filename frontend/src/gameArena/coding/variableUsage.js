@@ -1,7 +1,7 @@
 // Where a custom variable is used, and how a type change or delete rewrites those places.
 // Walks every part of a configuration that can hold a reference: connected roots (their
 // conditionals) and unconnected nodes. Pure and UI-free so the rules can be tested directly.
-import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../botlogic/code/contracts/BotLogicContracts.js";
+import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 import { editorRootsFor } from "./treeWiring.js";
 
 const operandUses = (operand, variableId) => operand?.type === "variable" && operand.value === variableId;

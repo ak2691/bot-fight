@@ -161,7 +161,7 @@ Phase events and effect payloads have separate targetKinds: event kinds gate whi
 
 The generator emits insertable snippets for:
 
-- browser: frontend/src/gameArena/gameconfig/AbilityRegistry.js, Abilities.js, loadout/BotLoadout.js, and ecs/contracts/AbilityContracts.js;
+- browser: shared/engine/gameconfig/AbilityRegistry.js, Abilities.js, loadout/BotLoadout.js, and ecs/contracts/AbilityContracts.js;
 - server: server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityRegistry.java, Abilities.java, and ecs/contracts/AbilityContracts.java.
 
 It also names remaining project-specific work: server allowed-loadout/action policy, targeting/action payloads, new generic effects, Pixi renderers/assets, replay fields, and tests when the spec needs them. It does not write these game files, run tests, validate submissions, simulate a match, manage candidate batches, or compile strategies.

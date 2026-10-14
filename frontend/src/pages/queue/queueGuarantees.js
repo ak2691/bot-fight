@@ -1,4 +1,4 @@
-import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
+import { ALL_ABILITY_DEFINITIONS } from "../../../../shared/engine/loadout/BotLoadout.js";
 
 export const GUARANTEE_ROUNDS = [1, 2, 3];
 

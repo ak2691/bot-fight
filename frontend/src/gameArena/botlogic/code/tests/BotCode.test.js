@@ -14,15 +14,15 @@ import {
     selectAbilityStrategyActionPlan,
     setLogicRootPriority,
     validateAbilityStrategyConfiguration,
-} from "../BotCode.js";
+} from "../../../../../../shared/engine/botlogic/code/BotCode.js";
 import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_STEP_COUNT } from "../../../../tutorial/TutorialPresets.js";
-import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, SELECTABLE_TYPES, TARGET_MODES, VARIABLE_TAGS, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES, abilityDefinitionsForVariable, selectableIdentitiesForVariable, selectableMatchesVariable, variableHasTag } from "../contracts/BotLogicContracts.js";
-import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "../../../loadout/BotLoadout.js";
-import { compareAngleValues, evaluateConditionNodes } from "../runtime/conditionEvaluator.js";
-import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "../runtime/targeting.js";
-import { absoluteMovementAngle, normalizeRelativeMovementDegrees, relativeMovementAngle, relativeMovementVector, vectorToCompassDegrees } from "../../planner/arenaAngles.js";
-import { buildDeterministicLogicAction } from "../../planner/ArenaActionPlanner.js";
-import { nodePositionsForGraph, offsetsForGraphPositions } from "../configuration/nodePositions.js";
+import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, SELECTABLE_TYPES, TARGET_MODES, VARIABLE_TAGS, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES, abilityDefinitionsForVariable, selectableIdentitiesForVariable, selectableMatchesVariable, variableHasTag } from "../../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "../../../../../../shared/engine/loadout/BotLoadout.js";
+import { compareAngleValues, evaluateConditionNodes } from "../../../../../../shared/engine/botlogic/code/runtime/conditionEvaluator.js";
+import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "../../../../../../shared/engine/botlogic/code/runtime/targeting.js";
+import { absoluteMovementAngle, normalizeRelativeMovementDegrees, relativeMovementAngle, relativeMovementVector, vectorToCompassDegrees } from "../../../../../../shared/engine/botlogic/planner/arenaAngles.js";
+import { buildDeterministicLogicAction } from "../../../../../../shared/engine/botlogic/planner/ArenaActionPlanner.js";
+import { nodePositionsForGraph, offsetsForGraphPositions } from "../../../../../../shared/engine/botlogic/code/configuration/nodePositions.js";
 
 function payload(overrides = {}) {
     return {

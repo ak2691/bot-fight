@@ -37,5 +37,9 @@ Spring Boot ── PostgreSQL
 ├── Authentication, sessions, CSRF, and OAuth
 ├── Matchmaking, parties, and custom lobbies
 ├── Validation and persistence
-├── Authoritative deterministic simulation
-└── Ratings and cached read models
+├── Ratings and cached read models
+└── Calls the sim worker for every rated fight and puzzle attempt
+            │
+            ▼
+Node sim worker (sim-worker/, internal network only)
+└── Authoritative deterministic simulation on the shared JS engine (shared/engine)

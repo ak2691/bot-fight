@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { buildInitialArenaShapes } from "../modelPayloads/arenaShapes.js";
+import { buildInitialArenaShapes } from "../../../../shared/engine/modelPayloads/arenaShapes.js";
 import { graphEdgePath } from "./graphEdgeGeometry.js";
 
 // Source-level guards for behaviour and contracts in the code workspace and arena wiring.

@@ -1,7 +1,7 @@
 package com.example.botfight.simulation.bots;
 
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts.AbilityContract;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AbilityContracts.AbilityContract;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.Collections;
 import java.util.LinkedHashMap;

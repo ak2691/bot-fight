@@ -1,0 +1,297 @@
+{
+  "matchId": "2v2",
+  "rulesetVersion": "duel-v1",
+  "seed": "2v2-seed",
+  "arena": {
+    "width": 1200,
+    "height": 1200,
+    "durationMs": 90000,
+    "initialElapsedMs": 0
+  },
+  "bots": [
+    {
+      "userId": "00000000-0000-4000-8000-000000000001",
+      "username": "Bot 1",
+      "slot": 1,
+      "teamNumber": 1,
+      "x": 300,
+      "y": 400,
+      "rotation": 0,
+      "size": 60,
+      "selectedLoadout": "custom",
+      "brain": {
+        "version": "bot-logic-tree-v2",
+        "customVariables": [],
+        "roots": [
+          {
+            "id": "ability-root-1-aim-if",
+            "name": "Root",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "1-aim-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": "rotate_toward_enemy",
+                    "selectable": "opponent_1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "ability-root-1-cast-if",
+            "name": "Root",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "1-cast-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": 1,
+                    "selectable": "opponent_1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ],
+        "loadout": {
+          "abilities": [
+            1
+          ]
+        }
+      },
+      "initialHp": null
+    },
+    {
+      "userId": "00000000-0000-4000-8000-000000000002",
+      "username": "Bot 2",
+      "slot": 2,
+      "teamNumber": 1,
+      "x": 300,
+      "y": 800,
+      "rotation": 0,
+      "size": 60,
+      "selectedLoadout": "custom",
+      "brain": {
+        "version": "bot-logic-tree-v2",
+        "customVariables": [],
+        "roots": [
+          {
+            "id": "ability-root-1-aim-if",
+            "name": "Root",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "1-aim-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": "rotate_toward_enemy",
+                    "selectable": "opponent_1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "ability-root-1-cast-if",
+            "name": "Root",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "1-cast-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": 1,
+                    "selectable": "opponent_1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ],
+        "loadout": {
+          "abilities": [
+            1
+          ]
+        }
+      },
+      "initialHp": null
+    },
+    {
+      "userId": "00000000-0000-4000-8000-000000000003",
+      "username": "Bot 3",
+      "slot": 3,
+      "teamNumber": 2,
+      "x": 900,
+      "y": 400,
+      "rotation": 180,
+      "size": 60,
+      "selectedLoadout": "custom",
+      "brain": {
+        "version": "bot-logic-tree-v2",
+        "customVariables": [],
+        "roots": [
+          {
+            "id": "ability-root-7-aim-if",
+            "name": "Root",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "7-aim-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": "rotate_toward_enemy",
+                    "selectable": "opponent_1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "ability-root-7-cast-if",
+            "name": "Root",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "7-cast-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": 7,
+                    "selectable": "opponent_1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ],
+        "loadout": {
+          "abilities": [
+            7
+          ]
+        }
+      },
+      "initialHp": null
+    },
+    {
+      "userId": "00000000-0000-4000-8000-000000000004",
+      "username": "Bot 4",
+      "slot": 4,
+      "teamNumber": 2,
+      "x": 900,
+      "y": 800,
+      "rotation": 180,
+      "size": 60,
+      "selectedLoadout": "custom",
+      "brain": {
+        "version": "bot-logic-tree-v2",
+        "customVariables": [],
+        "roots": [
+          {
+            "id": "ability-root-7-aim-if",
+            "name": "Root",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "7-aim-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": "rotate_toward_enemy",
+                    "selectable": "opponent_1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "ability-root-7-cast-if",
+            "name": "Root",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "7-cast-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": 7,
+                    "selectable": "opponent_1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ],
+        "loadout": {
+          "abilities": [
+            7
+          ]
+        }
+      },
+      "initialHp": null
+    }
+  ]
+}

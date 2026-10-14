@@ -1,14 +1,14 @@
 package com.example.botfight.simulation.gameconfig;
 
-import static com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType.DAMAGE;
-import static com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType.DAMAGE_IMMUNITY;
-import static com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType.DAMAGE_REDUCTION;
-import static com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType.HEALING;
-import static com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType.KNOCKBACK;
-import static com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType.PULL;
+import static com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType.DAMAGE;
+import static com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType.DAMAGE_IMMUNITY;
+import static com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType.DAMAGE_REDUCTION;
+import static com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType.HEALING;
+import static com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType.KNOCKBACK;
+import static com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType.PULL;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import org.junit.jupiter.api.Test;
 
 class AbilityContractsTest {

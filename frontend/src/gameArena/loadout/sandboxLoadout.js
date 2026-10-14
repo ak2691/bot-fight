@@ -1,4 +1,4 @@
-import { decodeBotLoadout, decodeSandboxLoadout, normalizedSandboxLoadout } from "./BotLoadout.js";
+import { decodeBotLoadout, decodeSandboxLoadout, normalizedSandboxLoadout } from "../../../../shared/engine/loadout/BotLoadout.js";
 
 export function loadoutDraftForEntry(entry) {
     const supplied = entry?.loadout;

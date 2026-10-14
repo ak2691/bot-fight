@@ -253,13 +253,13 @@ server.registerTool("get_ability_catalog", {
         const savedSpecs = await listSavedSpecs();
         const catalog = catalogRows(browser, backend, { includeContracts, savedSpecs });
         catalog.sourceFiles = [
-            "frontend/src/gameArena/gameconfig/AbilityRegistry.js",
-            "frontend/src/gameArena/gameconfig/Abilities.js",
-            "frontend/src/gameArena/loadout/BotLoadout.js",
-            "frontend/src/gameArena/ecs/contracts/AbilityContracts.js",
+            "shared/engine/gameconfig/AbilityRegistry.js",
+            "shared/engine/gameconfig/Abilities.js",
+            "shared/engine/loadout/BotLoadout.js",
+            "shared/engine/ecs/contracts/AbilityContracts.js",
             "server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityRegistry.java",
             "server/src/main/java/com/example/botfight/simulation/gameconfig/Abilities.java",
-            "server/src/main/java/com/example/botfight/simulation/ecs/contracts/AbilityContracts.java",
+            "server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityContracts.java",
         ];
         if (includeParity) {
             const parity = buildAbilityParityReport(browser, backend);

@@ -1,6 +1,6 @@
-import { canonicalBotSelectableId, CUSTOM_VARIABLE_OPERATIONS } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { canonicalBotSelectableId, CUSTOM_VARIABLE_OPERATIONS } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 import { variableOperatorPresentation } from "../controls/variableOperatorPresentation.js";
-import { actionSupportsTarget } from "../../botlogic/code/runtime/actionRuntime.js";
+import { actionSupportsTarget } from "../../../../../shared/engine/botlogic/code/runtime/actionRuntime.js";
 
 export const UNAVAILABLE_TARGET_LABEL = "Unavailable target";
 

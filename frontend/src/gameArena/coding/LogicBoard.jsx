@@ -5,8 +5,8 @@ import {
     normalizeRoots,
     removeLogicBranch,
     setLogicRootPriority as setRootPriority,
-} from "../botlogic/code/BotCode.js";
-import { MAX_LOGIC_BLOCKS, MAX_TOTAL_CONDITIONS } from "../botlogic/code/configuration/constants.js";
+} from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { MAX_LOGIC_BLOCKS, MAX_TOTAL_CONDITIONS } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 import {
     applyPositionOrder,
     groupKeyForNode,
@@ -52,9 +52,9 @@ import { actionOperandValueType, withActionOperand, withActionOperandVariable } 
 import {
     nodePositionsForGraph,
     normalizeNodePositions,
-} from "../botlogic/code/configuration/nodePositions.js";
+} from "../../../../shared/engine/botlogic/code/configuration/nodePositions.js";
 import { isAddRootShortcutKeydown, readAddRootShortcut, readWorkspaceShortcut } from "./addRootShortcut.js";
-import { createEditorNodeId } from "../botlogic/code/configuration/identifiers.js";
+import { createEditorNodeId } from "../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 
 const LOGIC_CANVAS_WIDTH = 10000;
 const LOGIC_CANVAS_HEIGHT = 6000;

@@ -4,12 +4,13 @@ import com.example.botfight.DTO.puzzle.PuzzleAttemptRequestDTO;
 import com.example.botfight.DTO.puzzle.PuzzleAttemptResponseDTO;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
-import com.example.botfight.simulation.core.combat.ActionExecutionService;
-import com.example.botfight.simulation.core.logic.ConditionResolutionService;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelArenaRequest;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelBotRequest;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelSimulationRequest;
+import com.example.botfight.service.simulation.SimWorkerClient;
+import com.example.botfight.service.simulation.SimulationRequest.DuelArenaRequest;
+import com.example.botfight.service.simulation.SimulationRequest.DuelBotRequest;
+import com.example.botfight.service.simulation.SimulationRequest.DuelSimulationRequest;
+import com.example.botfight.service.simulation.SimulationRequest.PuzzleRequest;
+import com.example.botfight.service.simulation.SimulationRequest;
+import com.example.botfight.service.simulation.WorkerResult;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -18,32 +19,26 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
-/** Runs puzzle attempts through the authoritative server duel simulator. */
+/** Runs puzzle attempts through the authoritative simulation worker. */
 @Service
 public class PuzzleAttemptService {
     private static final int BOT_SIZE = 60;
     private static final int MIN_SIMULATION_STEP_MS = 100;
 
     private final PuzzleService puzzleService;
-    private final DuelSimulationService duelSimulationService;
-    private final ConditionResolutionService conditionResolutionService;
-    private final ActionExecutionService actionExecutionService;
+    private final SimWorkerClient simWorkerClient;
     private final CurrentUserService currentUserService;
     private final TokenBucketRateLimiter<UUID> puzzleAttemptRateLimiter;
     private final PuzzleSimulationAdmissionControl simulationAdmissionControl;
 
     public PuzzleAttemptService(
             PuzzleService puzzleService,
-            DuelSimulationService duelSimulationService,
-            ConditionResolutionService conditionResolutionService,
-            ActionExecutionService actionExecutionService,
+            SimWorkerClient simWorkerClient,
             CurrentUserService currentUserService,
             @Qualifier("puzzleAttemptRateLimiter") TokenBucketRateLimiter<UUID> puzzleAttemptRateLimiter,
             PuzzleSimulationAdmissionControl simulationAdmissionControl) {
         this.puzzleService = puzzleService;
-        this.duelSimulationService = duelSimulationService;
-        this.conditionResolutionService = conditionResolutionService;
-        this.actionExecutionService = actionExecutionService;
+        this.simWorkerClient = simWorkerClient;
         this.currentUserService = currentUserService;
         this.puzzleAttemptRateLimiter = puzzleAttemptRateLimiter;
         this.simulationAdmissionControl = simulationAdmissionControl;
@@ -61,7 +56,7 @@ public class PuzzleAttemptService {
         if (authentication != null) {
             userId = currentUserService.requireCurrentUserId(authentication);
         }
-        PuzzleOutcomeEvaluator outcome;
+        WorkerResult.PuzzleResult outcome;
         try (PuzzleSimulationAdmissionControl.Lease ignored = simulationAdmissionControl.acquire(userId)) {
             if (authentication != null) {
                 puzzleAttemptRateLimiter.requireAllowed(userId);
@@ -80,18 +75,16 @@ public class PuzzleAttemptService {
                         : "Puzzle failed the authoritative conditions.");
     }
 
-    private PuzzleOutcomeEvaluator runAuthoritativeSimulation(
+    private WorkerResult.PuzzleResult runAuthoritativeSimulation(
             long puzzleNumber,
             PuzzleAttemptRequestDTO request) {
         PuzzleService.PuzzleAttemptDefinition definition = puzzleService.prepareAttempt(
                 puzzleNumber,
                 request == null ? null : request.getBrain());
-        PuzzleOutcomeEvaluator outcome = new PuzzleOutcomeEvaluator(
-                conditionResolutionService,
-                actionExecutionService,
+        PuzzleRequest puzzle = new PuzzleRequest(
+                definition.logicConfiguration(),
                 definition.winConditions(),
                 definition.loseConditions(),
-                definition.logicConfiguration(),
                 definition.timeLimitMs(),
                 definition.initialElapsedMs());
 
@@ -106,7 +99,7 @@ public class PuzzleAttemptService {
 
         DuelSimulationRequest simulationRequest = new DuelSimulationRequest(
                 UUID.nameUUIDFromBytes(("puzzle:" + definition.puzzleNumber()).getBytes(StandardCharsets.UTF_8)),
-                DuelSimulationService.DUEL_RULESET_VERSION,
+                SimulationRequest.DUEL_RULESET_VERSION,
                 definition.puzzleNumber(),
                 new DuelArenaRequest(
                         ArenaUnits.WIDTH,
@@ -115,8 +108,8 @@ public class PuzzleAttemptService {
                         definition.initialElapsedMs()),
                 simulationBots);
 
-        duelSimulationService.simulateWithoutReplay(simulationRequest, outcome::afterTick);
-        return outcome;
+        WorkerResult result = simWorkerClient.simulatePuzzle(simulationRequest, puzzle);
+        return result.puzzle();
     }
 
     private DuelBotRequest toBotRequest(

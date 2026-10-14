@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAutoPlayStartShapes, buildInitialArenaShapes, buildMatchSpawnShapes, toSimulationBotShape } from "./arenaShapes.js";
-import { PRACTICE_OPPONENT_START, PRACTICE_PLAYER_START } from "./arenaConstants.js";
+import { buildAutoPlayStartShapes, buildInitialArenaShapes, buildMatchSpawnShapes, toSimulationBotShape } from "../../../../shared/engine/modelPayloads/arenaShapes.js";
+import { PRACTICE_OPPONENT_START, PRACTICE_PLAYER_START } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { buildTutorialArenaShapes } from "../../tutorial/TutorialPresets.js";
 
 test("resuming autoplay preserves arena entities", () => {

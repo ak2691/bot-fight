@@ -594,10 +594,6 @@ class MatchServiceTest {
                     session.matchId(), MatchSimulationService.DUEL_RULESET_VERSION,
                     "COMPLETED", state, frames, "BOT_WIN", winner.userId(), "winner"));
         });
-        when(simulationService.buildPreparationPlayback(any(MatchSession.class))).thenAnswer(invocation -> {
-            preparationSteps.add("preparation");
-            return preparationPlayback(invocation.getArgument(0));
-        });
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         UUID firstSubmissionId = UUID.randomUUID();
@@ -1462,37 +1458,6 @@ class MatchServiceTest {
 
     private String loadoutAbilityCodes(String selectedLoadout) {
         return selectedLoadout == null ? "" : selectedLoadout.split(":", -1)[1];
-    }
-
-    private MatchPlaybackDTO preparationPlayback(MatchSession session) {
-        List<MatchPlaybackDTO.BotStateDTO> bots = session.players().stream()
-                .map(player -> new MatchPlaybackDTO.BotStateDTO(
-                        player.userId(),
-                        player.username(),
-                        player.slot(),
-                        player.slot() == 1 ? 500.0 : 500.0,
-                        player.slot() == 1 ? 150.0 : 850.0,
-                        player.slot() == 1 ? 180.0 : 0.0,
-                        100,
-                        100,
-                        "melee",
-                        List.of(),
-                        List.of(),
-                        Map.of(), Map.of(), Map.of(), Map.of(),
-                        null, null, 0, 0,
-                        player.slot() == 1 ? 500.0 : 500.0,
-                        player.slot() == 1 ? 150.0 : 850.0,
-                        0, 0))
-                .toList();
-        return new MatchPlaybackDTO(
-                session.matchId(),
-                MatchSimulationService.DUEL_RULESET_VERSION,
-                "PREPARING",
-                new MatchPlaybackDTO.ArenaStateDTO(1000, 1000, bots, List.of()),
-                List.of(),
-                null,
-                null,
-                "Preparing the authoritative round replay.");
     }
 
     private AppUser user(UUID userId) {

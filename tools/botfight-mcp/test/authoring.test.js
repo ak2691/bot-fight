@@ -43,11 +43,11 @@ test("normalizes and generates paired projectile scaffolds", () => {
     const spec = normalizeAbilitySpec(projectileSpec(), { abilityId: 42 });
     const scaffold = generateAbilityScaffold(spec);
     assert.equal(spec.contract.phases[0].effects[0].targetKinds.length, 2);
-    assert.match(scaffold.generatedSnippets.backend["server/src/main/java/com/example/botfight/simulation/ecs/contracts/AbilityContracts.java"], /new Hitbox\("rectangle"/);
-    assert.match(scaffold.generatedSnippets.backend["server/src/main/java/com/example/botfight/simulation/ecs/contracts/AbilityContracts.java"], /EventScheduleMode.CONTINUOUS/);
-    assert.match(scaffold.generatedSnippets.browser["frontend/src/gameArena/ecs/contracts/AbilityContracts.js"], /targetKinds/);
+    assert.match(scaffold.generatedSnippets.backend["server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityContracts.java"], /new Hitbox\("rectangle"/);
+    assert.match(scaffold.generatedSnippets.backend["server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityContracts.java"], /EventScheduleMode.CONTINUOUS/);
+    assert.match(scaffold.generatedSnippets.browser["shared/engine/ecs/contracts/AbilityContracts.js"], /targetKinds/);
 
-    const browserEntry = scaffold.generatedSnippets.browser["frontend/src/gameArena/ecs/contracts/AbilityContracts.js"];
+    const browserEntry = scaffold.generatedSnippets.browser["shared/engine/ecs/contracts/AbilityContracts.js"];
     const evaluated = new Function("entity", "phase", "attachedAbility", "entityAbility",
         "return ({" + browserEntry + "});")(
         (id, value) => ({ id, ...value }),
@@ -70,7 +70,7 @@ test("attached scaffold preserves its browser spawn and phase structure", () => 
     };
     const spec = normalizeAbilitySpec(input, { abilityId: 43 });
     const scaffold = generateAbilityScaffold(spec);
-    const browserEntry = scaffold.generatedSnippets.browser["frontend/src/gameArena/ecs/contracts/AbilityContracts.js"];
+    const browserEntry = scaffold.generatedSnippets.browser["shared/engine/ecs/contracts/AbilityContracts.js"];
     assert.match(browserEntry, /spawn:/);
     assert.match(browserEntry, /x: 12/);
     new Function("entity", "phase", "attachedAbility", "entityAbility", "return ({" + browserEntry + "});")(

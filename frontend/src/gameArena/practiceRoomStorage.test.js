@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDefaultAbilityStrategyConfiguration } from "./botlogic/code/BotCode.js";
+import { createDefaultAbilityStrategyConfiguration } from "../../../shared/engine/botlogic/code/BotCode.js";
 import { upgradeStoredStrategyCoordinates } from "./persistence/arenaStrategyStorage.js";
 import {
     PRACTICE_ROOM_STORAGE_KEY,

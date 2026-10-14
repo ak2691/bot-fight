@@ -1,8 +1,6 @@
 package com.example.botfight.DTO.match;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.example.botfight.simulation.core.state.StatusEffectState;
-import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -353,14 +351,14 @@ public record MatchReplayDTO(
             String eventType,
             String eventPhaseId,
             Integer eventSequence,
-            List<ArenaEntity.EntityStatus> statusEffects) {
+            List<ArenaEntityStatus> statusEffects) {
 
         public ReplayEntityDTO(String id, String type, Integer abilityId, double x, double y,
                                int size, Double rotation, Integer hp, Boolean armed,
                                Integer timerMs, Double velocityX, Double velocityY,
                                String phaseId, Integer phaseTimerMs, String eventType,
                                Integer eventSequence,
-                               List<ArenaEntity.EntityStatus> statusEffects) {
+                               List<ArenaEntityStatus> statusEffects) {
             this(id, type, abilityId, x, y, size, rotation, hp, armed, timerMs,
                     velocityX, velocityY, phaseId, phaseTimerMs, eventType, null,
                     eventSequence, statusEffects);

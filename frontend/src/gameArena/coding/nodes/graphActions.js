@@ -1,4 +1,4 @@
-import { BOT_CODE_SELECTABLES } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { BOT_CODE_SELECTABLES } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 
 export function graphBranchActions(branch) {
     if (Array.isArray(branch?.actions)) return branch.actions.filter((entry) => entry.action && entry.action !== "none");

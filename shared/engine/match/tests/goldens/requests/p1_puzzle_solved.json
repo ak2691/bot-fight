@@ -1,0 +1,166 @@
+{
+  "matchId": "puzzle-solved",
+  "rulesetVersion": "duel-v1",
+  "seed": "puzzle-solved",
+  "arena": {
+    "width": 1200,
+    "height": 1200,
+    "durationMs": 30000,
+    "initialElapsedMs": 0
+  },
+  "bots": [
+    {
+      "userId": "00000000-0000-4000-8000-000000000001",
+      "username": "Bot 1",
+      "slot": 1,
+      "teamNumber": 1,
+      "x": 600,
+      "y": 150,
+      "rotation": 90,
+      "size": 60,
+      "selectedLoadout": "custom",
+      "brain": {
+        "version": 2,
+        "customVariables": [],
+        "loadout": {
+          "abilities": [
+            1
+          ]
+        },
+        "roots": [
+          {
+            "id": "r-aim",
+            "name": "r-aim",
+            "priority": 1,
+            "branches": [
+              {
+                "id": "r-aim-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": "rotate_toward_enemy",
+                    "selectable": "opponent"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "r-move",
+            "name": "r-move",
+            "priority": 2,
+            "branches": [
+              {
+                "id": "r-move-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": "move_walk",
+                    "selectable": "opponent",
+                    "movementMode": "target",
+                    "movementDirection": 0
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "r-cast",
+            "name": "r-cast",
+            "priority": 3,
+            "branches": [
+              {
+                "id": "r-cast-if",
+                "branchType": "if",
+                "priority": 1,
+                "conditions": [
+                  {
+                    "type": "always"
+                  }
+                ],
+                "actions": [
+                  {
+                    "action": 1,
+                    "selectable": "opponent"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      "initialHp": null
+    },
+    {
+      "userId": "00000000-0000-4000-8000-000000000002",
+      "username": "Bot 2",
+      "slot": 2,
+      "teamNumber": 2,
+      "x": 600,
+      "y": 1050,
+      "rotation": 270,
+      "size": 60,
+      "selectedLoadout": "custom",
+      "brain": {
+        "version": "bot-logic-tree-v2",
+        "customVariables": [],
+        "roots": [],
+        "loadout": {
+          "abilities": []
+        }
+      },
+      "initialHp": 10
+    }
+  ],
+  "puzzle": {
+    "logicConfiguration": {
+      "version": "bot-logic-tree-v2",
+      "customVariables": [],
+      "roots": [
+        {
+          "id": "win",
+          "name": "win",
+          "kind": "win",
+          "branches": [
+            {
+              "id": "win-if",
+              "conditions": [
+                {
+                  "type": "expression",
+                  "left": "selectable.hp",
+                  "leftSelectable": "opponent_1",
+                  "comparator": "lt",
+                  "right": {
+                    "type": "number",
+                    "value": 1
+                  }
+                }
+              ],
+              "actions": [],
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "winConditions": [],
+    "loseConditions": [],
+    "timeLimitMs": 30000,
+    "initialElapsedMs": 0
+  }
+}

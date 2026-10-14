@@ -288,6 +288,22 @@ html,
 }
 
 
+/* Replay sidebar (SimulationReplay.jsx). At <= 1180px it sits above the arena
+   with a condensed scoreboard. Scoped to .replay-sidebar so the coding
+   workspace's right toolbar keeps its placement. */
+.replay-sidebar .replay-board-compact { display: none; }
+
+@media (max-width: 1180px) {
+  .replay-sidebar { order: -1; }
+  .replay-sidebar .replay-board-full { display: none; }
+  .replay-sidebar .replay-board-compact { display: block; }
+  .replay-sidebar .replay-card,
+  .replay-sidebar .replay-banner { padding: .5rem; }
+  .replay-sidebar .replay-card .font-display { font-size: .875rem; }
+  .replay-sidebar .replay-banner .font-display { font-size: 1.125rem; }
+}
+
+
 .chat-panel { display: flex; min-height: 0; flex-direction: column; overflow: hidden; border: 1px solid #262c33; border-radius: 12px; background: #0f1418; color: #e6edf3; font-family: "IBM Plex Sans", system-ui, sans-serif; }
 
 .chat-panel svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }

@@ -1,6 +1,6 @@
-import { decodeBotLoadout, STANDARD_ABILITY_IDS } from "../gameArena/loadout/BotLoadout.js";
-import { BASE_BOT_HP } from "../gameArena/modelPayloads/arenaConstants.js";
-import { attachedAbilityContract } from "../gameArena/ecs/contracts/AbilityContracts.js";
+import { decodeBotLoadout, STANDARD_ABILITY_IDS } from "../../../shared/engine/loadout/BotLoadout.js";
+import { BASE_BOT_HP } from "../../../shared/engine/modelPayloads/arenaConstants.js";
+import { attachedAbilityContract } from "../../../shared/engine/ecs/contracts/AbilityContracts.js";
 
 export const REPLAY_PREPARATION_MS = 3_000;
 
@@ -450,4 +450,4 @@ function interpolateNumber(from, to, alpha) {
 function clampedRoundWins(value) {
     return Math.max(0, Math.min(3, Number(value) || 0));
 }
-import { abilityId } from "../gameArena/gameconfig/AbilityRegistry.js";
+import { abilityId } from "../../../shared/engine/gameconfig/AbilityRegistry.js";

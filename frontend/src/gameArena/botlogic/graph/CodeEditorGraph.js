@@ -1,4 +1,4 @@
-import { ACTION_TYPES, BOT_CODE_SELECTABLES, STATE_VARIABLES, VARIABLE_SELECTABLE_TYPES, actionSupportsTarget, canonicalBotSelectableId } from "../code/BotCode.js";
+import { ACTION_TYPES, BOT_CODE_SELECTABLES, STATE_VARIABLES, VARIABLE_SELECTABLE_TYPES, actionSupportsTarget, canonicalBotSelectableId } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 
 export const CODE_EDITOR_GRAPH_VERSION = "bot-editor-graph-v2";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeRoots } from "../botlogic/code/BotCode.js";
+import { normalizeRoots } from "../../../../shared/engine/botlogic/code/BotCode.js";
 import { carryPositions, matchNodes, topLeftForCenter } from "./nodePlacement.js";
 import { disconnectNode, editorRootsFor, removeRootKeepingChildren, wireNodes } from "./treeWiring.js";
 

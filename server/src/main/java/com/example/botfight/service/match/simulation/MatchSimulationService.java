@@ -1,13 +1,12 @@
 package com.example.botfight.service.match.simulation;
 
-import com.example.botfight.DTO.match.MatchPlaybackDTO;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.domain.submission.BotSubmission;
+import com.example.botfight.service.simulation.SimWorkerClient;
+import com.example.botfight.service.simulation.SimulationRequest.DuelArenaRequest;
+import com.example.botfight.service.simulation.SimulationRequest.DuelBotRequest;
+import com.example.botfight.service.simulation.SimulationRequest.DuelSimulationRequest;
 import com.example.botfight.simulation.geometry.ArenaUnits;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelArenaRequest;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelBotRequest;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelSimulationRequest;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
 import com.example.botfight.service.match.model.MatchPlayer;
@@ -32,55 +31,25 @@ public class MatchSimulationService {
     private static final double TEAM_ONE_Y = ArenaUnits.SPAWN_EDGE_MARGIN;
     private static final double TEAM_TWO_Y = ARENA_HEIGHT_UNITS - ArenaUnits.SPAWN_EDGE_MARGIN;
     private final JsonMapper jsonMapper;
-    private final DuelSimulationService duelSimulationService;
+    private final SimWorkerClient simWorkerClient;
 
-    public MatchSimulationService(JsonMapper jsonMapper, DuelSimulationService duelSimulationService) {
+    public MatchSimulationService(JsonMapper jsonMapper, SimWorkerClient simWorkerClient) {
         this.jsonMapper = jsonMapper;
-        this.duelSimulationService = duelSimulationService;
-    }
-
-    public MatchPlaybackDTO buildDuelPlayback(
-            MatchSession session,
-            Map<UUID, BotSubmission> submissionsByUserId) {
-        try {
-            DuelSimulationRequest request = toRequest(session, submissionsByUserId);
-            return duelSimulationService.simulate(request);
-        } catch (Exception ex) {
-            return failedPlayback(session, "Bot simulation failed: " + ex.getClass().getSimpleName());
-        }
+        this.simWorkerClient = simWorkerClient;
     }
 
     /**
-     * Builds the production replay directly in its compact presentation form.
-     * The authoritative simulator still keeps full mutable bot state while it
-     * runs, but no full per-tick playback DTO is retained.
+     * Runs the rated duel in the simulation worker and returns its replay. Any failure becomes the
+     * ERROR replay, so the match flow keeps its existing retry/cancel path.
      */
     public MatchReplayDTO buildDuelReplay(
             MatchSession session,
             Map<UUID, BotSubmission> submissionsByUserId) {
         try {
             DuelSimulationRequest request = toRequest(session, submissionsByUserId);
-            return duelSimulationService.simulateCompact(request);
+            return simWorkerClient.simulate(request).replay();
         } catch (Exception ex) {
             return failedReplay(session, "Bot simulation failed: " + ex.getClass().getSimpleName());
-        }
-    }
-
-    public MatchPlaybackDTO buildPreparationPlayback(MatchSession session) {
-        try {
-            DuelSimulationRequest request = toRequest(session, Map.of());
-            MatchPlaybackDTO.ArenaStateDTO initialState = duelSimulationService.buildInitialState(request);
-            return new MatchPlaybackDTO(
-                    session.matchId(),
-                    DUEL_RULESET_VERSION,
-                    "PREPARING",
-                    initialState,
-                    List.of(),
-                    null,
-                    null,
-                    "Preparing the authoritative round replay.");
-        } catch (Exception ex) {
-            return failedPlayback(session, "Bot preparation state failed: " + ex.getClass().getSimpleName());
         }
     }
 
@@ -147,45 +116,6 @@ public class MatchSimulationService {
             }
         }
         return brain;
-    }
-
-    private MatchPlaybackDTO failedPlayback(MatchSession session, String message) {
-        List<MatchPlaybackDTO.BotStateDTO> bots = session.players().stream()
-                .map(player -> {
-                    SpawnPosition position = spawnPosition(session, player);
-                    return new MatchPlaybackDTO.BotStateDTO(
-                        player.userId(),
-                        player.username(),
-                        player.slot(),
-                        position.x(),
-                        position.y(),
-                        position.rotation(),
-                        DEFAULT_BOT_HP,
-                        DEFAULT_BOT_HP,
-                        hasText(player.selectedLoadout()) ? player.selectedLoadout() : "melee",
-                        List.of(),
-                        List.of(),
-                        Map.of(), Map.of(), Map.of(), Map.of(),
-                        null, null, 0, 0,
-                        position.x(),
-                        position.y(),
-                        0, 0,
-                        player.teamNumber());
-                })
-                .toList();
-        return new MatchPlaybackDTO(
-                session.matchId(),
-                DUEL_RULESET_VERSION,
-                "FAILED",
-                new MatchPlaybackDTO.ArenaStateDTO(
-                        ARENA_WIDTH_UNITS,
-                        ARENA_HEIGHT_UNITS,
-                        bots,
-                        List.of()),
-                List.of(),
-                "ERROR",
-                null,
-                message);
     }
 
     private MatchReplayDTO failedReplay(MatchSession session, String message) {

@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import {
     countVariableSlots,
-} from "../../botlogic/code/BotCode.js";
-import { CUSTOM_NUMBER_MAX, CUSTOM_NUMBER_MIN, truncateToNumberPrecision, MAX_CUSTOM_VARIABLE_SLOTS } from "../../botlogic/code/configuration/constants.js";
+} from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { CUSTOM_NUMBER_MAX, CUSTOM_NUMBER_MIN, truncateToNumberPrecision, MAX_CUSTOM_VARIABLE_SLOTS } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { filterCustomVariableEntries } from "../utils/customVariableSearch.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";

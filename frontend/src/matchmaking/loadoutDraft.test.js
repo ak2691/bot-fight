@@ -5,7 +5,7 @@ import {
     loadoutDraftState,
     toggleDraftAbility,
 } from "./loadoutDraft.js";
-import { BOT_ABILITIES } from "../gameArena/loadout/BotLoadout.js";
+import { BOT_ABILITIES } from "../../../shared/engine/loadout/BotLoadout.js";
 
 const roundOneOffers = [1, 3, 6, 10, 12];
 const roundTwoOffers = [13, 14, 15, 16];

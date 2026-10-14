@@ -205,15 +205,15 @@ function sourceSnippets(spec) {
     notes.push(...customMappings);
     return {
         browser: {
-            "frontend/src/gameArena/gameconfig/AbilityRegistry.js": `${abilityId}: Object.freeze({ id: ${abilityId}, name: ${jsString(id)}, label: ${jsString(label)}, type: "ability" }),`,
-            "frontend/src/gameArena/gameconfig/Abilities.js": `${abilityId}: ${jsLiteral(browserTiming, 4)},`,
-            "frontend/src/gameArena/loadout/BotLoadout.js": `{ id: ${abilityId}, round: ${round}, visualInterpolation: ${jsString(visualInterpolation)},${round === 0 ? " standard: true," : ""} summary: ${jsString(summary)} },`,
-            "frontend/src/gameArena/ecs/contracts/AbilityContracts.js": browserContractEntry(spec),
+            "shared/engine/gameconfig/AbilityRegistry.js": `${abilityId}: Object.freeze({ id: ${abilityId}, name: ${jsString(id)}, label: ${jsString(label)}, type: "ability" }),`,
+            "shared/engine/gameconfig/Abilities.js": `${abilityId}: ${jsLiteral(browserTiming, 4)},`,
+            "shared/engine/loadout/BotLoadout.js": `{ id: ${abilityId}, round: ${round}, visualInterpolation: ${jsString(visualInterpolation)},${round === 0 ? " standard: true," : ""} summary: ${jsString(summary)} },`,
+            "shared/engine/ecs/contracts/AbilityContracts.js": browserContractEntry(spec),
         },
         backend: {
             "server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityRegistry.java": `register(names, ${abilityId}, ${javaString(id)});`,
             "server/src/main/java/com/example/botfight/simulation/gameconfig/Abilities.java": backendTiming,
-            "server/src/main/java/com/example/botfight/simulation/ecs/contracts/AbilityContracts.java": `contracts.put(${abilityId}, ${javaContract(spec)});`,
+            "server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityContracts.java": `contracts.put(${abilityId}, ${javaContract(spec)});`,
         },
         placement: {
             browserContracts: category === "botAttached"

@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 
 /** Authoritative timing/resource definitions plus a derived compatibility view. */
 public final class Abilities {

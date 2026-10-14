@@ -16,7 +16,7 @@ import {
 } from "./CodeEditorGraph.js";
 import { sanitizeStrategyConfigurationForLoadout } from "../../persistence/arenaStrategyStorage.js";
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameconfig/CombatLoadouts.js";
-import { normalizeAbilityStrategyConfiguration, STATE_VARIABLES } from "../code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration, STATE_VARIABLES } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 
 function configuration(condition, action = { action: "move_walk", movementMode: "target", movementDirection: 0, selectable: "opponent" }) {
     return {

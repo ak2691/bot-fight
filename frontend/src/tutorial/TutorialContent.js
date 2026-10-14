@@ -59,8 +59,9 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
 
                 instructionSteps(
                     "Add a root node. You can press r or click the Add root button.",
-                    "Add a conditional node by clicking + Conditional. Select the conditional and press Edit (or tap it again) to open its settings. New conditionals start as Always, which is always true.",
-                    "Select the conditional, click the + on it and choose Add action. Pick Walk (under Movement).",
+                    "Add a conditional node. Click + Node (or press F) and pick Conditional. It shows up in the middle of your screen, not connected to anything yet. New conditionals start as Always, which is always true.",
+                    "Connect them. Drag from the bar at the bottom of the root onto the conditional. You can also click the root's bottom bar, then the conditional's top bar. Anything not connected to a root never runs, so don't forget this part.",
+                    "Click + Node again and pick Walk (under Movement). Connect the conditional's bottom bar to the action, the same way.",
                     "Click Play to see your code work",
                 ),
             ]),
@@ -71,11 +72,11 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
             lesson("retreat", "Retreat", [
                 "Sometimes, the bot gets hit. But that is okay! It is a sturdy bot with 150 HP. One hit is perfectly fine. Even two, or three, or four, okay, maybe not that many.",
                 instructionSteps(
-                    "Add a root, then add a conditional node by clicking + Conditional.",
-                    "Select the conditional and press Edit. Click Always and choose HP from the list. Set the entity to My Bot.",
+                    "Add a root and a conditional node, then connect the root to the conditional.",
+                    "Double-click the conditional (or tap it again) to open its settings. Click Always and choose HP from the list. Set the entity to My Bot.",
                     "Set the statement to HP < 100.",
-                    "Select the conditional, click the + on it, choose Add action, and pick Walk (under Movement).",
-                    "Select the action and press Edit to see its settings. Relative movement uses 0° toward the selected target, 90° to its right, 180° away, and 270° to its left. Negative equivalents work too.",
+                    "Add a Walk action (under Movement) and connect the conditional to it.",
+                    "Double-click the action to see its settings. Relative movement uses 0° toward the selected target, 90° to its right, 180° away, and 270° to its left. Negative equivalents work too.",
                     "Set your bot to walk away from Opponent 1 when its HP falls below 100.",
                 ),
             ]),
@@ -107,12 +108,12 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
         lessons: Object.freeze([
             lesson("fireballs-in-range", "Shoot Fireballs When You Are Within Range", [
                 "Right now, shooting Fireballs will not hit the opponent. Fireball has four charges and takes time to reload. Time is everything. While you are reloading, the opponent can take advantage of the opening and attack you freely. Do not waste those shots!",
-                "Create a root and add a conditional node by clicking + Conditional. Set up this statement: If Distance is greater than 432, then walk toward Opponent 1. Else if Distance is less than or equal to 432, then use Fireball.",
+                "Create a root and a conditional node, and connect them. Set up this statement: If Distance is greater than 432, then walk toward Opponent 1. Else if Distance is less than or equal to 432, then use Fireball.",
             ]),
             lesson("dont-miss", "Don't Miss", [
                 "Fireball is a projectile, so aim matters. Your bot starts about 300 units away from a stationary Opponent 1. Keep adjusting your aim before you shoot.",
                 "Angle To is how far the facing entity is turned away from its target, from 0 to 180 degrees: near zero means it is aimed at the target. This helps ensure you only use fireball when you are aimed at the target.",
-                "Add a new root, add a conditional node by clicking + Conditional, leave it as Always, and use its + button to add the Face target action (under Rotation) to start aiming.",
+                "Add a new root and a conditional node, connect them, and leave the conditional as Always. Then add the Face target action (under Rotation) and connect the conditional to it to start aiming.",
             ]),
             lesson("dodging", "Dodging", [
                 "I hope you are comfortable with dashing. Figure out how to dodge some attacks.",

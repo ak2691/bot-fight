@@ -2,7 +2,7 @@ package com.example.botfight.simulation.bots;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;

@@ -7,7 +7,7 @@ import {
     abilityStatGroups,
     abilityStatsForDisplay,
 } from "./abilityStatsPresentation.js";
-import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
+import { ALL_ABILITY_DEFINITIONS } from "../../../../shared/engine/loadout/BotLoadout.js";
 
 test("ability stats expose only the player-facing vocabulary", () => {
     const rows = abilityStatsForDisplay({ effects: [], stats: { cooldownMs: 12000, durationMs: 1000, falloff: { maxAmount: 50, minAmount: 25, falloffStart: 0, falloffEnd: 50 }, range: 70, speed: 32, visualSize: 140 } });

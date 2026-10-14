@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AbilityModal } from "../catalogue/AbilityCataloguePage.jsx";
 import { getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
-import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
+import { ALL_ABILITY_DEFINITIONS } from "../../../../shared/engine/loadout/BotLoadout.js";
 import { GUARANTEE_ROUNDS, abilityForRound } from "./queueGuarantees.js";
 import { abilityTypeLabels, typeTagClass } from "../catalogue/abilityTypeTags.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";

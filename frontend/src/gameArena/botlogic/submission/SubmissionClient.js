@@ -4,7 +4,7 @@ import {
 } from "./SubmissionContract.js";
 import { ensureCsrfHeaders } from "../../../security/csrf";
 import { API_BASE_URL } from "../../../config/api.js";
-import { normalizeAbilityStrategyConfiguration } from "../code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 
 export async function buildBotSubmissionPayload({
     code,

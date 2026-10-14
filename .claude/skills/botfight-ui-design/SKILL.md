@@ -28,7 +28,10 @@ Decide which one you're designing first.
     darker bottom edge (3px) so they look pressable. Primary is saturated
     (green for lock-in/submit, cyan for play).
   - Fighting-game scoreboard: team-coloured blocks with big scores, round and
-    timer in the centre.
+    timer in the centre. Accepted 2026-10-14 for the replay sidebar
+    (`docs/mockups/replay-sidebar.html`): win pips (first to 2), full names,
+    one state card, round results as a team-coloured banner. Never "x/3" for a
+    best-of-3; say "First to 2".
   - Fighter cards: bot face portrait, bold name, segmented HP bar (green →
     amber → red), ability tiles using the real ability icons
     (`getAbilityCatalogueIcon`) with cooldown fill and a yellow count badge.

@@ -4,19 +4,19 @@ import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
 import AppNavbar from "../components/AppNavbar";
 import PixiCanvas from "./pixi/PixiCanvas.jsx";
 import CodingPanel from "./coding/CodingPanel.jsx";
-import { SELECTABLE_BOT_ABILITIES, encodeSandboxLoadout, normalizedSandboxLoadout } from "./loadout/BotLoadout.js";
+import { SELECTABLE_BOT_ABILITIES, encodeSandboxLoadout, normalizedSandboxLoadout } from "../../../shared/engine/loadout/BotLoadout.js";
 import { loadoutDraftForEntry, loadoutDraftsForRoster } from "./loadout/sandboxLoadout.js";
 import ArenaSetup from "./components/ArenaSetup.jsx";
 import SandboxLoadoutModal from "./components/modals/SandboxLoadoutModal.jsx";
 import {
     createDefaultAbilityStrategyConfiguration,
     normalizeAbilityStrategyConfiguration,
-} from "./botlogic/code/BotCode.js";
+} from "../../../shared/engine/botlogic/code/BotCode.js";
 import {
     buildBotSubmissionPayload,
     submitBotPayload
 } from "./botlogic/submission/SubmissionClient.js";
-import { isClosingZone } from "./ecs/entities/ClosingZoneSystem.js";
+import { isClosingZone } from "../../../shared/engine/ecs/entities/ClosingZoneSystem.js";
 import {
     DEFAULT_BOT_CONFIGURATION_ID,
 } from "./gameconfig/CombatLoadouts.js";
@@ -29,15 +29,15 @@ import {
 } from "../pages/puzzles/puzzleRoster.js";
 import { restoreTutorialNavigationScrollPosition } from "../tutorial/tutorialLessonNavigation.js";
 
-import { BASE_BOT_HP } from "./modelPayloads/arenaConstants.js";
-import { internalPointToPublic } from "./modelPayloads/arenaCoordinates.js";
+import { BASE_BOT_HP } from "../../../shared/engine/modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "../../../shared/engine/modelPayloads/arenaCoordinates.js";
 import {
     buildInitialArenaShapes,
     buildOpponentShape,
     mergeBotShapeUpdates,
     resetBotShape,
     toSimulationBotShape,
-} from "./modelPayloads/arenaShapes.js";
+} from "../../../shared/engine/modelPayloads/arenaShapes.js";
 import {
     buildAbilityTestingArenaShapes,
     buildAbilityTestingPracticeConfig,
@@ -55,7 +55,7 @@ import {
     puzzleSetupForArena,
     synchronizePuzzleBuilderBotShape,
 } from "./setup/ArenaSetup.js";
-import { isSimulationBotShape } from "./modelPayloads/arenaPreviewSimulation.js";
+import { isSimulationBotShape } from "../../../shared/engine/modelPayloads/arenaPreviewSimulation.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "./modelPayloads/previewBaseline.js";
 import { useArenaAutoPlay } from "./hooks/useArenaAutoPlay.js";
 import {

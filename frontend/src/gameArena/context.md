@@ -6,6 +6,11 @@ rated results.
 
 ## Ownership map
 
+- Engine (moved to `shared/engine/`, same sub-paths): `botlogic/code/`,
+  `botlogic/planner/`, `ecs/`, `gameconfig/` (except `CombatLoadouts.js`),
+  `loadout/BotLoadout.js`, `modelPayloads/` (except `previewBaseline.js`).
+  The items below marked (engine) live there. `CombatLoadouts.js`,
+  `sandboxLoadout.js` and `previewBaseline.js` stay here for now.
 - `Arena.jsx`: testing-room state, mode coordination, logic action application,
   submission coordination, state snapshots, and live-match code-view responders
   plus editable sandbox copies. The preview simulation loop is owned by
@@ -27,18 +32,18 @@ rated results.
   sprites, arena/bot/entity rendering, and presentation overlays. Keyed
   ability-renderer selection lives in `pixi/botAbilityPresentationDefinitions.js`;
   its metadata is presentation-only.
-- `loadout/BotLoadout.js`: ability catalog metadata, round pools, loadout
+- `loadout/BotLoadout.js` (engine): ability catalog metadata, round pools, loadout
   normalization/encoding, action mapping, and visual capabilities.
-- `botlogic/code/`: structured bot-code contract with `BotCode.js` as the public
+- `botlogic/code/` (engine): structured bot-code contract with `BotCode.js` as the public
   entry point and helpers split into `configuration/`, `runtime/`, and `tests/`.
-- `modelPayloads/`: arena units/constants, shape construction, and the logic
+- `modelPayloads/` (engine): arena units/constants, shape construction, and the logic
   feature/state snapshot contract.
-- `gameconfig/`: browser numeric definitions, geometry, defensive rules, bot
+- `gameconfig/` (engine): browser numeric definitions, geometry, defensive rules, bot
   combat, and visual timers.
-- `ecs/`: deterministic arena execution organized into `contracts/`, `bots/`,
+- `ecs/` (engine): deterministic arena execution organized into `contracts/`, `bots/`,
   `abilities/`, and `entities/`; `ecs/contracts/AbilityContracts.js` is the
   canonical normalized registry for direct and spawned abilities. See
-  `ecs/context.md` for ownership and boundaries.
+  `shared/engine/context.md` for ownership and boundaries.
 - `pixi/`: renderer-only texture caching, snapshot interpolation, and mapping
   gameplay shapes/state to Pixi layers/captions/visual state.
 - `ArenaObjects.js`: transient ability-entity identifiers and presentation

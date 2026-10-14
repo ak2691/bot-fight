@@ -2,7 +2,7 @@ import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "../gameArena
 import {
     createDefaultAbilityStrategyConfiguration,
     normalizeAbilityStrategyConfiguration,
-} from "../gameArena/botlogic/code/BotCode.js";
+} from "../../../shared/engine/botlogic/code/BotCode.js";
 
 export const PUZZLE_BOT_CODE_STORAGE_PREFIX = "botfight-puzzle-bot-code-v1";
 const MAX_PUZZLE_BOT_CODE_BYTES = 750_000;

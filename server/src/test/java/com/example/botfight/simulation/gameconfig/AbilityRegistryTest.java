@@ -3,7 +3,7 @@ package com.example.botfight.simulation.gameconfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;

@@ -5,7 +5,7 @@ import com.example.botfight.DTO.submission.BotSubmissionValidationResponseDTO;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;

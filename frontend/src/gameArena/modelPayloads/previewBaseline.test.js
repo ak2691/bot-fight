@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildTutorialArenaShapes } from "../../tutorial/TutorialPresets.js";
-import { mergeBotShapeUpdates, toSimulationBotShape } from "./arenaShapes.js";
+import { mergeBotShapeUpdates, toSimulationBotShape } from "../../../../shared/engine/modelPayloads/arenaShapes.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "./previewBaseline.js";
 
 test("preview baseline restores configured bots and excludes every transient entity", () => {

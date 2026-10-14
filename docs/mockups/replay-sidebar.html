@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Replay sidebar mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; padding: 24px 16px; background: #171a1c; color: #e6edf3; font-family: "IBM Plex Sans", sans-serif; }
+  h1 { font: 600 20px "Chakra Petch", sans-serif; margin: 0 0 4px; }
+  .intro, .note { color: #8b98a5; font-size: 13px; line-height: 1.6; max-width: 760px; }
+  .note { margin: 8px 0 0; }
+  .note li { margin: 2px 0; }
+  .cp { font-family: "Chakra Petch", sans-serif; }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px; margin-top: 20px; }
+  .state h2 { font-size: 13px; font-weight: 500; color: #8b98a5; margin: 0 0 8px; }
+  /* The real aside is 23rem wide (20rem at <=1400px); the panel fills it with 16px padding. */
+  .aside { width: 23rem; box-sizing: border-box; padding: 16px; background: #0d141a; border-left: 1px solid #1f2a33; }
+  .board { display: flex; gap: 6px; align-items: stretch; }
+  .team { flex: 1; min-width: 0; border-radius: 8px; padding: 10px; }
+  .team.blue { background: #0c2a3a; border: 1px solid #1b4a63; }
+  .team.red { background: #3a1418; border: 1px solid #5e2229; text-align: right; }
+  .tag { font: 700 12px "Chakra Petch", sans-serif; letter-spacing: .06em; }
+  .blue .tag { color: #57b8ff; } .red .tag { color: #ff7166; }
+  .score { font: 700 36px/1.1 "Chakra Petch", sans-serif; color: #fff; }
+  .pip { display: inline-block; width: 16px; height: 6px; border-radius: 2px; background: #26313b; margin-right: 3px; }
+  .red .pip { margin: 0 0 0 3px; }
+  .blue .pip.on { background: #57b8ff; } .red .pip.on { background: #ff7166; }
+  .name { font: 600 13px "Chakra Petch", sans-serif; color: #fff; margin-top: 6px; overflow-wrap: anywhere; }
+  .you { font: 500 11px "IBM Plex Sans", sans-serif; background: rgba(87,184,255,.15); color: #9fd6ff; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
+  .centre { width: 70px; flex: none; text-align: center; padding-top: 6px; }
+  .small { font-size: 11px; color: #8b98a5; }
+  .round { font: 700 18px "Chakra Petch", sans-serif; }
+  .clock { font: 700 22px "Chakra Petch", sans-serif; color: #ffd166; margin-top: 6px; }
+  .card { margin-top: 12px; border: 1px solid #1f2a33; border-radius: 8px; padding: 12px; }
+  .card .title { font: 700 16px "Chakra Petch", sans-serif; }
+  .card .sub { font-size: 12px; color: #8b98a5; margin-top: 4px; }
+  .bar { height: 4px; background: #1c252e; border-radius: 2px; margin-top: 8px; }
+  .bar span { display: block; height: 4px; background: #ffd166; border-radius: 2px; }
+  .banner { margin-top: 12px; border-radius: 8px; padding: 14px; text-align: center; }
+  .banner.blue { background: #0c2a3a; border: 1px solid #2f7fae; }
+  .banner.red { background: #3a1418; border: 1px solid #a8434a; }
+  .banner.draw { background: #1b232b; border: 1px solid #3a4652; }
+  .banner .title { font: 700 22px "Chakra Petch", sans-serif; }
+  .banner.blue .title { color: #57b8ff; } .banner.red .title { color: #ff7166; } .banner.draw .title { color: #e6edf3; }
+  .banner .sub { font-size: 12px; color: #b7cbd9; margin-top: 2px; }
+  .leave { margin-top: 14px; display: block; width: 100%; font: 600 13px "Chakra Petch", sans-serif; color: #c9d4de; background: #151d25; border: 1px solid #2a3540; border-bottom-width: 3px; border-radius: 8px; padding: 8px 12px; }
+  /* Phone (<=1180px): the aside sits ABOVE the arena and condenses. */
+  .phone { width: 360px; box-sizing: border-box; padding: 10px; background: #0d141a; border: 1px solid #1f2a33; border-radius: 16px; }
+  .pbar { display: flex; align-items: center; gap: 6px; }
+  .pteam { flex: 1; border-radius: 6px; padding: 4px 8px; display: flex; align-items: center; justify-content: space-between; }
+  .pteam.blue { background: #0c2a3a; } .pteam.red { background: #3a1418; }
+  .pteam .score { font-size: 22px; }
+  .pnames { display: flex; gap: 6px; margin-top: 4px; }
+  .pnames .name { flex: 1; margin: 0; font-size: 12px; }
+  .pnames .name + .name { text-align: right; }
+  .arena { height: 180px; margin-top: 8px; border-radius: 8px; background: #121b23; display: flex; align-items: center; justify-content: center; color: #5d6b78; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Replay sidebar (direction A, approved 2026-10-14)</h1>
+<p class="intro">The right-hand panel shown while a round replay plays, in <code>frontend/src/replay/SimulationReplay.jsx</code> (<code>ReplaySidebar</code>). It is a game surface: Chakra Petch for headings and numbers, team colours carried strongly. The end-of-match card (<code>MatchFinishedCard</code>) is unchanged and keeps replacing this panel once the match result is revealed. Where code and this mockup differ, the mockup wins.</p>
+<ul class="note">
+  <li>Scoreboard on every state: Blue block left, Red block right, centre column with round number, countdown clock and "First to 2".</li>
+  <li>Score is the team's round wins (same value as today's <code>roundWinsForTeam</code>). Pips: 2 per team (wins required), filled per win.</li>
+  <li>Names: every participant of the team on its own line, never truncated (20-character names wrap). The viewer's name gets a "You" chip. With no names, show "Blue team" / "Red team".</li>
+  <li>Round shows as a plain number ("2"), never "2/3". The clock is the existing countdown (<code>replaySeconds</code>), amber.</li>
+  <li>Exactly one state card under the scoreboard (states below). "Leave replay" is a quiet secondary button at the bottom (it replaces the fuchsia button at the top; same handler and label prop).</li>
+  <li>No per-bot HP or abilities here: the canvas status panels already show them.</li>
+</ul>
+
+<div class="grid">
+
+  <div class="state">
+    <h2>1. Bots entering (countdown running)</h2>
+    <div class="aside">
+      <div class="board">
+        <div class="team blue"><div class="tag">BLUE</div><div class="score">1</div><div><span class="pip on"></span><span class="pip"></span></div><div class="name">ak2691<span class="you">You</span></div></div>
+        <div class="centre"><div class="small">Round</div><div class="round">2</div><div class="clock">1:30</div><div class="small" style="margin-top:4px">First to 2</div></div>
+        <div class="team red"><div class="tag">RED</div><div class="score">0</div><div><span class="pip"></span><span class="pip"></span></div><div class="name">Guest-B5E4CBCA9F21D0</div></div>
+      </div>
+      <div class="card" style="text-align:center"><div class="title">Round 2</div><div class="sub">Bots entering the arena</div></div>
+      <button class="leave">Leave replay</button>
+    </div>
+  </div>
+
+  <div class="state">
+    <h2>2. Fighting</h2>
+    <div class="aside">
+      <div class="board">
+        <div class="team blue"><div class="tag">BLUE</div><div class="score">1</div><div><span class="pip on"></span><span class="pip"></span></div><div class="name">ak2691<span class="you">You</span></div></div>
+        <div class="centre"><div class="small">Round</div><div class="round">2</div><div class="clock">0:47</div><div class="small" style="margin-top:4px">First to 2</div></div>
+        <div class="team red"><div class="tag">RED</div><div class="score">0</div><div><span class="pip"></span><span class="pip"></span></div><div class="name">Guest-B5E4CBCA9F21D0</div></div>
+      </div>
+      <div class="card"><div class="title">Round 2 in progress</div><div class="bar"><span style="width:52%"></span></div><div class="sub">Watching the submitted bots fight</div></div>
+      <button class="leave">Leave replay</button>
+    </div>
+    <ul class="note"><li>Bar = time remaining / round length, the same countdown as the clock.</li><li>After the last frame but before the result is revealed, the title stays and the sub line reads "Waiting for the round result".</li></ul>
+  </div>
+
+  <div class="state">
+    <h2>3. Round result revealed</h2>
+    <div class="aside">
+      <div class="board">
+        <div class="team blue"><div class="tag">BLUE</div><div class="score">1</div><div><span class="pip on"></span><span class="pip"></span></div><div class="name">ak2691<span class="you">You</span></div></div>
+        <div class="centre"><div class="small">Round</div><div class="round">1</div><div class="clock">0:42</div><div class="small" style="margin-top:4px">First to 2</div></div>
+        <div class="team red"><div class="tag">RED</div><div class="score">0</div><div><span class="pip"></span><span class="pip"></span></div><div class="name">Guest-B5E4CBCA9F21D0</div></div>
+      </div>
+      <div class="banner blue"><div class="title">Blue takes round 1</div><div class="sub">KO at 0:42, match point</div></div>
+      <button class="leave">Leave replay</button>
+    </div>
+    <ul class="note">
+      <li>The score includes the round just won once the result is revealed (today's <code>revealCurrentRoundPoint</code> logic).</li>
+      <li>Banner in the winner's colour: "Blue takes round N" / "Red takes round N". Sub line: "KO at m:ss" (fight time), "by forfeit" or "by disconnect", plus ", match point" when that team now has 1 win.</li>
+      <li>Draw: grey banner "Round N drawn", sub "Time out". Cancelled: grey "Match canceled". Failed simulation: amber "Simulation failed".</li>
+    </ul>
+  </div>
+
+  <div class="state">
+    <h2>4. Phone and narrow screens (&lt;= 1180px)</h2>
+    <div class="phone">
+      <div class="pbar">
+        <div class="pteam blue"><span class="tag">BLUE</span><span class="score">1</span></div>
+        <div class="centre" style="width:64px;padding:0"><div class="small">Round 2</div><div class="clock" style="margin:0;font-size:18px">0:47</div></div>
+        <div class="pteam red"><span class="score">0</span><span class="tag">RED</span></div>
+      </div>
+      <div class="pnames"><div class="name">ak2691<span class="you">You</span></div><div class="name">Guest-B5E4CBCA9F21D0</div></div>
+      <div class="card" style="padding:8px"><div class="title" style="font-size:14px">Round 2 in progress</div><div class="bar"><span style="width:52%"></span></div></div>
+      <button class="leave">Leave replay</button>
+      <div class="arena">Arena</div>
+    </div>
+    <ul class="note">
+      <li>At &lt;= 1180px the panel renders above the arena (today it drops below it).</li>
+      <li>Condensed scoreboard: one row of team blocks with score (no pips), round and clock in the middle; names on the next row, full and wrapping.</li>
+      <li>State card on one compact block; round-result banner uses the same compact size. "Leave replay" stays at the end of the panel.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

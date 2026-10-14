@@ -4,7 +4,7 @@ import RootNodePriorityInput from "../controls/RootNodePriorityInput.jsx";
 import "./SearchRootNodes.css";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
-import { priorityForNode } from "../../botlogic/code/configuration/identifiers.js";
+import { priorityForNode } from "../../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 
 const FILTER_MIN_ITEMS = 6;
 

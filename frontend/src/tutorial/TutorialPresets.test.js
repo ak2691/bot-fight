@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildTutorialArenaShapes, getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_ACTIONS, TUTORIAL_STEP_COUNT } from "./TutorialPresets.js";
-import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan } from "../gameArena/botlogic/code/BotCode.js";
-import { buildStatePayload } from "../gameArena/modelPayloads/strategyStatePayload.js";
-import { stateFromPayload } from "../gameArena/botlogic/code/runtime/runtimeState.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
-import { BOT_CODE_ACTIONS } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
+import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan } from "../../../shared/engine/botlogic/code/BotCode.js";
+import { buildStatePayload } from "../../../shared/engine/modelPayloads/strategyStatePayload.js";
+import { stateFromPayload } from "../../../shared/engine/botlogic/code/runtime/runtimeState.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../shared/engine/modelPayloads/arenaConstants.js";
+import { BOT_CODE_ACTIONS } from "../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 import { TUTORIAL_CATEGORIES, TUTORIAL_ENDING, TUTORIAL_INTRODUCTION, TUTORIAL_INTRODUCTION_VISUALS, TUTORIAL_LESSONS, getTutorialLesson, getTutorialLessonForScenario } from "./TutorialContent.js";
 import {
     captureTutorialNavigationScrollPosition,
@@ -407,14 +407,15 @@ test("tutorial lessons use the current workspace labels and flow", () => {
     const lessonCopy = TUTORIAL_LESSONS.map((lesson) => tutorialCopy(lesson.id)).join(" ");
     const allCopy = `${lessonCopy} ${TUTORIAL_INTRODUCTION.join(" ")}`;
 
-    assert.match(tutorialCopy("first-steps"), /Select the conditional and press Edit \(or tap it again\) to open its settings\. New conditionals start as Always, which is always true/);
-    assert.match(tutorialCopy("first-steps"), /Pick Walk \(under Movement\)/);
+    assert.match(tutorialCopy("first-steps"), /Click \+ Node \(or press F\) and pick Conditional\. It shows up in the middle of your screen, not connected to anything yet\. New conditionals start as Always, which is always true/);
+    assert.match(tutorialCopy("first-steps"), /Drag from the bar at the bottom of the root onto the conditional/);
+    assert.match(tutorialCopy("first-steps"), /pick Walk \(under Movement\)/);
     assert.match(tutorialCopy("retreat"), /Click Always and choose HP from the list\. Set the entity to My Bot/);
-    assert.match(tutorialCopy("retreat"), /Select the action and press Edit to see its settings/);
+    assert.match(tutorialCopy("retreat"), /Double-click the action to see its settings/);
     assert.match(tutorialCopy("aiming-basics"), /Face target \(under Rotation\)/);
     assert.match(tutorialCopy("dodging"), /the \[1\]st \[closest\] \[Grenade\] from \[Opponent 1\]/);
     assert.match(tutorialCopy("custom-variable-basics"), /Open Variables in the toolbar/);
     assert.match(tutorialCopy("custom-variable-basics"), /Press \+ New variable\. Leave everything as it is/);
     assert.match(tutorialCopy("custom-variable-basics"), /Modify custom variable \(under Variables\)/);
-    assert.doesNotMatch(allCopy, /Movement: Walk|Rotation: Face Target|Rotate: Face Target|Variable: Modify Custom Variable|select ALWAYS|\+ ADD VARIABLE|Go to Custom Variables/);
+    assert.doesNotMatch(allCopy, /Movement: Walk|Rotation: Face Target|Rotate: Face Target|Variable: Modify Custom Variable|select ALWAYS|\+ ADD VARIABLE|Go to Custom Variables|\+ Conditional|press Edit|Add action/);
 });

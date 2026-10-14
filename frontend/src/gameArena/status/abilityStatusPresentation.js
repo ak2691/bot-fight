@@ -1,5 +1,5 @@
-import { abilityDefinition } from "../loadout/BotLoadout.js";
-import { abilityChargeCount, abilityRechargeRemainingMs } from "../gameconfig/AbilityResourceSystem.js";
+import { abilityDefinition } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { abilityChargeCount, abilityRechargeRemainingMs } from "../../../../shared/engine/gameconfig/AbilityResourceSystem.js";
 
 export const ABILITY_RING_COLORS = Object.freeze({
     active: "#7dd3fc",

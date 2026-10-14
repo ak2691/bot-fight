@@ -12,10 +12,10 @@ import {
     normalizeAbilityStrategyConfiguration,
     abilityDefinitionsForVariable,
     validateAbilityStrategyConfiguration,
-} from "../botlogic/code/BotCode.js";
-import { MAX_ROOT_NODES, MAX_LOGIC_BLOCKS, MAX_TOTAL_CONDITIONS, MAX_CUSTOM_VARIABLE_SLOTS } from "../botlogic/code/configuration/constants.js";
-import { statusEffectDefinitionsForAbilities } from "../loadout/BotLoadout.js";
-import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
+} from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { MAX_ROOT_NODES, MAX_LOGIC_BLOCKS, MAX_TOTAL_CONDITIONS, MAX_CUSTOM_VARIABLE_SLOTS } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
+import { statusEffectDefinitionsForAbilities } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { priorityForNode } from "../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide from "../../tutorial/TutorialGuide.jsx";
 import Toast, { ToastStack } from "../../components/Toast.jsx";
@@ -40,7 +40,7 @@ import {
 import { TreeLogicBoard } from "./LogicBoard.jsx";
 import { HudBudget, HudButton, HudScoreboard, HudSwitchRow } from "./HudControls.jsx";
 import { isWorkspaceShortcutKeydown, readAddRootShortcut, readWorkspaceShortcut } from "./addRootShortcut.js";
-import { BOT_LOGIC_TREE_VERSION } from "../botlogic/code/configuration/constants.js";
+import { BOT_LOGIC_TREE_VERSION } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 1.35;

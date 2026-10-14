@@ -1,5 +1,5 @@
 import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "./botlogic/graph/CodeEditorGraph.js";
-import { normalizeAbilityStrategyConfiguration } from "./botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration } from "../../../shared/engine/botlogic/code/BotCode.js";
 import { upgradeStoredStrategyCoordinates } from "./persistence/arenaStrategyStorage.js";
 import {
     DEFAULT_BOT_LOADOUT,
@@ -7,7 +7,7 @@ import {
     decodeSandboxLoadout,
     encodeBotLoadout,
     encodeSandboxLoadout,
-} from "./loadout/BotLoadout.js";
+} from "../../../shared/engine/loadout/BotLoadout.js";
 import {
     BASE_BOT_HP,
     PUBLIC_BOT_CENTER_MAX_X,
@@ -16,8 +16,8 @@ import {
     PUBLIC_BOT_CENTER_MIN_Y,
     PRACTICE_OPPONENT_PUBLIC_START,
     PRACTICE_PLAYER_PUBLIC_START,
-} from "./modelPayloads/arenaConstants.js";
-import { internalPointToPublic } from "./modelPayloads/arenaCoordinates.js";
+} from "../../../shared/engine/modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "../../../shared/engine/modelPayloads/arenaCoordinates.js";
 import {
     PUZZLE_OPPONENT_TEAM,
     PUZZLE_PLAYER_TEAM,

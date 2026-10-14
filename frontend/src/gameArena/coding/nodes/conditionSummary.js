@@ -1,7 +1,7 @@
 // Plain-language summaries for condition rows, used by the compact node
 // strips. Formatting only; evaluation lives in botlogic/code.
 
-import { rightOperandView } from "../../botlogic/code/runtime/conditionEvaluator.js";
+import { rightOperandView } from "../../../../../shared/engine/botlogic/code/runtime/conditionEvaluator.js";
 import { conditionVariableLabel } from "./conditionMeasure.js";
 
 const COMPARATOR_SYMBOLS = Object.freeze({ lt: "<", lte: "≤", eq: "=", neq: "≠", gte: "≥", gt: ">" });

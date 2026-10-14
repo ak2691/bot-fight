@@ -7,10 +7,10 @@ const root = path.resolve(here, "../../..");
 const toUrl = (relativePath) => pathToFileURL(path.join(root, relativePath)).href;
 
 const [registry, contractModule, abilities, loadout] = await Promise.all([
-    import(toUrl("frontend/src/gameArena/gameconfig/AbilityRegistry.js")),
-    import(toUrl("frontend/src/gameArena/ecs/contracts/AbilityContracts.js")),
-    import(toUrl("frontend/src/gameArena/gameconfig/Abilities.js")),
-    import(toUrl("frontend/src/gameArena/loadout/BotLoadout.js")),
+    import(toUrl("shared/engine/gameconfig/AbilityRegistry.js")),
+    import(toUrl("shared/engine/ecs/contracts/AbilityContracts.js")),
+    import(toUrl("shared/engine/gameconfig/Abilities.js")),
+    import(toUrl("shared/engine/loadout/BotLoadout.js")),
 ]);
 
 const timing = Object.fromEntries(Object.keys(registry.ABILITIES).map((id) => [

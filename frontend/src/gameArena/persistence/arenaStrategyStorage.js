@@ -1,5 +1,5 @@
-import { BOT_CODE_SELECTABLES, createDefaultAbilityStrategyConfiguration, normalizeAbilityStrategyConfiguration } from "../botlogic/code/BotCode.js";
-import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION, coordinateVersionFor } from "../botlogic/code/configuration/constants.js";
+import { BOT_CODE_SELECTABLES, createDefaultAbilityStrategyConfiguration, normalizeAbilityStrategyConfiguration } from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION, coordinateVersionFor } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "../botlogic/graph/CodeEditorGraph.js";
 import { actionIdsForLoadoutConfiguration } from "../gameconfig/CombatLoadouts.js";
 

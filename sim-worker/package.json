@@ -1,0 +1,17 @@
+{
+  "name": "botfight-sim-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/http.test.js && npm --prefix ../shared test",
+    "version:write": "node src/version.js --write"
+  },
+  "dependencies": {
+    "piscina": "4.9.4"
+  }
+}

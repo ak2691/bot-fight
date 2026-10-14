@@ -6,7 +6,7 @@ import {
     STATE_VARIABLES,
     SELECTABLE_BY_ID,
     VARIABLE_SELECTABLE_TYPES,
-} from "../gameArena/botlogic/code/BotCode.js";
+} from "../../../shared/engine/botlogic/code/BotCode.js";
 
 function numeric(value, fallback = 0) {
     const parsed = Number(value);

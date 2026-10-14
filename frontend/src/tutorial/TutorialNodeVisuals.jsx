@@ -6,9 +6,9 @@ import {
     createExpressionCondition,
     SELECTABLE_TYPES,
     VISIBLE_STATE_VARIABLES,
-} from "../gameArena/botlogic/code/BotCode.js";
-import { createCodeRoot } from "../gameArena/botlogic/code/configuration/configurationFactories.js";
-import { encodeSandboxLoadout } from "../gameArena/loadout/BotLoadout.js";
+} from "../../../shared/engine/botlogic/code/BotCode.js";
+import { createCodeRoot } from "../../../shared/engine/botlogic/code/configuration/configurationFactories.js";
+import { encodeSandboxLoadout } from "../../../shared/engine/loadout/BotLoadout.js";
 import {
     buildLogicGraph,
     GraphActionNode,

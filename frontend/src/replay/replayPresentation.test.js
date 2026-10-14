@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
+import { combatVisualDurationMs } from "../../../shared/engine/gameconfig/visualState.js";
 import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRatingChanges, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 
 test("replay schedule preserves the server deadlines when the ready event arrives late", () => {

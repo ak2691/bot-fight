@@ -4,7 +4,7 @@ import ArenaDegreesCompass from "../../components/ArenaDegreesCompass";
 import {
     VISIBLE_STATE_VARIABLES,
     VARIABLE_SELECTABLE_TYPES,
-} from "../../gameArena/botlogic/code/BotCode";
+} from "../../../../shared/engine/botlogic/code/BotCode";
 import { useSectionSpy } from "./useSectionSpy.js";
 
 const GROUP_ORDER = ["General", "Entity", "Health & Combat", "Position & Movement", "Abilities & Status", "Movement", "Rotation", "Ability Entity"];

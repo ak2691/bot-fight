@@ -1,0 +1,25 @@
+{
+  "result": "BOT_WIN",
+  "winnerUserId": "00000000-0000-4000-8000-000000000002",
+  "message": "Red Team wins.",
+  "frameCount": 210,
+  "lastElapsedMs": 21000,
+  "finalFrameBots": [
+    {
+      "slot": 1,
+      "x": 900,
+      "y": 600,
+      "hp": 0,
+      "rotation": 180.081
+    },
+    {
+      "slot": 2,
+      "x": 900,
+      "y": 600,
+      "hp": 150,
+      "rotation": 180.099
+    }
+  ],
+  "puzzle": null,
+  "fullOutputSha256": "4566daa44aabae0ccf61ddb0585da8c9336bd06c92c8e0eabe0bfc2f847f84fd"
+}

@@ -1,8 +1,8 @@
 // Editor-only presentation helpers for the condition panel. Nothing here changes how a
 // condition is evaluated: stored variable IDs and their fields stay exactly as they are.
 
-import { createExpressionCondition, defaultSelectableForVariable } from "../../botlogic/code/BotCode.js";
-import { STATE_VARIABLE_BY_ID } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { createExpressionCondition, defaultSelectableForVariable } from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { STATE_VARIABLE_BY_ID } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 
 export const MOVE_DIRECTION_LABEL = "Move Direction";
 const HEADING_ID = "selectable.movementDirection";

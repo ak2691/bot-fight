@@ -1,38 +1,98 @@
 package com.example.botfight.service.match;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.service.match.simulation.MatchSimulationService;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
-import com.example.botfight.simulation.core.combat.ActionExecutionService;
-import com.example.botfight.simulation.core.logic.ConditionResolutionService;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelSimulationRequest;
-import com.example.botfight.simulation.core.state.BotStateService;
-import com.example.botfight.simulation.core.replay.ReplayMappingService;
-import com.example.botfight.simulation.bots.BotCodeService;
-import com.example.botfight.simulation.bots.ConditionEvaluationService;
-import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
+import com.example.botfight.service.simulation.SimWorkerClient;
+import com.example.botfight.service.simulation.SimulationRequest.DuelSimulationRequest;
+import com.example.botfight.service.simulation.WorkerResult;
+import com.example.botfight.support.WorkerStub;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.json.JsonMapper;
 
 class MatchSimulationServiceTest {
 
     @Test
-    void buildsDuelRequestAndUsesInjectedJavaSimulationService() {
-        CapturingDuelSimulationService duelSimulationService = new CapturingDuelSimulationService();
-        MatchSimulationService service = new MatchSimulationService(new JsonMapper(), duelSimulationService);
+    void buildsDuelRequestAndReturnsTheWorkerReplay() {
+        SimWorkerClient worker = WorkerStub.answering();
+        MatchSimulationService service = new MatchSimulationService(new JsonMapper(), worker);
         UUID firstUserId = UUID.nameUUIDFromBytes("first".getBytes());
         UUID secondUserId = UUID.nameUUIDFromBytes("second".getBytes());
-        MatchSession session = new MatchSession(
-                UUID.nameUUIDFromBytes("match".getBytes()),
+        MatchSession session = session("match", firstUserId, secondUserId);
+        BotSubmission firstSubmission = new BotSubmission();
+        firstSubmission.setBrainPayload("""
+                {"version":"bot-logic-tree-v1","roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"conditions":[],"children":[]}]}]}
+                """);
+
+        MatchReplayDTO replay = service.buildDuelReplay(session, Map.of(firstUserId, firstSubmission));
+
+        ArgumentCaptor<DuelSimulationRequest> captor = ArgumentCaptor.forClass(DuelSimulationRequest.class);
+        verify(worker).simulate(captor.capture());
+        DuelSimulationRequest request = captor.getValue();
+        assertThat(replay.result()).isEqualTo("DRAW");
+        assertThat(request.matchId()).isEqualTo(session.matchId());
+        assertThat(request.rulesetVersion()).isEqualTo("duel-v1");
+        assertThat(request.seed()).isEqualTo(99L);
+        assertThat(request.arena().durationMs()).isEqualTo(90_000);
+        assertThat(request.bots()).hasSize(2);
+        assertThat(request.bots().getFirst().x()).isEqualTo(600.0);
+        assertThat(request.bots().getFirst().y()).isEqualTo(150.0);
+        assertThat(request.bots().getFirst().brain().get("roots")).hasSize(1);
+    }
+
+    @Test
+    void workerFailureBecomesTheErrorReplayWithTheExistingMessage() {
+        SimWorkerClient worker = mock(SimWorkerClient.class);
+        when(worker.simulate(any())).thenThrow(new IllegalStateException("worker down"));
+        MatchSimulationService service = new MatchSimulationService(new JsonMapper(), worker);
+        UUID firstUserId = UUID.nameUUIDFromBytes("failed-first".getBytes());
+        UUID secondUserId = UUID.nameUUIDFromBytes("failed-second".getBytes());
+
+        MatchReplayDTO replay = service.buildDuelReplay(session("failed", firstUserId, secondUserId), Map.of());
+
+        assertThat(replay.result()).isEqualTo("ERROR");
+        assertThat(replay.message()).isEqualTo("Bot simulation failed: IllegalStateException");
+        assertThat(replay.initialState().bots()).hasSize(2);
+        assertThat(replay.frames()).isEmpty();
+    }
+
+    @Test
+    void workerReplayIsReturnedUnchanged() {
+        SimWorkerClient worker = mock(SimWorkerClient.class);
+        MatchReplayDTO workerReplay = new MatchReplayDTO(
+                new MatchReplayDTO.ReplayInitialStateDTO(List.of()),
+                List.of(),
+                "BOT_WIN",
+                UUID.nameUUIDFromBytes("winner".getBytes()),
+                "Blue wins.",
+                null,
+                null,
+                null);
+        when(worker.simulate(any())).thenReturn(new WorkerResult("test", workerReplay, null));
+        MatchSimulationService service = new MatchSimulationService(new JsonMapper(), worker);
+        UUID firstUserId = UUID.nameUUIDFromBytes("win-first".getBytes());
+        UUID secondUserId = UUID.nameUUIDFromBytes("win-second".getBytes());
+
+        assertThat(service.buildDuelReplay(session("win", firstUserId, secondUserId), Map.of()))
+                .isSameAs(workerReplay);
+    }
+
+    private static MatchSession session(String name, UUID firstUserId, UUID secondUserId) {
+        return new MatchSession(
+                UUID.nameUUIDFromBytes(("match-" + name).getBytes()),
                 99L,
                 List.of(
                         new MatchPlayer(firstUserId, "One", "one", 1, true, UUID.randomUUID(), 0, "ranged", true),
@@ -45,214 +105,5 @@ class MatchSimulationServiceTest {
                 1,
                 List.of(),
                 Map.of());
-        BotSubmission firstSubmission = new BotSubmission();
-        firstSubmission.setBrainPayload("""
-                {"version":"bot-logic-tree-v1","roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"conditions":[],"children":[]}]}]}
-                """);
-
-        MatchPlaybackDTO playback = service.buildDuelPlayback(session, Map.of(firstUserId, firstSubmission));
-
-        assertThat(playback.status()).isEqualTo("COMPLETED");
-        assertThat(duelSimulationService.capturedRequest).isNotNull();
-        assertThat(duelSimulationService.capturedRequest.matchId()).isEqualTo(session.matchId());
-        assertThat(duelSimulationService.capturedRequest.seed()).isEqualTo(99L);
-        assertThat(duelSimulationService.capturedRequest.arena().durationMs()).isEqualTo(90_000);
-        assertThat(duelSimulationService.capturedRequest.bots()).hasSize(2);
-        assertThat(duelSimulationService.capturedRequest.bots().getFirst().x()).isEqualTo(600.0);
-        assertThat(duelSimulationService.capturedRequest.bots().getFirst().y()).isEqualTo(150.0);
-        assertThat(duelSimulationService.capturedRequest.bots().getFirst().brain().get("roots")).hasSize(1);
-    }
-
-    @Test
-    void preparationPlaybackUsesAuthoritativeBotIdsLoadoutsAndCooldownState() {
-        MatchSimulationService service = new MatchSimulationService(
-                new JsonMapper(),
-                duelSimulationService());
-        UUID firstUserId = UUID.nameUUIDFromBytes("preparation-first".getBytes());
-        UUID secondUserId = UUID.nameUUIDFromBytes("preparation-second".getBytes());
-        MatchSession session = new MatchSession(
-                UUID.nameUUIDFromBytes("preparation-match".getBytes()),
-                99L,
-                List.of(
-                        new MatchPlayer(firstUserId, "One", "one", 1, true, UUID.randomUUID(), 0,
-                                "custom:s", true),
-                        new MatchPlayer(secondUserId, "Two", "two", 2, true, UUID.randomUUID(), 0,
-                                "custom:g", true)),
-                Instant.now(),
-                Instant.now(),
-                Instant.now(),
-                Instant.now(),
-                1,
-                1,
-                List.of(),
-                Map.of());
-
-        MatchPlaybackDTO playback = service.buildPreparationPlayback(session);
-
-        assertThat(playback.status()).isEqualTo("PREPARING");
-        assertThat(playback.initialState().bots()).hasSize(2);
-        assertThat(playback.initialState().bots())
-                .extracting(MatchPlaybackDTO.BotStateDTO::userId)
-                .containsExactly(firstUserId, secondUserId);
-        assertThat(playback.initialState().bots().getFirst().abilities())
-                .containsExactlyInAnyOrder(1, 19, 20, 34);
-        assertThat(playback.initialState().bots().getFirst().maxHp()).isEqualTo(150);
-        assertThat(playback.initialState().bots().getFirst().abilityCooldowns().getOrDefault(1, 0)).isZero();
-        assertThat(playback.initialState().bots().getFirst().abilityCooldowns()).doesNotContainKey(2);
-        assertThat(playback.initialState().bots().getLast().abilities())
-                .containsExactlyInAnyOrder(3, 19, 20, 34);
-        assertThat(playback.initialState().bots().getLast().abilityCharges()).containsEntry(3, 6);
-    }
-
-    @Test
-    void preparationPlaybackDecodesCompactEAsBasicHeal() {
-        MatchSimulationService service = new MatchSimulationService(
-                new JsonMapper(),
-                duelSimulationService());
-        UUID firstUserId = UUID.nameUUIDFromBytes("compact-heal-first".getBytes());
-        UUID secondUserId = UUID.nameUUIDFromBytes("compact-heal-second".getBytes());
-        MatchSession session = new MatchSession(
-                UUID.nameUUIDFromBytes("compact-heal-match".getBytes()),
-                99L,
-                List.of(
-                        new MatchPlayer(firstUserId, "Healer", "healer", 1, true, UUID.randomUUID(), 0,
-                                "custom:e", true),
-                        new MatchPlayer(secondUserId, "Opponent", "opponent", 2, true, UUID.randomUUID(), 0,
-                                "custom:s", true)),
-                Instant.now(),
-                Instant.now(),
-                Instant.now(),
-                Instant.now(),
-                1,
-                1,
-                List.of(),
-                Map.of());
-
-        MatchPlaybackDTO playback = service.buildPreparationPlayback(session);
-
-        assertThat(playback.initialState().bots().getFirst().abilities())
-                .containsExactlyInAnyOrder(10, 19, 20, 34);
-    }
-
-    @Test
-    void preparationPlaybackSpreadsTwoTeamsUsingStableSlots() {
-        MatchSimulationService service = new MatchSimulationService(
-                new JsonMapper(),
-                duelSimulationService());
-        UUID firstUserId = UUID.nameUUIDFromBytes("team-one-first".getBytes());
-        UUID secondUserId = UUID.nameUUIDFromBytes("team-one-second".getBytes());
-        UUID thirdUserId = UUID.nameUUIDFromBytes("team-two-first".getBytes());
-        UUID fourthUserId = UUID.nameUUIDFromBytes("team-two-second".getBytes());
-        MatchSession session = new MatchSession(
-                UUID.nameUUIDFromBytes("team-preparation-match".getBytes()),
-                99L,
-                List.of(
-                        new MatchPlayer(firstUserId, "One", "one", 1, 1, true, UUID.randomUUID(), 0, "melee", true),
-                        new MatchPlayer(secondUserId, "Two", "two", 2, 1, true, UUID.randomUUID(), 0, "melee", true),
-                        new MatchPlayer(thirdUserId, "Three", "three", 3, 2, true, UUID.randomUUID(), 0, "melee", true),
-                        new MatchPlayer(fourthUserId, "Four", "four", 4, 2, true, UUID.randomUUID(), 0, "melee", true)),
-                Instant.now(),
-                Instant.now(),
-                Instant.now(),
-                Instant.now(),
-                1,
-                1,
-                List.of(),
-                Map.of());
-
-        MatchPlaybackDTO playback = service.buildPreparationPlayback(session);
-
-        assertThat(playback.initialState().bots())
-                .extracting(MatchPlaybackDTO.BotStateDTO::slot, MatchPlaybackDTO.BotStateDTO::teamNumber)
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(1, 1),
-                        org.assertj.core.groups.Tuple.tuple(2, 1),
-                        org.assertj.core.groups.Tuple.tuple(3, 2),
-                        org.assertj.core.groups.Tuple.tuple(4, 2));
-        assertThat(playback.initialState().bots())
-                .extracting(MatchPlaybackDTO.BotStateDTO::x, MatchPlaybackDTO.BotStateDTO::y)
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(400.0, 150.0),
-                        org.assertj.core.groups.Tuple.tuple(800.0, 150.0),
-                        org.assertj.core.groups.Tuple.tuple(400.0, 1050.0),
-                        org.assertj.core.groups.Tuple.tuple(800.0, 1050.0));
-    }
-
-    @Test
-    void preparationPlaybackKeepsDraftOrderAcrossRounds() {
-        MatchSimulationService service = new MatchSimulationService(
-                new JsonMapper(),
-                duelSimulationService());
-        UUID firstUserId = UUID.nameUUIDFromBytes("ordered-first".getBytes());
-        UUID secondUserId = UUID.nameUUIDFromBytes("ordered-second".getBytes());
-        MatchSession session = new MatchSession(
-                UUID.nameUUIDFromBytes("ordered-match".getBytes()),
-                99L,
-                List.of(
-                        new MatchPlayer(firstUserId, "One", "one", 1, true, UUID.randomUUID(), 0,
-                                "custom:psgR", true),
-                        new MatchPlayer(secondUserId, "Two", "two", 2, true, UUID.randomUUID(), 0,
-                                "custom:", true)),
-                Instant.now(),
-                Instant.now(),
-                Instant.now(),
-                Instant.now(),
-                2,
-                1,
-                List.of(),
-                Map.of());
-
-        MatchPlaybackDTO playback = service.buildPreparationPlayback(session);
-
-        assertThat(playback.initialState().bots().getFirst().abilities())
-                .containsExactly(19, 20, 34, 12, 1, 3, 13);
-    }
-
-    private DuelSimulationService duelSimulationService() {
-        GameConfigCatalog catalog = new GameConfigCatalog();
-        BotStateService botStateService = new BotStateService(catalog, new BotCodeService());
-        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
-        ConditionResolutionService conditionResolutionService = new ConditionResolutionService(new ConditionEvaluationService(), actionExecutionService);
-        return new DuelSimulationService(conditionResolutionService, new ReplayMappingService(),
-                botStateService, actionExecutionService);
-    }
-
-    private static final class CapturingDuelSimulationService extends DuelSimulationService {
-        private DuelSimulationRequest capturedRequest;
-        private CapturingDuelSimulationService() {
-            super(serviceConditions(), new ReplayMappingService(), serviceBotState(),
-                    serviceActions());
-        }
-
-        private static GameConfigCatalog serviceCatalog() {
-            return new GameConfigCatalog();
-        }
-
-        private static BotStateService serviceBotState() {
-            return new BotStateService(serviceCatalog(), new BotCodeService());
-        }
-
-        private static ActionExecutionService serviceActions() {
-            return new ActionExecutionService(serviceBotState());
-        }
-
-        private static ConditionResolutionService serviceConditions() {
-            return new ConditionResolutionService(new ConditionEvaluationService(), serviceActions());
-        }
-
-        @Override
-        public MatchPlaybackDTO simulate(DuelSimulationRequest request) {
-            capturedRequest = request;
-            return new MatchPlaybackDTO(
-                    request.matchId(),
-                    DuelSimulationService.DUEL_RULESET_VERSION,
-                    "COMPLETED",
-                    new MatchPlaybackDTO.ArenaStateDTO(1600, 1600, List.of(), List.of()),
-                    List.of(),
-                    "DRAW",
-                    null,
-                    "The fight ended in a draw.");
-        }
-
     }
 }

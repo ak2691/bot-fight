@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
-import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
-import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { toSimulationBotShape } from "../../../../shared/engine/modelPayloads/arenaShapes.js";
+import { internalPointToPublic } from "../../../../shared/engine/modelPayloads/arenaCoordinates.js";
 import {
     buildAbilityTestingArenaShapes,
     buildAbilityTestingPracticeConfig,

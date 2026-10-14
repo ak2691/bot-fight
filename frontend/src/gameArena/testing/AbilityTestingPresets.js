@@ -1,11 +1,11 @@
-import { ALL_ABILITY_DEFINITIONS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
-import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
-import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
-import { MAIN_SHAPE, buildOpponentShape, resetBotShapeToStartingConfiguration } from "../modelPayloads/arenaShapes.js";
+import { ALL_ABILITY_DEFINITIONS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { abilityIdFromBoundary } from "../../../../shared/engine/gameconfig/AbilityCompatibility.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "../../../../shared/engine/modelPayloads/arenaCoordinates.js";
+import { MAIN_SHAPE, buildOpponentShape, resetBotShapeToStartingConfiguration } from "../../../../shared/engine/modelPayloads/arenaShapes.js";
 import { normalizePracticeConfig } from "../practiceRoomStorage.js";
-import { BOT_CODE_SELECTABLES } from "../botlogic/code/BotCode.js";
-import { BOT_LOGIC_TREE_VERSION } from "../botlogic/code/configuration/constants.js";
+import { BOT_CODE_SELECTABLES } from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { BOT_LOGIC_TREE_VERSION } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
 
 const MOVEMENT_TEST_ABILITIES = new Set([21]);
 const TEST_CENTER_X = ARENA_WIDTH_UNITS / 2;

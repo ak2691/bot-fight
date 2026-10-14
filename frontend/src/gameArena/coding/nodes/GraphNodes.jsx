@@ -37,20 +37,20 @@ import {
     countActionSlots,
     countConditionSlots,
     canonicalBotSelectableId,
-} from "../../botlogic/code/BotCode.js";
-import { relativeMovementAngle as movementAngle } from "../../botlogic/planner/arenaAngles.js";
-import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS, SELECTABLE_OWNERS } from "../../botlogic/code/contracts/BotLogicContracts.js";
-import { normalizePriority, priorityForNode } from "../../botlogic/code/configuration/identifiers.js";
-import { rightOperandView, rightPairUpdates } from "../../botlogic/code/runtime/conditionEvaluator.js";
+} from "../../../../../shared/engine/botlogic/code/BotCode.js";
+import { relativeMovementAngle as movementAngle } from "../../../../../shared/engine/botlogic/planner/arenaAngles.js";
+import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS, SELECTABLE_OWNERS } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { normalizePriority, priorityForNode } from "../../../../../shared/engine/botlogic/code/configuration/identifiers.js";
+import { rightOperandView, rightPairUpdates } from "../../../../../shared/engine/botlogic/code/runtime/conditionEvaluator.js";
 import { actionTypesForLoadout } from "../../gameconfig/CombatLoadouts.js";
-import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
+import { abilityIdFromBoundary } from "../../../../../shared/engine/gameconfig/AbilityCompatibility.js";
 import {
     ACTION_TO_ABILITY,
     STANDARD_ABILITY_IDS,
     decodeBotLoadout,
     decodeSandboxLoadout,
-} from "../../loadout/BotLoadout.js";
-import { BOT_LOGIC_TREE_VERSION, CUSTOM_NUMBER_MAX, CUSTOM_NUMBER_MIN, MAX_CONDITIONS_PER_BRANCH, MAX_LOGIC_BLOCKS, MAX_ROOT_NAME_LENGTH, MAX_ROOT_NODES, MAX_VARIABLE_ACTION_TERMS, NUMBER_STEP, coordinateLimitsFor, truncateToNumberPrecision } from "../../botlogic/code/configuration/constants.js";
+} from "../../../../../shared/engine/loadout/BotLoadout.js";
+import { BOT_LOGIC_TREE_VERSION, CUSTOM_NUMBER_MAX, CUSTOM_NUMBER_MIN, MAX_CONDITIONS_PER_BRANCH, MAX_LOGIC_BLOCKS, MAX_ROOT_NAME_LENGTH, MAX_ROOT_NODES, MAX_VARIABLE_ACTION_TERMS, NUMBER_STEP, coordinateLimitsFor, truncateToNumberPrecision } from "../../../../../shared/engine/botlogic/code/configuration/constants.js";
 const COORDINATE_LIMITS = coordinateLimitsFor(BOT_LOGIC_TREE_VERSION);
 import { getAbilityCatalogueIcon } from "../../../abilityCatalogueIcons.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";

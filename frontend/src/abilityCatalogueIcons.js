@@ -55,4 +55,4 @@ export function getAbilityCatalogueIconLayout(abilityId) {
     const name = abilityIdentity(abilityId)?.name;
     return ABILITY_CATALOGUE_ICON_LAYOUTS[name] ?? "default";
 }
-import { abilityIdentity } from "./gameArena/gameconfig/AbilityRegistry.js";
+import { abilityIdentity } from "../../shared/engine/gameconfig/AbilityRegistry.js";

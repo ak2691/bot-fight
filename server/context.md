@@ -1,8 +1,8 @@
 # Server context
 
 The Java 21 / Spring Boot 4 application owns authenticated state, matchmaking,
-in-memory match deadlines, submission validation/history, and authoritative rated
-simulation. Controllers should remain thin; business and ownership rules belong
+in-memory match deadlines, submission validation/history, and rated-match dispatch
+to the Node sim worker (the worker is the simulation authority). Controllers should remain thin; business and ownership rules belong
 in services.
 
 ## Layer map
@@ -40,26 +40,21 @@ All Java paths below are under
   the authenticated user and return generic not-found behavior for private data.
 - `security/` and `config/`: session identity, Spring Security/CSRF, time, and
   WebSocket configuration.
-- `simulation/core/`: the package-coupled authoritative duel runtime, organized
-  by role into `orchestration/` (fixed-step duel flow), `logic/`
-  (conditions, targeting, and custom-variable actions), `combat/`
-  (actions, abilities, projectiles, and entity hits), `state/` (bot state,
-  movement, and deferred transitions), and `replay/` (authoritative replay
-  mapping). The role packages communicate through explicit authoritative types
-  owned by the orchestration package.
-- `simulation/bots/`: submitted bot configuration reading, the declarative
-  bot-code contract registry, and normalized condition evaluation.
-- `simulation/geometry/`: pure authoritative distance, angle, and arena-unit
-  calculations.
-- `simulation/gameconfig/`: authoritative ability definitions, shield contracts,
-  and the active duel configuration.
-- `simulation/ecs/`: authoritative ability-entity model, split into
-  `contracts/`, `abilities/`, and `entities/`. `contracts/` owns the unified
-  `AbilityContracts.java` registry. Direct and spawned abilities share one
-  `AbilityContract`/`AbilityPhase` shape; each phase declares its concrete
-  effects, hitbox, visual, repeat scheduler, and allowlisted event response.
-  Collision services supply target IDs and the entity system routes effects into
-  bot state without replacing the logical entity on transitions.
+- `service/simulation/`: Spring's client for the Node sim worker. `SimWorkerClient` posts duel and puzzle
+  requests to `POST /simulate` and validates the answer; `SimulationRequest` holds the request records.
+- `simulation/` is no longer a runtime. The Java duel engine (`simulation/core/`,
+  `simulation/ecs/`) was deleted; the Node sim worker is the only simulator. What
+  remains is contract and catalog data that validation, puzzles, and the match
+  flow still read:
+  - `simulation/bots/`: `BotLogicContracts`, the brain schema and allowlisted
+    condition/variable/action contracts.
+  - `simulation/geometry/`: `ArenaCoordinates` and `ArenaUnits` coordinate and
+    unit conversions.
+  - `simulation/gameconfig/`: `AbilityContracts` (ability phase/effect contract
+    registry), `AbilityRegistry`, `Abilities`, `GameConfig`, `GameConfigCatalog`,
+    `ClosingZoneConfig`, and `CompactAbilityCode`.
+- Worker replay wire shapes that Spring deserializes live under `DTO/match/`
+  (`StatusEffectState`, `ArenaEntityStatus`, `MatchReplayDTO`, `MatchPlaybackDTO`).
 - `src/main/resources/db/migration/`: append-only Flyway schema history.
 
 ## Route by task
@@ -77,9 +72,9 @@ All Java paths below are under
 | Submission endpoint/persistence | submission controller/service areas | DTO, repository, and domain areas |
 | Puzzle authoring, published list, and admin role boundary | puzzle controller/service areas | auth/security, puzzle domain/repository, migration, and frontend puzzle page |
 | Brain/loadout boundary validation | validation service area | combat catalog, frontend schema, and focused tests |
-| Rated simulation orchestration | `simulation/core/orchestration/DuelSimulationService.java` | replay DTO and matchmaking lifecycle |
-| Combat/ability/effect parity | `simulation/gameconfig/`, `simulation/core/combat/`, `simulation/core/logic/`, `simulation/core/state/`, `simulation/ecs/` | duel orchestration, frontend Game Arena context, docs index |
-| Replay/result mismatch | `simulation/core/replay/`, `DTO/` | match orchestration/matchmaking and frontend replay areas |
+| Rated simulation and puzzle attempts | `service/simulation/` (worker client, request types), `service/match/simulation/MatchSimulationService.java`, `service/puzzle/PuzzleAttemptService.java` | `DTO/match/MatchReplayDTO.java`, [`../sim-worker/README.md`](../sim-worker/README.md) |
+| Ability/effect contract data (validation, puzzles) | `simulation/gameconfig/AbilityContracts.java`, `simulation/gameconfig/Abilities.java`, `simulation/bots/BotLogicContracts.java` | `shared/engine/` (the JS engine is the simulation truth), frontend Game Arena context, docs index |
+| Replay/result mismatch | `DTO/match/MatchReplayDTO.java`, `service/simulation/SimWorkerClient.java`, `sim-worker/` | match orchestration/matchmaking and frontend replay areas |
 | Database/schema | `domain/`, `repository/`, `resources/db/migration/` | services enforcing ownership/state transitions |
 
 ## Authority and validation rules
@@ -111,12 +106,34 @@ evaluation, units, or timing, read [`../docs/context.md`](../docs/context.md) an
 [`../frontend/src/gameArena/context.md`](../frontend/src/gameArena/context.md). Trace both
 runtimes and add parity-focused tests.
 
+## Simulation worker
+
+Rated rounds and puzzle attempts run in `sim-worker/` (the JS engine). Spring sends `duel-v1` requests
+with `X-Sim-Worker-Secret` and maps the reply to `WorkerResult`. A worker failure becomes the
+`Bot simulation failed: ...` ERROR replay for matches and an exception for puzzles.
+
+Config (`application.properties`): `sim.worker.url` (`SIM_WORKER_URL`, default `http://sim-worker:8090`),
+`sim.worker.secret` (`SIM_WORKER_SECRET`, required, no default; startup fails when blank),
+`sim.worker.timeout` (`SIM_WORKER_TIMEOUT`, 12s), `sim.worker.concurrency` (`SIM_WORKER_THREADS`, 2).
+
+Running Spring outside Docker (`spring-boot:run`) needs the worker on the host:
+
+```powershell
+$env:SIM_WORKER_URL = 'http://localhost:8090'
+$env:SIM_WORKER_SECRET = '<same secret as the worker>'
+# in another shell, from the repository root:
+cd sim-worker; $env:SIM_WORKER_SECRET = '<same secret>'; npm start
+```
+
+The worker reads `PORT` and defaults to 8090, so set `PORT` only when you change it. Tests use
+`support/WorkerStub` or a mocked `SimWorkerClient`; no test needs a running worker or a secret.
+
 ## Checks
 
 From `server/` on Windows, run the narrowest test with Maven's `-Dtest=...`
 selector, then `.\mvnw.cmd test` for contract or lifecycle changes. Relevant
 suites are grouped under `src/test/java/com/example/botfight/service/`,
-`simulation/`, and `simulation/gameconfig/` or `simulation/ecs/`.
+`simulation/bots/`, `simulation/gameconfig/`, and `simulation/geometry/`.
 
 There is no active `server/package.json`; do not use the obsolete Node
 simulation commands from older guidance.

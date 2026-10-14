@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
-import { ABILITY_CONTRACTS, abilityPhase } from "../ecs/contracts/AbilityContracts.js";
+import { ABILITY_CONTRACTS, abilityPhase } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
-import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
+import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../../../../shared/engine/gameconfig/hitboxGeometry.js";
 
 test("Pixi renderer classifies every combat snapshot family without changing game state", () => {
     assert.equal(isBotShape({ id: "main" }), true);

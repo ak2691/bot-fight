@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
 import AppNavbar from "../../components/AppNavbar.jsx";
 import Arena from "../../gameArena/Arena.jsx";
-import { customVariableDefinitions, STATE_VARIABLES, VISIBLE_STATE_VARIABLES } from "../../gameArena/botlogic/code/BotCode.js";
+import { customVariableDefinitions, STATE_VARIABLES, VISIBLE_STATE_VARIABLES } from "../../../../shared/engine/botlogic/code/BotCode.js";
 import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { fetchPuzzle, submitPuzzleAttempt } from "../../puzzles/puzzleApi.js";
 import { puzzleConditionLabel } from "../../puzzles/puzzleConditions.js";

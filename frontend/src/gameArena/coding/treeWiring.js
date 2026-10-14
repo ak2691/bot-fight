@@ -1,4 +1,4 @@
-import { ACTION_TYPES, actionExecutionHead } from "../botlogic/code/BotCode.js";
+import { ACTION_TYPES, actionExecutionHead } from "../../../../shared/engine/botlogic/code/BotCode.js";
 
 // Editor adapters expose disconnected subtrees through the same branch editing paths. These wrappers never enter
 // the submitted brain. Roots take conditionals only: this branch's runtime has no root-level actions.

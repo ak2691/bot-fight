@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { STATE_VARIABLES, STATE_VARIABLE_BY_ID, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { STATE_VARIABLES, STATE_VARIABLE_BY_ID, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES } from "../../../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
 import { objectPickIsCustom, switchMoveDirectionMeasure } from "./conditionMeasure.js";
 
 const HEADING = "selectable.movementDirection";

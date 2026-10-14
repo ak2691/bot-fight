@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { advanceArenaPreviewTick } from "../modelPayloads/arenaPreviewSimulation.js";
-import { mergeBotShapeUpdates, toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
-import { DEFAULT_BOT_LOADOUT, encodeBotLoadout } from "../loadout/BotLoadout.js";
-import { PRACTICE_OPPONENT_PUBLIC_START, PRACTICE_PLAYER_PUBLIC_START } from "../modelPayloads/arenaConstants.js";
-import { publicPointToInternal } from "../modelPayloads/arenaCoordinates.js";
+import { advanceArenaPreviewTick } from "../../../../shared/engine/modelPayloads/arenaPreviewSimulation.js";
+import { mergeBotShapeUpdates, toSimulationBotShape } from "../../../../shared/engine/modelPayloads/arenaShapes.js";
+import { DEFAULT_BOT_LOADOUT, encodeBotLoadout } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { PRACTICE_OPPONENT_PUBLIC_START, PRACTICE_PLAYER_PUBLIC_START } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { publicPointToInternal } from "../../../../shared/engine/modelPayloads/arenaCoordinates.js";
 import {
     buildPracticeArenaShapes,
     puzzleBuilderSimulationLookups,

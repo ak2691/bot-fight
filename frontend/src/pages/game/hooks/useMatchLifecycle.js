@@ -4,8 +4,8 @@ import {
     BASE_BOT_HP,
     DUEL_SLOT_ONE_Y,
     DUEL_SLOT_TWO_Y,
-} from "../../../gameArena/modelPayloads/arenaConstants";
-import { decodeBotLoadout, DEFAULT_BOT_LOADOUT, encodeBotLoadout, normalizedBotLoadout } from "../../../gameArena/loadout/BotLoadout";
+} from "../../../../../shared/engine/modelPayloads/arenaConstants";
+import { decodeBotLoadout, DEFAULT_BOT_LOADOUT, encodeBotLoadout, normalizedBotLoadout } from "../../../../../shared/engine/loadout/BotLoadout";
 import { loadoutForFreshRound } from "../../../matchmaking/loadoutDraft.js";
 import {
     getEstimatedOneWayNetworkDelayMs,

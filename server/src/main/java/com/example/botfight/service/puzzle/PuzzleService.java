@@ -23,7 +23,7 @@ import com.example.botfight.service.cache.DatabaseLookupCache.PuzzleListKey;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
 import com.example.botfight.simulation.bots.BotLogicContracts;
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.geometry.ArenaUnits;

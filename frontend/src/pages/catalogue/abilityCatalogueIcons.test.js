@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { ABILITY_CATALOGUE_ICON_LAYOUTS, ABILITY_CATALOGUE_ICONS, getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
-import { BOT_ABILITIES } from "../../gameArena/loadout/BotLoadout.js";
+import { BOT_ABILITIES } from "../../../../shared/engine/loadout/BotLoadout.js";
 import { EFFECT_GUIDE } from "./statusEffectCatalogue.js";
 
 const ICON_DIRECTORY = fileURLToPath(new URL("../../../public/assets/ability-list/icons/", import.meta.url));

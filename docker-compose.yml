@@ -33,6 +33,12 @@ services:
     backend:
         build:
             context: ./server
+        environment:
+            SIM_WORKER_URL: http://sim-worker:8090
+            SIM_WORKER_SECRET: ${SIM_WORKER_SECRET:-local-dev-sim-secret}
+        networks:
+            - default
+            - simulation
         container_name: spring-api
         ports:
             - "8080:8080"
@@ -40,10 +46,37 @@ services:
             - ./server/.env
         depends_on:
             - postgres-db
+            - sim-worker
+
+    # ==========================================
+    # 4. Simulation worker: Node (internal only, no published port)
+    # ==========================================
+    sim-worker:
+        build:
+            context: ./sim-worker
+            additional_contexts:
+                shared: ./shared
+        init: true
+        restart: unless-stopped
+        environment:
+            SIM_WORKER_THREADS: ${SIM_WORKER_THREADS:-2}
+            SIM_WORKER_SECRET: ${SIM_WORKER_SECRET:-local-dev-sim-secret}
+        expose:
+            - "8090"
+        networks:
+            - simulation
+        healthcheck:
+            test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+            start_period: 10s
 
     frontend:
         build:
             context: ./frontend
+            additional_contexts:
+                shared: ./shared
         container_name: react-client
         #command: npm run dev -- --host 0.0.0.0 --port 5173
         command: sh -c "npm run build && npm run preview -- --host 0.0.0.0 --port 5173"
@@ -61,3 +94,7 @@ services:
 
 volumes:
     pgdata:
+
+networks:
+    simulation:
+        internal: true

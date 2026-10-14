@@ -1,0 +1,28 @@
+{
+  "result": "DRAW",
+  "winnerUserId": null,
+  "message": "The fight ended in a draw.",
+  "frameCount": 0,
+  "lastElapsedMs": 1000,
+  "finalFrameBots": [
+    {
+      "slot": 1,
+      "x": 600,
+      "y": 150,
+      "hp": 150,
+      "rotation": 90
+    },
+    {
+      "slot": 2,
+      "x": 600,
+      "y": 1050,
+      "hp": 150,
+      "rotation": 270
+    }
+  ],
+  "puzzle": {
+    "status": "failed",
+    "elapsedMs": 1000
+  },
+  "fullOutputSha256": "2bcc83c080a163a99fe793383b440e77a008fe9f2c9242e1efc894590df736f0"
+}

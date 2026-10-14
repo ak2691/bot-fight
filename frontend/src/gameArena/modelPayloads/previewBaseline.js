@@ -1,9 +1,9 @@
-import { isSimulationBotShape } from "./arenaPreviewSimulation.js";
+import { isSimulationBotShape } from "../../../../shared/engine/modelPayloads/arenaPreviewSimulation.js";
 import {
     mergeBotShapeUpdates,
     resetBotShapeToStartingConfiguration,
     toSimulationBotShape,
-} from "./arenaShapes.js";
+} from "../../../../shared/engine/modelPayloads/arenaShapes.js";
 
 function botAtStartingState(shape, startingState = null) {
     const current = toSimulationBotShape(shape);

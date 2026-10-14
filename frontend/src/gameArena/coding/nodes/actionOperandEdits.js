@@ -1,6 +1,6 @@
 // Pure edits to a custom-variable action entry's operands. Shared by the main canvas and the
 // chain editor so a Variable action behaves the same wherever it lives.
-import { CUSTOM_VARIABLE_OPERATIONS, defaultSelectableForVariable } from "../../botlogic/code/BotCode.js";
+import { CUSTOM_VARIABLE_OPERATIONS, defaultSelectableForVariable } from "../../../../../shared/engine/botlogic/code/BotCode.js";
 
 /** The terms of a number variable action; older single-operand entries read as one term. */
 export function variableActionTerms(entry) {

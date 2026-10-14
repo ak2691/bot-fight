@@ -1,7 +1,6 @@
 package com.example.botfight.DTO.match;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.example.botfight.simulation.core.state.StatusEffectState;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;

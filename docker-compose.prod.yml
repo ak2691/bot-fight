@@ -25,11 +25,41 @@ services:
         environment:
             SPRING_PROFILES_ACTIVE: prod
             TZ: UTC
+            SIM_WORKER_URL: http://sim-worker:8090
+            SIM_WORKER_SECRET: ${SIM_WORKER_SECRET:?Set SIM_WORKER_SECRET}
+        networks:
+            - default
+            - simulation
         ports:
             - "127.0.0.1:8080:8080"
         depends_on:
             postgres-db:
                 condition: service_healthy
+            sim-worker:
+                condition: service_healthy
+
+    # Internal only: no published port. Reachable from the backend on the simulation network.
+    sim-worker:
+        image: ${SIM_WORKER_IMAGE:?Set SIM_WORKER_IMAGE to the published sim-worker image}:${IMAGE_TAG:-latest}
+        restart: unless-stopped
+        init: true
+        environment:
+            SIM_WORKER_SECRET: ${SIM_WORKER_SECRET:?Set SIM_WORKER_SECRET}
+            SIM_WORKER_THREADS: ${SIM_WORKER_THREADS:-2}
+        expose:
+            - "8090"
+        networks:
+            - simulation
+        healthcheck:
+            test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+            start_period: 10s
 
 volumes:
     pgdata:
+
+networks:
+    simulation:
+        internal: true

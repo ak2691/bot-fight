@@ -1,6 +1,6 @@
-import { createDefaultAbilityStrategyConfiguration, normalizeAbilityStrategyConfiguration } from "../botlogic/code/BotCode.js";
-import { tickClosingZoneWorld } from "../ecs/entities/ClosingZoneSystem.js";
-import { decodeBotLoadout, decodeSandboxLoadout } from "../loadout/BotLoadout.js";
+import { createDefaultAbilityStrategyConfiguration, normalizeAbilityStrategyConfiguration } from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { tickClosingZoneWorld } from "../../../../shared/engine/ecs/entities/ClosingZoneSystem.js";
+import { decodeBotLoadout, decodeSandboxLoadout } from "../../../../shared/engine/loadout/BotLoadout.js";
 import {
     ARENA_HEIGHT_UNITS,
     ARENA_WIDTH_UNITS,
@@ -9,15 +9,15 @@ import {
     PRACTICE_PLAYER_START,
     PRACTICE_OPPONENT_PUBLIC_START,
     PRACTICE_PLAYER_PUBLIC_START,
-} from "../modelPayloads/arenaConstants.js";
-import { publicPointToInternal } from "../modelPayloads/arenaCoordinates.js";
+} from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { publicPointToInternal } from "../../../../shared/engine/modelPayloads/arenaCoordinates.js";
 import {
     buildInitialArenaShapes,
     buildOpponentShape,
     mergeBotShapeUpdates,
     resetBotShapeToStartingConfiguration,
     toSimulationBotShape,
-} from "../modelPayloads/arenaShapes.js";
+} from "../../../../shared/engine/modelPayloads/arenaShapes.js";
 import { normalizePracticeConfig } from "../practiceRoomStorage.js";
 import {
     PUZZLE_OPPONENT_TEAM,

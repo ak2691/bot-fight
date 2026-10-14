@@ -16,9 +16,9 @@ import {
     createExpressionCondition,
     normalizeConditions,
     normalizeRoots,
-} from "../../gameArena/botlogic/code/BotCode.js";
-import { BOT_LOGIC_TREE_V1 } from "../../gameArena/botlogic/code/configuration/constants.js";
-import { createEditorNodeId, normalizePriority } from "../../gameArena/botlogic/code/configuration/identifiers.js";
+} from "../../../../shared/engine/botlogic/code/BotCode.js";
+import { BOT_LOGIC_TREE_V1 } from "../../../../shared/engine/botlogic/code/configuration/constants.js";
+import { createEditorNodeId, normalizePriority } from "../../../../shared/engine/botlogic/code/configuration/identifiers.js";
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameArena/gameconfig/CombatLoadouts.js";
 import { TreeLogicBoard } from "../../gameArena/coding/LogicBoard.jsx";
 import AddIcon from "../../gameArena/coding/controls/AddIcon.jsx";

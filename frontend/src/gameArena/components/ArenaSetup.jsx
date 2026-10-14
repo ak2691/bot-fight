@@ -12,7 +12,7 @@ import {
     PUBLIC_BOT_CENTER_MAX_Y,
     PUBLIC_BOT_CENTER_MIN_X,
     PUBLIC_BOT_CENTER_MIN_Y,
-} from "../modelPayloads/arenaConstants.js";
+} from "../../../../shared/engine/modelPayloads/arenaConstants.js";
 import { normalizePracticeConfig } from "../practiceRoomStorage.js";
 import { arenaBotDisplayName, mapPointToArena, teamOf } from "./arenaSetupHelpers.js";
 import {

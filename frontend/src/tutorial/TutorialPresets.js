@@ -1,9 +1,9 @@
-import { encodeSandboxLoadout } from "../gameArena/loadout/BotLoadout.js";
-import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../gameArena/modelPayloads/arenaShapes.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
-import { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "../gameArena/botlogic/code/configuration/configurationFactories.js";
-import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES, CUSTOM_VARIABLE_OPERATIONS } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
-import { abilityIdFromLegacyName } from "../gameArena/gameconfig/AbilityRegistry.js";
+import { encodeSandboxLoadout } from "../../../shared/engine/loadout/BotLoadout.js";
+import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../../../shared/engine/modelPayloads/arenaShapes.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../shared/engine/modelPayloads/arenaConstants.js";
+import { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "../../../shared/engine/botlogic/code/configuration/configurationFactories.js";
+import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES, CUSTOM_VARIABLE_OPERATIONS } from "../../../shared/engine/botlogic/code/contracts/BotLogicContracts.js";
+import { abilityIdFromLegacyName } from "../../../shared/engine/gameconfig/AbilityRegistry.js";
 
 const TUTORIAL_CENTER_X = ARENA_WIDTH_UNITS / 2;
 const TUTORIAL_CENTER_Y = ARENA_HEIGHT_UNITS / 2;

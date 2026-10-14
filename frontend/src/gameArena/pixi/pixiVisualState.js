@@ -1,11 +1,11 @@
-import { abilityDefinition, VISUAL_INTERPOLATION } from "../loadout/BotLoadout.js";
-import { abilityId } from "../gameconfig/AbilityRegistry.js";
-import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
-import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
-import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
-import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
-import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { entityAbilityPhaseForEntity, entityContract, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+import { abilityDefinition, VISUAL_INTERPOLATION } from "../../../../shared/engine/loadout/BotLoadout.js";
+import { abilityId } from "../../../../shared/engine/gameconfig/AbilityRegistry.js";
+import { attachedAbilityContract } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
+import { CLOSING_ZONE_TYPE } from "../../../../shared/engine/gameconfig/ArenaHazardConfig.js";
+import { AUTO_STEP_MS } from "../../../../shared/engine/modelPayloads/arenaConstants.js";
+import { compassDegreesToRadians } from "../../../../shared/engine/botlogic/planner/arenaAngles.js";
+import { statusIsActive } from "../../../../shared/engine/ecs/contracts/StatusContracts.js";
+import { entityAbilityPhaseForEntity, entityContract, phaseForEntity } from "../../../../shared/engine/ecs/contracts/AbilityContracts.js";
 import { BOT_ABILITY_VISUAL_PRIORITY } from "./botAbilityPresentationDefinitions.js";
 
 const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "mineExplosion", "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);

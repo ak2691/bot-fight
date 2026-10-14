@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { MAIN_SHAPE, resetBotShapeToStartingConfiguration, toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
+import { MAIN_SHAPE, resetBotShapeToStartingConfiguration, toSimulationBotShape } from "../../../../shared/engine/modelPayloads/arenaShapes.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "../modelPayloads/previewBaseline.js";
 import { createPresentationClock } from "./presentationClock.js";
 import { clearPresentationArtifacts, initialPresentationViewState } from "./presentationReset.js";

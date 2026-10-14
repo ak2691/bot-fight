@@ -3,7 +3,7 @@ import { AbilityModal } from "../../catalogue/AbilityCataloguePage.jsx";
 import { abilityTypeLabels, typeTagClass } from "../../catalogue/abilityTypeTags.js";
 import { getAbilityCatalogueIcon } from "../../../abilityCatalogueIcons.js";
 import MatchToolIcon from "../../../gameArena/coding/controls/MatchToolIcon.jsx";
-import { BOT_ABILITIES, MAX_EQUIPPED_ABILITIES } from "../../../gameArena/loadout/BotLoadout.js";
+import { BOT_ABILITIES, MAX_EQUIPPED_ABILITIES } from "../../../../../shared/engine/loadout/BotLoadout.js";
 import { loadoutDraftState, toggleDraftAbility } from "../../../matchmaking/loadoutDraft.js";
 
 function AbilityCatalogueIcon({ ability, className }) {
