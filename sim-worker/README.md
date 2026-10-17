@@ -46,6 +46,10 @@ Limits: JSON nesting is capped at 64 before parsing. Admission (in-flight upload
 bounded by threads plus queue. A task that exceeds its deadline is aborted and its thread is replaced
 (`504 SIMULATION_TIMEOUT`).
 
+On SIGTERM, the service stops accepting new connections, lets admitted requests finish within their
+task deadlines, and only then destroys the worker pool. Keep the container stop grace period longer
+than the task timeout so a deployment can drain rated simulations.
+
 ## Docker and Spring
 
 `docker-compose.yml` runs the worker as `sim-worker` on the internal `simulation` network, with no published

@@ -1,36 +1,42 @@
 package com.example.botfight.service;
 
-import com.example.botfight.service.auth.AuthService;
-import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.service.auth.CurrentUserService;
-import com.example.botfight.service.auth.GoogleAuthService;
-import com.example.botfight.service.auth.UserAuthIdentityService;
-import com.example.botfight.config.BotFightSecurityProperties;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.botfight.DTO.auth.AuthRequestDTO;
 import com.example.botfight.DTO.auth.AuthUserDTO;
 import com.example.botfight.DTO.auth.GoogleLinkRequestDTO;
 import com.example.botfight.DTO.auth.UsernameRequestDTO;
+import com.example.botfight.config.BotFightSecurityProperties;
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.domain.auth.UserAuthIdentity;
 import com.example.botfight.repository.UserAuthIdentityRepository;
 import com.example.botfight.repository.UserRepository;
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.auth.AuthService;
+import com.example.botfight.service.auth.CurrentUserService;
+import com.example.botfight.service.auth.EmailVerificationService;
+import com.example.botfight.service.auth.GoogleAuthService;
+import com.example.botfight.service.auth.UserAuthIdentityService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
-import java.util.Optional;
-import java.util.UUID;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -249,5 +255,121 @@ class GoogleAuthServiceTest {
         user.setNormalizedEmail(email.toLowerCase());
         user.setPasswordHash(passwordHash);
         return user;
+    }
+
+    @Nested
+    class AccountLinking {
+        @Test
+        void abandonedGoogleLinkMarkerOfUserADoesNotLinkUserBsGoogleIdentity() {
+            UserRepository userRepository = mock(UserRepository.class);
+            UserAuthIdentityRepository identityRepository = mock(UserAuthIdentityRepository.class);
+            UserAuthIdentityService identityService = mock(UserAuthIdentityService.class);
+            CurrentUserService currentUserService = mock(CurrentUserService.class);
+            PasswordEncoder encoder = new BCryptPasswordEncoder();
+            AuthService authService = new AuthService(userRepository, encoder, mock(EmailVerificationService.class));
+            GoogleAuthService google = new GoogleAuthService(
+                    userRepository, identityRepository, identityService, currentUserService,
+                    authService, encoder, Clock.systemUTC(), new BotFightSecurityProperties());
+
+            AppUser a = user("alice", "alice@example.com", encoder.encode("password123"));
+            AppUser b = user("bobby", "bob@example.com", encoder.encode("password123"));
+            when(userRepository.findById(a.getId())).thenReturn(Optional.of(a));
+            when(userRepository.findByNormalizedEmail("bob@example.com")).thenReturn(Optional.of(b));
+            when(currentUserService.requireCurrentUser(any())).thenReturn(a);
+            when(identityRepository.findByProviderAndProviderSubject(anyString(), anyString()))
+                    .thenReturn(Optional.empty());
+
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            // A starts linking Google (GET /api/auth/google/link) and abandons the flow.
+            google.beginLink(null, request);
+            request.getSession(false).setAttribute(GoogleAuthService.GOOGLE_PENDING_LINK_SESSION_KEY, "stale");
+            request.getSession(false).setAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_SESSION_KEY, a.getId());
+            request.getSession(false).setAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY,
+                    Instant.now().plusSeconds(300));
+
+            // B logs in with a password in the same HTTP session (changeSessionId keeps attributes).
+            AuthRequestDTO login = new AuthRequestDTO();
+            login.setEmail("bob@example.com");
+            login.setPassword("password123");
+            authService.login(login, request);
+            assertThat(request.getSession(false).getAttribute(GoogleAuthService.GOOGLE_LINK_USER_SESSION_KEY)).isNull();
+            assertThat(request.getSession(false).getAttribute(GoogleAuthService.GOOGLE_PENDING_LINK_SESSION_KEY)).isNull();
+            assertThat(request.getSession(false).getAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_SESSION_KEY)).isNull();
+
+            // B later signs in with B's own Google account.
+            OAuth2User googleUser = mock(OAuth2User.class);
+            when(googleUser.getAttribute("sub")).thenReturn("bob-google-sub");
+            when(googleUser.getAttribute("email")).thenReturn("bob@example.com");
+            when(googleUser.getAttribute("email_verified")).thenReturn(true);
+            assertThat(google.loginOrPrepareLink(googleUser, request).linkRequired()).isTrue();
+
+            // Correct behavior: B's Google identity is never attached to A.
+            verify(identityService, never()).linkIdentity(
+                    org.mockito.ArgumentMatchers.same(a), anyString(), anyString(), anyString(), anyBoolean());
+        }
+
+        @Test
+        void authorizedLinkCompletesForTheSameAccount() {
+            UserRepository users = mock(UserRepository.class);
+            UserAuthIdentityService identities = mock(UserAuthIdentityService.class);
+            CurrentUserService currentUsers = mock(CurrentUserService.class);
+            AuthService auth = mock(AuthService.class);
+            AppUser owner = user("alice", "alice@example.com", "hash");
+            when(currentUsers.requireCurrentUser(any())).thenReturn(owner);
+            when(users.findById(owner.getId())).thenReturn(Optional.of(owner));
+            GoogleAuthService google = new GoogleAuthService(users, mock(UserAuthIdentityRepository.class),
+                    identities, currentUsers, auth, mock(PasswordEncoder.class), Clock.systemUTC(),
+                    new BotFightSecurityProperties());
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            google.beginLink(null, request);
+            OAuth2User googleUser = mock(OAuth2User.class);
+            when(googleUser.getAttribute("sub")).thenReturn("alice-google-sub");
+            when(googleUser.getAttribute("email")).thenReturn("alice.google@example.com");
+            when(googleUser.getAttribute("email_verified")).thenReturn(true);
+
+            assertThat(google.loginOrPrepareLink(googleUser, request).profileLink()).isTrue();
+            verify(identities).linkIdentity(org.mockito.ArgumentMatchers.same(owner),
+                    org.mockito.ArgumentMatchers.eq("google"),
+                    org.mockito.ArgumentMatchers.eq("alice-google-sub"),
+                    org.mockito.ArgumentMatchers.eq("alice.google@example.com"),
+                    org.mockito.ArgumentMatchers.eq(true));
+            assertThat(request.getSession(false).getAttribute(GoogleAuthService.GOOGLE_LINK_USER_SESSION_KEY)).isNull();
+        }
+
+        @Test
+        void expiredLinkIntentCannotAttachGoogleIdentity() {
+            UserRepository users = mock(UserRepository.class);
+            UserAuthIdentityService identities = mock(UserAuthIdentityService.class);
+            CurrentUserService currentUsers = mock(CurrentUserService.class);
+            AppUser owner = user("alice", "alice@example.com", "hash");
+            when(currentUsers.requireCurrentUser(any())).thenReturn(owner);
+            Instant now = Instant.parse("2026-10-16T12:00:00Z");
+            GoogleAuthService google = new GoogleAuthService(users, mock(UserAuthIdentityRepository.class),
+                    identities, currentUsers, mock(AuthService.class), mock(PasswordEncoder.class),
+                    Clock.fixed(now, java.time.ZoneOffset.UTC), new BotFightSecurityProperties());
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            google.beginLink(null, request);
+            request.getSession(false).setAttribute(GoogleAuthService.GOOGLE_LINK_EXPIRES_AT_SESSION_KEY,
+                    now.minusSeconds(1));
+            OAuth2User googleUser = mock(OAuth2User.class);
+            when(googleUser.getAttribute("sub")).thenReturn("alice-google-sub");
+            when(googleUser.getAttribute("email")).thenReturn("alice.google@example.com");
+            when(googleUser.getAttribute("email_verified")).thenReturn(true);
+
+            assertThatThrownBy(() -> google.loginOrPrepareLink(googleUser, request))
+                    .isInstanceOf(AuthException.class).hasMessageContaining("expired");
+            verify(identities, never()).linkIdentity(any(), anyString(), anyString(), anyString(), anyBoolean());
+        }
+
+        private static AppUser user(String username, String email, String hash) {
+            AppUser u = new AppUser();
+            u.setId(UUID.randomUUID());
+            u.setUsername(username);
+            u.setEmail(email);
+            u.setNormalizedEmail(email);
+            u.setPasswordHash(hash);
+            u.setEmailVerified(true);
+            return u;
+        }
     }
 }

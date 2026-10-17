@@ -19,24 +19,39 @@ import com.example.botfight.DTO.auth.PasswordResetPasswordRequestDTO;
 import com.example.botfight.DTO.auth.PasswordResetRequestDTO;
 import com.example.botfight.DTO.auth.PasswordResetRequestResponseDTO;
 import com.example.botfight.DTO.auth.RegistrationResponseDTO;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.security.AuthenticatedUserDetails;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.AuthService;
 import com.example.botfight.service.auth.GoogleAuthService;
 import com.example.botfight.service.auth.PasswordResetService;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import java.security.Principal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketSession;
 
 class AuthControllerTest {
 
@@ -222,7 +237,8 @@ class AuthControllerTest {
     void passwordChangeRotatesTheCurrentSessionIdAfterSuccess() {
         AuthService authService = mock(AuthService.class);
         AuthUserDTO updatedUser = new AuthUserDTO();
-        when(authService.changePassword(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        when(authService.changePassword(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
                 .thenReturn(updatedUser);
         AuthController controller = controller(
                 authService,
@@ -290,5 +306,58 @@ class AuthControllerTest {
         PasswordResetRequestDTO request = new PasswordResetRequestDTO();
         request.setEmail(email);
         return request;
+    }
+
+    @Nested
+    class LogoutTransports {
+        @Test
+        void logoutClosesOpenWebSocketSessionsOfTheUser() throws Exception {
+            SingleUserWebSocketSessionRegistry registry = new SingleUserWebSocketSessionRegistry();
+            AtomicBoolean open = new AtomicBoolean(true);
+            Principal principal = () -> "pilot@example.com";
+            WebSocketSession socket = mock(WebSocketSession.class);
+            when(socket.getId()).thenReturn("ws-1");
+            when(socket.getPrincipal()).thenReturn(principal);
+            when(socket.isOpen()).thenAnswer(invocation -> open.get());
+            org.mockito.Mockito.doAnswer(invocation -> {
+                open.set(false);
+                return null;
+            }).when(socket).close(org.mockito.ArgumentMatchers.any(CloseStatus.class));
+            org.mockito.Mockito.doAnswer(invocation -> {
+                open.set(false);
+                return null;
+            }).when(socket).close();
+            registry.decoratorFactory()
+                    .decorate(mock(org.springframework.web.socket.WebSocketHandler.class))
+                    .afterConnectionEstablished(socket);
+            assertThat(registry.hasActiveSessionForPrincipal("pilot@example.com")).isTrue();
+
+            Clock clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
+            AuthController controller = new AuthController(
+                    mock(AuthService.class),
+                    mock(GoogleAuthService.class),
+                    new TokenBucketRateLimiter<>(clock, 30, Duration.ofSeconds(1)),
+                    new TokenBucketRateLimiter<>(clock, 5, Duration.ofSeconds(30)),
+                    new TokenBucketRateLimiter<>(clock, 1, Duration.ofSeconds(1)));
+            controller.setWebSocketSessions(registry);
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            MockHttpSession session = new MockHttpSession();
+            request.setSession(session);
+            AppUser user = new AppUser();
+            user.setEmail("pilot@example.com");
+            user.setUsername("pilot");
+            AuthenticatedUserDetails details = new AuthenticatedUserDetails(user);
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(new UsernamePasswordAuthenticationToken(details, null, details.getAuthorities()));
+            session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+
+            controller.logout(request, new MockHttpServletResponse());
+
+            assertThat(session.isInvalid()).isTrue();
+            // Correct behavior: the logged-out user's socket must be closed / deregistered.
+            assertThat(open.get()).as("websocket still open after logout").isFalse();
+            assertThat(registry.hasActiveSessionForPrincipal("pilot@example.com"))
+                    .as("principal still has active websocket session after logout").isFalse();
+        }
     }
 }

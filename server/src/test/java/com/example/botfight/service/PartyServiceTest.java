@@ -3,6 +3,7 @@ package com.example.botfight.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -10,7 +11,9 @@ import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.party.PartyMemberDTO;
+import com.example.botfight.controller.PartyController;
 import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.repository.PartyInviteRepository;
 import com.example.botfight.repository.PartyMemberRepository;
 import com.example.botfight.repository.PartyRepository;
@@ -18,11 +21,17 @@ import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.block.BlockLookup;
-import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.limits.RateLimitExceededException;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.model.MatchEntrant;
+import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.matchmaking.QueuePool;
+import com.example.botfight.service.notification.NotificationPublisher;
 import com.example.botfight.service.party.PartyService;
+import com.example.botfight.service.party.PartyStatePublisher;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.time.Clock;
 import java.time.Duration;
@@ -34,7 +43,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 
 class PartyServiceTest {
@@ -483,6 +494,148 @@ class PartyServiceTest {
 
         private void advance(Duration duration) {
             currentInstant = currentInstant.plus(duration);
+        }
+    }
+
+    @Nested
+    class QueuedMembership {
+        private final MutableClock clock = new MutableClock(Instant.parse("2026-10-16T12:00:00Z"));
+        private final CurrentUserService currentUserService = mock(CurrentUserService.class);
+        private final UserRepository userRepository = mock(UserRepository.class);
+        private final MatchService matchService = mock(MatchService.class);
+        private final SingleUserWebSocketSessionRegistry socketRegistry =
+                mock(SingleUserWebSocketSessionRegistry.class);
+        private final Authentication authentication = mock(Authentication.class);
+        private final AppUser owner = user("owner", "owner@example.test");
+        private final AppUser teammate = user("teammate", "teammate@example.test");
+
+        private PartyService partyService;
+        private MatchmakingService matchmaking;
+        private PartyController controller;
+        private final SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+
+        @BeforeEach
+        void setUp() {
+            when(matchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
+            when(socketRegistry.currentSessionIdForPrincipal(owner.getEmail())).thenReturn("owner-socket");
+            when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail())).thenReturn("teammate-socket");
+            partyService = new PartyService(
+                    currentUserService,
+                    userRepository,
+                    mock(PartyRepository.class),
+                    mock(PartyMemberRepository.class),
+                    mock(PartyInviteRepository.class),
+                    matchService,
+                    new TokenBucketRateLimiter<>(clock, 50, Duration.ofSeconds(10)),
+                    clock,
+                    BlockLookup.none(),
+                    socketRegistry);
+            matchmaking = new MatchmakingService(
+                    matchService,
+                    clock,
+                    new TokenBucketRateLimiter<>(clock, 50, Duration.ofSeconds(1)),
+                    null,
+                    new MatchAbilityGuaranteeService());
+            controller = new PartyController(
+                    partyService,
+                    mock(NotificationPublisher.class),
+                    mock(PartyStatePublisher.class),
+                    matchmaking,
+                    messagingTemplate);
+        }
+
+        @Test
+        void restLeaveWhileQueuedRemovesDepartedMemberFromQueuedGroup() {
+            UUID partyId = queueTwoPersonParty();
+
+            when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
+            controller.leave(authentication, partyId);
+
+            // Correct behavior: the departed member no longer owns queue state.
+            assertThat(matchmaking.hasTransientActivity(teammate.getId()))
+                    .as("departed member must not remain in the old party's queued group")
+                    .isFalse();
+        }
+
+        @Test
+        void restKickWhileQueuedRemovesKickedMemberFromQueuedGroup() {
+            UUID partyId = queueTwoPersonParty();
+
+            when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+            controller.kick(authentication, partyId, teammate.getId());
+
+            assertThat(matchmaking.hasTransientActivity(teammate.getId()))
+                    .as("kicked member must not remain in the old party's queued group")
+                    .isFalse();
+        }
+
+        @Test
+        void departedMemberQueueingAloneDoesNotSilentlyEvictOldLeader() {
+            UUID partyId = queueTwoPersonParty();
+            when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
+            controller.leave(authentication, partyId);
+
+            List<OutboundMatchmakingEvent> events = matchmaking.joinQueue(
+                    teammate.getId(), teammate.getUsername(), teammate.getEmail(), "teammate-socket",
+                    MatchMode.ONES,
+                    List.of(new com.example.botfight.service.match.model.MatchEntrant(
+                            teammate.getId(), teammate.getUsername(), teammate.getEmail(), "teammate-socket")),
+                    null, List.of(), QueuePool.REGISTERED);
+
+            assertThat(matchmaking.hasTransientActivity(owner.getId())).isFalse();
+            verify(messagingTemplate).convertAndSendToUser(eq(owner.getEmail()),
+                    eq(com.example.botfight.controller.MatchmakingSocketDestinations.MATCHMAKING), any());
+        }
+
+        @Test
+        void offlinePartyMemberExpiresOnlyAfterTwoMinuteGrace() {
+            UUID partyId = queueTwoPersonParty();
+            partyService.removeDisconnected(teammate.getEmail(), "teammate-socket");
+            clock.advance(PartyService.RECONNECT_GRACE.minusMillis(1));
+            assertThat(partyService.expireOfflineMembers()).isEmpty();
+            clock.advance(Duration.ofMillis(1));
+            assertThat(partyService.expireOfflineMembers()).singleElement().satisfies(change -> {
+                assertThat(change.partyId()).isEqualTo(partyId);
+                assertThat(change.removedRecipient().userId()).isEqualTo(teammate.getId());
+                assertThat(change.party().members()).hasSize(1);
+            });
+        }
+
+        private UUID queueTwoPersonParty() {
+            when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+            var created = partyService.create(authentication);
+            when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                    .thenReturn(Optional.of(teammate));
+            var invite = partyService.invite(authentication, created.partyId(), teammate.getUsername());
+            when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+            partyService.accept(authentication, invite.invite().inviteId());
+
+            PartyService.QueueContext context = partyService.queueContext(
+                    owner.getId(), owner.getUsername(), owner.getEmail(), "owner-socket");
+            matchmaking.joinQueue(
+                    owner.getId(), owner.getUsername(), owner.getEmail(), "owner-socket",
+                    MatchMode.TWOS, context.entrants(), context.partyId(), List.of(),
+                    QueuePool.REGISTERED);
+            assertThat(matchmaking.hasTransientActivity(owner.getId())).isTrue();
+            assertThat(matchmaking.hasTransientActivity(teammate.getId())).isTrue();
+            return context.partyId();
+        }
+
+        private static final class MutableClock extends Clock {
+            private Instant now;
+            private MutableClock(Instant now) { this.now = now; }
+            @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+            @Override public Clock withZone(ZoneId zone) { return this; }
+            @Override public Instant instant() { return now; }
+            private void advance(Duration duration) { now = now.plus(duration); }
+        }
+
+        private static AppUser user(String username, String email) {
+            AppUser user = new AppUser();
+            user.setId(UUID.randomUUID());
+            user.setUsername(username);
+            user.setEmail(email);
+            return user;
         }
     }
 }

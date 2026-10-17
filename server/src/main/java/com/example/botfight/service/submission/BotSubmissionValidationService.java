@@ -115,6 +115,10 @@ public class BotSubmissionValidationService {
         if (!requireObject(errors, brain, "brain")) {
             return;
         }
+        if (containsNul(brain)) {
+            errors.add("brain must not contain U+0000 in text or field names");
+            return;
+        }
 
         String brainVersion = brain.path("version").asText("");
         if (!brain.hasNonNull("version") || !brain.get("version").isTextual()) {
@@ -167,6 +171,18 @@ public class BotSubmissionValidationService {
             validateNodeCoordinate(errors, position.get("x"), path + ".x");
             validateNodeCoordinate(errors, position.get("y"), path + ".y");
         });
+    }
+
+    private boolean containsNul(JsonNode node) {
+        if (node.isTextual()) return node.asText().indexOf('\0') >= 0;
+        if (node.isArray()) {
+            for (JsonNode child : node) if (containsNul(child)) return true;
+        } else if (node.isObject()) {
+            for (var entry : node.properties()) {
+                if (entry.getKey().indexOf('\0') >= 0 || containsNul(entry.getValue())) return true;
+            }
+        }
+        return false;
     }
 
     private void validateNodeCoordinate(List<String> errors, JsonNode coordinate, String path) {

@@ -159,6 +159,8 @@ export default function CustomLobbyPage() {
     const [chatMessages, setChatMessages] = useState([]);
     const [chatNotice, setChatNotice] = useState(null);
     const lobbyIdRef = useRef(null);
+    const lobbyStateRef = useRef(0);
+    const lobbyActionRef = useRef(0);
     const redirectingToMatchRef = useRef(false);
     const shouldCreate = location.state?.create === true;
     const rankedParticipationActive = Boolean(
@@ -183,6 +185,7 @@ export default function CustomLobbyPage() {
         if (customLobbyEvent.type === "CUSTOM_LOBBY_MATCH_STARTED") return;
         if (customLobbyEvent.type !== "CUSTOM_LOBBY_STATE") return;
         if (!customLobbyEvent.lobby && !customLobbyEvent.message && lobbyIdRef.current) return;
+        lobbyStateRef.current += 1;
         if (!customLobbyEvent.lobby && customLobbyEvent.message) {
             lobbyIdRef.current = null;
             setLobby(null);
@@ -252,6 +255,8 @@ export default function CustomLobbyPage() {
     useEffect(() => {
         let disposed = false;
         const loadLobby = async () => {
+            const startingLobbyState = lobbyStateRef.current;
+            const startingAction = lobbyActionRef.current;
             setLoadState("loading");
             setError(null);
             if (shouldCreate && rankedParticipationAtMountRef.current) {
@@ -263,12 +268,14 @@ export default function CustomLobbyPage() {
                 const nextLobby = shouldCreate
                     ? await customLobbyRequest("/api/custom-lobbies", { method: "POST" })
                     : await customLobbyRequest("/api/custom-lobbies/current");
-                if (disposed) return;
+                if (disposed || startingLobbyState !== lobbyStateRef.current
+                    || startingAction !== lobbyActionRef.current) return;
                 lobbyIdRef.current = nextLobby?.lobbyId ?? null;
                 setLobby(nextLobby);
                 setLoadState(nextLobby ? "ready" : "empty");
             } catch (requestError) {
-                if (disposed) return;
+                if (disposed || startingLobbyState !== lobbyStateRef.current
+                    || startingAction !== lobbyActionRef.current) return;
                 if (!shouldCreate && requestError.status === 404) {
                     lobbyIdRef.current = null;
                     setLoadState("empty");
@@ -311,13 +318,17 @@ export default function CustomLobbyPage() {
         suppressRateLimitError = false,
         statusTarget = "page",
     ) => {
+        const startingLobbyState = lobbyStateRef.current;
+        const actionRequestId = ++lobbyActionRef.current;
         setAction(name);
         setError(null);
         setNotice(null);
         setInviteStatus(null);
         try {
             const result = await request();
-            if (updateLobby && result !== undefined && result !== null) {
+            if (actionRequestId !== lobbyActionRef.current) return undefined;
+            if (updateLobby && result !== undefined && result !== null
+                && startingLobbyState === lobbyStateRef.current) {
                 lobbyIdRef.current = result.lobbyId ?? lobbyIdRef.current;
                 setLobby(result);
             }
@@ -330,6 +341,7 @@ export default function CustomLobbyPage() {
             }
             return result;
         } catch (requestError) {
+            if (actionRequestId !== lobbyActionRef.current) return undefined;
             if (!(suppressRateLimitError && requestError.status === 429)) {
                 if (statusTarget === "invite") {
                     setInviteStatus({
@@ -344,7 +356,7 @@ export default function CustomLobbyPage() {
             }
             return undefined;
         } finally {
-            setAction(null);
+            if (actionRequestId === lobbyActionRef.current) setAction(null);
         }
     };
 

@@ -11,8 +11,12 @@ import com.example.botfight.security.AuthenticatedUserDetails;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayDeque;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -21,6 +25,8 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,11 +36,26 @@ public class AuthService {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final Duration GUEST_SESSION_DURATION = Duration.ofHours(24);
     private static final int MAX_ACTIVE_GUEST_ACCOUNTS = 5_000;
+    private static final int MAX_GUESTS_PER_IP_PER_DAY = 100;
+    private final Map<String, ArrayDeque<Instant>> guestCreationsByIp = new HashMap<>();
     private static final int GUEST_USERNAME_SUFFIX_LENGTH = 12;
     private static final int GUEST_USERNAME_GENERATION_ATTEMPTS = 5;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailVerificationService emailVerificationService;
+    private SingleUserWebSocketSessionRegistry webSocketSessions;
+    private Clock clock = Clock.systemUTC();
+
+    @Autowired
+    public void setClock(Clock clock) {
+        this.clock = clock;
+    }
+
+    @Autowired(required = false)
+    public void setWebSocketSessions(SingleUserWebSocketSessionRegistry webSocketSessions) {
+        this.webSocketSessions = webSocketSessions;
+        AuthSessionRegistry.setWebSocketSessions(webSocketSessions);
+    }
 
     public AuthService(
             UserRepository userRepository,
@@ -106,7 +127,7 @@ public class AuthService {
         return new RegistrationResponseDTO(user.getEmail());
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = AuthException.class)
     public AuthUserDTO verifyEmail(
             EmailVerificationRequestDTO request,
             HttpServletRequest httpRequest) {
@@ -120,7 +141,7 @@ public class AuthService {
         AppUser user = userRepository.findByNormalizedEmail(normalizeEmail(email))
                 .orElseThrow(() -> new AuthException("invalid or expired verification code"));
         if (user.isEmailVerified()) {
-            throw new AuthException("email is already verified; please log in");
+            throw new AuthException("invalid or expired verification code");
         }
 
         emailVerificationService.consumeCode(user, code);
@@ -155,7 +176,7 @@ public class AuthService {
 
     @Transactional
     public synchronized AuthUserDTO playAsGuest(HttpServletRequest httpRequest) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         Authentication existingAuthentication = SecurityContextHolder.getContext().getAuthentication();
         if (existingAuthentication != null
                 && existingAuthentication.isAuthenticated()
@@ -169,7 +190,14 @@ public class AuthService {
             }
         }
 
-        if (userRepository.countByGuestTrueAndGuestExpiresAtAfter(now) >= MAX_ACTIVE_GUEST_ACCOUNTS) {
+        String ip = httpRequest == null || httpRequest.getRemoteAddr() == null ? "unknown" : httpRequest.getRemoteAddr();
+        guestCreationsByIp.values().removeIf(times -> {
+            while (!times.isEmpty() && !times.peekFirst().plus(GUEST_SESSION_DURATION).isAfter(now)) times.removeFirst();
+            return times.isEmpty();
+        });
+        ArrayDeque<Instant> creations = guestCreationsByIp.computeIfAbsent(ip, ignored -> new ArrayDeque<>());
+        if (creations.size() >= MAX_GUESTS_PER_IP_PER_DAY
+                || userRepository.countByGuestTrueAndGuestExpiresAtAfter(now) >= MAX_ACTIVE_GUEST_ACCOUNTS) {
             throw RateLimitExceededException.tooManyRequests(Duration.ofSeconds(30));
         }
 
@@ -182,6 +210,7 @@ public class AuthService {
         guest.setRole(com.example.botfight.domain.auth.UserRole.GUEST);
         guest.setGuestExpiresAt(now.plus(GUEST_SESSION_DURATION));
         AppUser savedGuest = userRepository.save(guest);
+        creations.addLast(now);
         authenticateSession(savedGuest, httpRequest);
         return AuthUserDTO.temporaryGuest(savedGuest);
     }
@@ -235,6 +264,14 @@ public class AuthService {
     public AuthUserDTO changePassword(
             Authentication authentication,
             PasswordChangeRequestDTO request) {
+        return changePassword(authentication, request, null);
+    }
+
+    @Transactional
+    public AuthUserDTO changePassword(
+            Authentication authentication,
+            PasswordChangeRequestDTO request,
+            HttpServletRequest httpRequest) {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof AuthenticatedUserDetails principal)
@@ -265,6 +302,11 @@ public class AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+        var currentSession = httpRequest == null ? null : httpRequest.getSession(false);
+        AuthSessionRegistry.afterCommit(() -> {
+            AuthSessionRegistry.revoke(user.getId(), currentSession);
+            if (webSocketSessions != null) webSocketSessions.closeSessionsForPrincipal(user.getEmail());
+        });
         return toAuthUser(user);
     }
 
@@ -278,9 +320,15 @@ public class AuthService {
         SecurityContextHolder.setContext(context);
         var session = request.getSession(true);
         request.changeSessionId();
+        session.removeAttribute(GoogleAuthService.GOOGLE_LINK_USER_SESSION_KEY);
+        session.removeAttribute(GoogleAuthService.GOOGLE_LINK_EXPIRES_AT_SESSION_KEY);
+        session.removeAttribute(GoogleAuthService.GOOGLE_PENDING_LINK_SESSION_KEY);
+        session.removeAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_SESSION_KEY);
+        session.removeAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY);
         session.setAttribute(
                 HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
                 context);
+        AuthSessionRegistry.register(user.getId(), user.getEmail(), session);
     }
 
     private void validateEmail(String email) {

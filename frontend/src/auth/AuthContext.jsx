@@ -86,6 +86,7 @@ export function AuthProvider({ children }) {
         authRevisionRef.current += 1;
         setAuthError(null);
         setUser(loggedInUser);
+        setIsLoading(false);
         return loggedInUser;
     }, []);
 
@@ -97,6 +98,7 @@ export function AuthProvider({ children }) {
         authRevisionRef.current += 1;
         setAuthError(null);
         setUser(guestUser);
+        setIsLoading(false);
         return guestUser;
     }, []);
 
@@ -115,6 +117,7 @@ export function AuthProvider({ children }) {
         authRevisionRef.current += 1;
         setAuthError(null);
         setUser(verifiedUser);
+        setIsLoading(false);
         return verifiedUser;
     }, []);
 
@@ -156,6 +159,7 @@ export function AuthProvider({ children }) {
         authRevisionRef.current += 1;
         setAuthError(null);
         setUser(updatedUser);
+        setIsLoading(false);
         return updatedUser;
     }, []);
 
@@ -167,6 +171,7 @@ export function AuthProvider({ children }) {
         authRevisionRef.current += 1;
         setAuthError(null);
         setUser(linkedUser);
+        setIsLoading(false);
         return linkedUser;
     }, []);
 
@@ -178,6 +183,7 @@ export function AuthProvider({ children }) {
         authRevisionRef.current += 1;
         setAuthError(null);
         setUser(completedUser);
+        setIsLoading(false);
         return completedUser;
     }, []);
 
@@ -191,6 +197,7 @@ export function AuthProvider({ children }) {
             authRevisionRef.current += 1;
             setAuthError(null);
             setUser(normalizeCurrentUserResponse(currentUser));
+            setIsLoading(false);
         } catch (error) {
             if (isDefinitiveAuthFailure(error)) setUser(GUEST_USER);
             throw error;
@@ -208,6 +215,7 @@ export function AuthProvider({ children }) {
         authRevisionRef.current += 1;
         setAuthError(null);
         setUser(guest);
+        setIsLoading(false);
         return guest;
     }, []);
 

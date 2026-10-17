@@ -33,3 +33,23 @@ test("custom lobby settings are owner-only and guarantee picks persist through s
     assert.match(picker, /onChange\?\.\(activeRound, ability\.id\)/);
     assert.match(picker, /onChange\?\.\(activeRound, null\)/);
 });
+
+test("performAction does not overwrite newer socket lobby state with a stale HTTP response", () => {
+    const start = source.indexOf("const performAction = async");
+    const end = source.indexOf("const createLobby = async");
+    assert.ok(start > 0 && end > start, "performAction block located");
+    const block = source.slice(start, end);
+
+    const applyIdx = block.indexOf("setLobby(result)");
+    assert.ok(applyIdx > 0, "performAction applies result via setLobby(result)");
+
+    const guardedByOrdering = /revision|version|sequence|updatedAt|socketSeq|eventCounter|lobbyStateRef|latestEvent/i
+        .test(block.slice(0, applyIdx + "setLobby(result)".length));
+    assert.ok(
+        guardedByOrdering,
+        "setLobby(result) in performAction has no revision/ordering guard against a newer CUSTOM_LOBBY_STATE event",
+    );
+    assert.match(block, /actionRequestId\s*=\s*\+\+lobbyActionRef\.current/);
+    assert.match(block, /if \(actionRequestId !== lobbyActionRef\.current\) return undefined;/);
+    assert.match(block, /startingLobbyState === lobbyStateRef\.current/);
+});

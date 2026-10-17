@@ -54,6 +54,7 @@ public class PartyService {
 
     public static final short CURRENT_PARTY_CAPACITY = 2;
     public static final Duration INVITE_VALIDITY = Duration.ofMinutes(10);
+    public static final Duration RECONNECT_GRACE = Duration.ofMinutes(2);
     public static final int MAX_PENDING_INVITES_PER_USER = 20;
     public static final int MAX_PENDING_INVITES_PER_PARTY = 20;
 
@@ -70,6 +71,7 @@ public class PartyService {
     private final Map<UUID, UUID> partyIdsByUserId = new HashMap<>();
     private final Map<UUID, List<PartyMember>> membersByPartyId = new HashMap<>();
     private final Map<UUID, Set<String>> socketSessionIdsByUserId = new HashMap<>();
+    private final Map<UUID, Instant> offlineDeadlinesByUserId = new HashMap<>();
     private final Map<UUID, PartyInvite> invitesById = new HashMap<>();
 
     @Autowired
@@ -185,6 +187,10 @@ public class PartyService {
                 .ifPresent(member -> socketSessionIdsByUserId
                         .computeIfAbsent(member.getUser().getId(), ignored -> new java.util.HashSet<>())
                         .add(socketSessionId));
+        activePartiesById.values().stream().flatMap(party -> membersFor(party).stream())
+                .filter(member -> member.getUser() != null
+                        && principalName.equals(member.getUser().getEmail()))
+                .findFirst().ifPresent(member -> offlineDeadlinesByUserId.remove(member.getUser().getId()));
     }
 
     /** Returns the party visible to a principal after its party subscription. */
@@ -501,7 +507,43 @@ public class PartyService {
                 && !socketSessionIdsByUserId.getOrDefault(userId, Set.of()).isEmpty()) {
             return new LeaveResult(null, null, List.of());
         }
+        offlineDeadlinesByUserId.putIfAbsent(userId, clock.instant().plus(RECONNECT_GRACE));
         return new LeaveResult(toDTO(party), party.getId(), recipientsFor(party));
+    }
+
+    /** Expires members whose full reconnect grace elapsed; callers publish each change. */
+    public synchronized List<LeaveResult> expireOfflineMembers() {
+        Instant now = clock.instant();
+        for (Party party : activePartiesById.values()) {
+            for (PartyMember member : membersFor(party)) {
+                if (member.getUser() == null || member.getUser().getId() == null) continue;
+                UUID userId = member.getUser().getId();
+                if (isMemberOnline(member)) offlineDeadlinesByUserId.remove(userId);
+                else offlineDeadlinesByUserId.putIfAbsent(userId, now.plus(RECONNECT_GRACE));
+            }
+        }
+        List<LeaveResult> changes = new ArrayList<>();
+        for (var entry : List.copyOf(offlineDeadlinesByUserId.entrySet())) {
+            if (now.isBefore(entry.getValue())) continue;
+            UUID userId = entry.getKey();
+            if (isUserOnline(userId)) {
+                offlineDeadlinesByUserId.remove(userId);
+                continue;
+            }
+            UUID partyId = partyIdsByUserId.get(userId);
+            Party party = partyId == null ? null : activePartiesById.get(partyId);
+            offlineDeadlinesByUserId.remove(userId);
+            if (party != null) changes.add(removeMember(party, userId));
+        }
+        return List.copyOf(changes);
+    }
+
+    private boolean isUserOnline(UUID userId) {
+        UUID partyId = partyIdsByUserId.get(userId);
+        Party party = partyId == null ? null : activePartiesById.get(partyId);
+        return party != null && membersFor(party).stream()
+                .filter(member -> member.getUser() != null && userId.equals(member.getUser().getId()))
+                .anyMatch(this::isMemberOnline);
     }
 
     /**
@@ -557,6 +599,7 @@ public class PartyService {
                 UUID userId = member.getUser().getId();
                 partyIdsByUserId.remove(userId, party.getId());
                 socketSessionIdsByUserId.remove(userId);
+                offlineDeadlinesByUserId.remove(userId);
             });
             if (members.isEmpty()) {
                 activePartiesById.remove(party.getId());
@@ -664,6 +707,7 @@ public class PartyService {
                         .collect(java.util.stream.Collectors.toCollection(ArrayList::new)));
         partyIdsByUserId.remove(userId, party.getId());
         socketSessionIdsByUserId.remove(userId);
+        offlineDeadlinesByUserId.remove(userId);
         List<PartyMember> remaining = membersFor(party);
         if (remaining.isEmpty()) {
             activePartiesById.remove(party.getId());
@@ -682,6 +726,7 @@ public class PartyService {
         if (members == null) return;
         members.forEach(member -> {
             if (member.getUser() == null || member.getUser().getId() == null) return;
+            offlineDeadlinesByUserId.remove(member.getUser().getId());
             partyIdsByUserId.remove(member.getUser().getId(), party.getId());
             socketSessionIdsByUserId.remove(member.getUser().getId());
         });

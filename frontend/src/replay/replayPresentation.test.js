@@ -463,3 +463,10 @@ test("forfeit team formation keeps match-spawn spacing while centering the winne
     assert.deepEqual(centeredTeamPosition(1, 2), { x: 2_000 / 3, y: 500, rotation: 0 });
 });
 
+test("frame lookup follows elapsedMs when a batch of frames is missing", () => {
+    const early = Array.from({ length: 5 }, (_, i) => ({ elapsedMs: (i + 1) * 100 }));
+    const late = Array.from({ length: 5 }, (_, i) => ({ elapsedMs: 1_100 + i * 100 }));
+    const frames = mergeReplayFrames(early, late); // 100..500, 1100..1500 (600..1000 missing)
+    const idx = replayFrameIndexForElapsedMs(frames, 1_200);
+    assert.equal(frames[idx].elapsedMs, 1_200);
+});

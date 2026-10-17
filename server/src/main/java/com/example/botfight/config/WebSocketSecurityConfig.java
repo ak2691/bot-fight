@@ -31,6 +31,7 @@ public class WebSocketSecurityConfig {
                         "/app/matchmaking.accept",
                         "/app/matchmaking.cancel",
                         "/app/matchmaking.leave",
+                        "/app/matchmaking.leaveCompletedMatch",
                         "/app/matchmaking.selectLoadout",
                         "/app/matchmaking.surrender",
                         "/app/matchmaking.codeView.request",

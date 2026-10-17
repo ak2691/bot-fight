@@ -118,7 +118,7 @@ function PasswordResetModal({ onReset, onComplete }) {
                     error={fieldErrors.confirmPassword}
                     autoComplete="new-password"
                 />
-                <p className="auth-field__helper">Use 8–128 characters without spaces.</p>
+                <p className="auth-field__helper">Use at least 8 characters, up to 72 UTF-8 bytes, without spaces.</p>
                 <button type="submit" disabled={isSubmitting} className="auth-primary-button">
                     {isSubmitting ? "Saving..." : "Save password"}
                 </button>

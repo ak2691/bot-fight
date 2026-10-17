@@ -5,7 +5,7 @@ import http from 'node:http';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { createWorkerService } from '../src/server.js';
 import { engineVersion, hashContracts } from '../src/version.js';
@@ -180,4 +180,30 @@ test('engine version never throws and reports a full commit or "unknown"', () =>
 test('startup requires a secret and valid bounds', () => {
     assert.throws(() => createWorkerService({ env: {} }), /SECRET/);
     assert.throws(() => createWorkerService({ secret, maxTicks: 1201 }), /maxTicks/);
+});
+
+test('close() drains an in-flight simulation instead of cutting the connection', async (t) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'worker-shutdown-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const file = path.join(dir, 'slow-worker.mjs');
+    writeFileSync(file, `import { parentPort } from 'node:worker_threads';
+export default function slow() {
+    parentPort.postMessage('running');
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); // finite, legitimately slow task
+    return { status: 200, body: { done: true } };
+}`);
+    const service = createWorkerService({ secret, threads: 1, logger: () => {}, workerFilename: pathToFileURL(file).href });
+    service.server.listen(0, '127.0.0.1');
+    await once(service.server, 'listening');
+    const base = `http://127.0.0.1:${service.server.address().port}`;
+    const running = fetch(`${base}/simulate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-sim-worker-secret': secret },
+        body: '{}',
+    }).then(async (r) => ({ status: r.status, json: await r.json() }), (e) => ({ error: e.message }));
+    await once(service.pool, 'message'); // task is now executing inside the worker
+    await service.close();               // what SIGTERM does (index.js:8-11)
+    const result = await running;
+    assert.equal(result.error, undefined, `in-flight request was cut off: ${result.error}`);
+    assert.equal(result.status, 200);
 });

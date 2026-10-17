@@ -24,6 +24,7 @@ public class EmailVerificationService {
     public static final Duration CODE_VALIDITY = Duration.ofMinutes(5);
     private static final Duration RESEND_COOLDOWN = Duration.ofSeconds(60);
     private static final int CODE_BOUND = 900_000;
+    public static final int MAX_CODE_ATTEMPTS = 5;
     private static final Logger log = LoggerFactory.getLogger(EmailVerificationService.class);
 
     private final EmailVerificationRepository verificationRepository;
@@ -70,6 +71,7 @@ public class EmailVerificationService {
         verification.setCodeHash(passwordEncoder.encode(code));
         verification.setSentAt(now);
         verification.setExpiresAt(expiresAt);
+        verification.setFailedAttempts(0);
         verificationRepository.save(verification);
 
         try {
@@ -81,15 +83,21 @@ public class EmailVerificationService {
         return expiresAt;
     }
 
-    @Transactional
+    // The caller's transaction must also preserve failed guesses (see AuthService).
+    @Transactional(noRollbackFor = AuthException.class)
     public void consumeCode(AppUser user, String code) {
         EmailVerification verification = verificationRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new AuthException("invalid or expired verification code"));
         Instant now = clock.instant();
         if (verification.getExpiresAt() == null || !now.isBefore(verification.getExpiresAt())) {
-            throw new AuthException("verification code has expired; request a new code");
+            throw new AuthException("invalid or expired verification code");
+        }
+        if (verification.getFailedAttempts() >= MAX_CODE_ATTEMPTS) {
+            throw new AuthException("invalid or expired verification code");
         }
         if (code == null || !passwordEncoder.matches(code, verification.getCodeHash())) {
+            verification.setFailedAttempts(verification.getFailedAttempts() + 1);
+            verificationRepository.save(verification);
             throw new AuthException("invalid or expired verification code");
         }
         verificationRepository.delete(verification);

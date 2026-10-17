@@ -140,6 +140,15 @@ export default function ProfilePage() {
     const [blockState, setBlockState] = useState("idle");
     const [blockError, setBlockError] = useState(null);
     const profileRequestRef = useRef(0);
+    const blockOwnerKey = user?.id ?? user?.username ?? null;
+    const blockRequestRef = useRef({ route: viewedUsername, owner: blockOwnerKey, generation: 0 });
+    if (blockRequestRef.current.route !== viewedUsername || blockRequestRef.current.owner !== blockOwnerKey) {
+        blockRequestRef.current = {
+            route: viewedUsername,
+            owner: blockOwnerKey,
+            generation: blockRequestRef.current.generation + 1,
+        };
+    }
     const historyRequestRef = useRef(0);
     const solvedPuzzlesRequestRef = useRef(0);
     const profileRetryBucketRef = useRef(null);
@@ -260,7 +269,7 @@ export default function ProfilePage() {
         setBlockState("idle");
         setBlockError(null);
         setSelectedMatch(null);
-    }, [viewedUsername]);
+    }, [viewedUsername, blockOwnerKey]);
 
     useEffect(() => {
         if (isGuest || isOwner || !viewedUsername) {
@@ -292,7 +301,7 @@ export default function ProfilePage() {
             mounted = false;
             controller.abort();
         };
-    }, [isGuest, isOwner, viewedUsername]);
+    }, [blockOwnerKey, isGuest, isOwner, viewedUsername]);
 
     useEffect(() => () => {
         if (retryRateLimitTimeoutRef.current !== null) {
@@ -336,7 +345,10 @@ export default function ProfilePage() {
     }, [logout, navigate]);
 
     const toggleBlock = useCallback(async () => {
-        if (!viewedUsername || isOwner || blockState === "loading" || blockState === "saving") return;
+        if (!viewedUsername || isOwner || blockState === "loading" || blockState === "saving"
+            || blockRequestRef.current.route !== viewedUsername
+            || blockRequestRef.current.owner !== blockOwnerKey) return;
+        const actionGeneration = ++blockRequestRef.current.generation;
         const shouldBlock = blockState !== "blocked";
         const previousState = blockState;
         setBlockState("saving");
@@ -353,13 +365,15 @@ export default function ProfilePage() {
             );
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(body.message ?? "The block action could not be completed.");
+            if (blockRequestRef.current.generation !== actionGeneration) return;
             setBlockState(body.blocked === true ? "blocked" : "idle");
             if (body.blocked === true) hideInvitesFrom(viewedUsername);
         } catch (error) {
+            if (blockRequestRef.current.generation !== actionGeneration) return;
             setBlockState(previousState === "blocked" ? "blocked" : "error");
             setBlockError(error.message ?? "The block action could not be completed.");
         }
-    }, [blockState, hideInvitesFrom, isOwner, viewedUsername]);
+    }, [blockOwnerKey, blockState, hideInvitesFrom, isOwner, viewedUsername]);
 
     return (
         <main className="profile-page min-h-screen bg-[#181b1c] font-interface text-[#f2f4f5]">
@@ -1410,7 +1424,7 @@ function SignInSetting({ hasPassword, googleLinked, googleStatus, onSave }) {
                         />
                     </label>
                     {error && <p className="pf-message pf-message--error" role="alert">{error}</p>}
-                    <p className="pf-row__hint">Use 8–128 characters without spaces.</p>
+                    <p className="pf-row__hint">Use at least 8 characters, up to 72 UTF-8 bytes, without spaces.</p>
                     <div className="pf-form__actions">
                         <button type="submit" disabled={isSaving} className="pf-btn pf-btn--primary">
                             {isSaving ? "Saving..." : "Save"}

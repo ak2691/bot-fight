@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
 import { apiUrl } from "../../config/api";
-import { passwordError, userFacingAuthError, usernameError } from "../../auth/validation";
+import { newPasswordError, userFacingAuthError, usernameError } from "../../auth/validation";
 import AuthLayout from "./AuthLayout";
 import { AuthBanner, AuthDivider, AuthPasswordField, AuthTextField } from "./AuthFields.jsx";
 import googleIconUrl from "../../assets/googleicon.png";
@@ -44,7 +44,7 @@ export default function RegisterPage() {
         }
         const usernameValidationError = usernameError(username);
         if (usernameValidationError) nextErrors.username = usernameValidationError;
-        const passwordValidationError = passwordError(password);
+        const passwordValidationError = newPasswordError(password);
         if (passwordValidationError) nextErrors.password = passwordValidationError;
         if (Object.keys(nextErrors).length) {
             setFieldErrors(nextErrors);

@@ -1,14 +1,14 @@
 package com.example.botfight.service;
 
-import com.example.botfight.service.submission.BotSubmissionValidationService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.DTO.submission.BotSubmissionPayloadDTO;
+import com.example.botfight.service.submission.BotSubmissionValidationService;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import java.util.List;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -1483,5 +1483,55 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(brain);
         payload.setClientBuildVersion("test");
         return payload;
+    }
+
+    @Nested
+    class BrainTextValidation {
+        private final JsonMapper jsonMapper = new JsonMapper();
+        private final BotSubmissionValidationService service =
+                new BotSubmissionValidationService(jsonMapper, new GameConfigCatalog());
+
+        private BotSubmissionPayloadDTO payload(String brainJson) throws Exception {
+            BotSubmissionPayloadDTO payload = new BotSubmissionPayloadDTO();
+            payload.setMatchId(java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"));
+            payload.setRoundNumber(1);
+            payload.setPhase("BUILDING");
+            payload.setSelectedLoadout("melee");
+            payload.setClientBuildVersion("test");
+            payload.setBrain(jsonMapper.readTree(brainJson));
+            return payload;
+        }
+
+        @Test
+        void rejectsNulInRootName() throws Exception {
+            BotSubmissionPayloadDTO payload = payload("""
+                    {"version":"bot-logic-tree-v1",
+                     "roots":[{"name":"a\\u0000b","branches":[
+                       {"id":"node-1","action":"move_walk","movementMode":"target","movementDirection":0,"conditions":[]}
+                     ]}]}
+                    """);
+            // What BotSubmissionService stores as brainPayload and later inserts into jsonb.
+            assertThat(jsonMapper.writeValueAsString(payload.getBrain())).contains("\\u0000");
+
+            assertThat(service.validate(payload).isAccepted())
+                    .as("root name containing U+0000 must be rejected before it reaches jsonb")
+                    .isFalse();
+        }
+
+        @Test
+        void rejectsNulInNodePositionKey() throws Exception {
+            BotSubmissionPayloadDTO payload = payload("""
+                    {"version":"bot-logic-tree-v1",
+                     "nodePositions":{"node\\u0000x":{"x":10,"y":10}},
+                     "roots":[{"branches":[
+                       {"id":"node-1","action":"move_walk","movementMode":"target","movementDirection":0,"conditions":[]}
+                     ]}]}
+                    """);
+            assertThat(jsonMapper.writeValueAsString(payload.getBrain())).contains("\\u0000");
+
+            assertThat(service.validate(payload).isAccepted())
+                    .as("nodePositions key containing U+0000 must be rejected before it reaches jsonb")
+                    .isFalse();
+        }
     }
 }

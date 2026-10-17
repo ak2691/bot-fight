@@ -1,5 +1,12 @@
 package com.example.botfight.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.example.botfight.DTO.auth.PasswordResetPasswordRequestDTO;
 import com.example.botfight.DTO.auth.PasswordResetStatusDTO;
 import com.example.botfight.domain.auth.AppUser;
@@ -7,6 +14,7 @@ import com.example.botfight.domain.auth.PasswordResetRequest;
 import com.example.botfight.repository.PasswordResetRequestRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.auth.AuthSessionRegistry;
 import com.example.botfight.service.auth.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;
@@ -23,13 +31,6 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 class PasswordResetServiceTest {
 
@@ -122,6 +123,22 @@ class PasswordResetServiceTest {
         verify(userRepository).save(user);
         assertThat(session.getAttribute(PasswordResetService.PASSWORD_RESET_USER_SESSION_KEY)).isNull();
         assertThat(session.getAttribute(PasswordResetService.PASSWORD_RESET_EXPIRES_AT_SESSION_KEY)).isNull();
+    }
+
+    @Test
+    void successfulResetRevokesAllExistingSessions() {
+        MockHttpSession signedInSession = new MockHttpSession();
+        AuthSessionRegistry.register(user.getId(), user.getEmail(), signedInSession);
+        session.setAttribute(PasswordResetService.PASSWORD_RESET_USER_SESSION_KEY, user.getId());
+        session.setAttribute(PasswordResetService.PASSWORD_RESET_EXPIRES_AT_SESSION_KEY, NOW.plusSeconds(300));
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        PasswordResetPasswordRequestDTO passwordRequest = new PasswordResetPasswordRequestDTO();
+        passwordRequest.setPassword("new-password");
+        passwordRequest.setConfirmPassword("new-password");
+
+        service.resetPassword(passwordRequest, request);
+
+        assertThat(signedInSession.isInvalid()).isTrue();
     }
 
     @Test

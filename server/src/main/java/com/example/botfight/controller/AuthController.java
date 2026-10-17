@@ -20,6 +20,7 @@ import com.example.botfight.service.auth.GoogleAuthService;
 import com.example.botfight.service.auth.PasswordResetService;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.security.AuthenticatedUserDetails;
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.io.IOException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -58,6 +59,12 @@ public class AuthController {
     private final TokenBucketRateLimiter<String> authenticatedGetRateLimiter;
     private final PasswordResetService passwordResetService;
     private final TaskExecutor authRequestExecutor;
+    private SingleUserWebSocketSessionRegistry webSocketSessions;
+
+    @Autowired(required = false)
+    public void setWebSocketSessions(SingleUserWebSocketSessionRegistry webSocketSessions) {
+        this.webSocketSessions = webSocketSessions;
+    }
 
     @Autowired
     public AuthController(
@@ -207,7 +214,7 @@ public class AuthController {
             @RequestBody PasswordChangeRequestDTO request,
             HttpServletRequest httpRequest) {
         requireAuthLimits("change-password", authenticatedEmail(authentication), httpRequest);
-        AuthUserDTO updatedUser = authService.changePassword(authentication, request);
+        AuthUserDTO updatedUser = authService.changePassword(authentication, request, httpRequest);
         rotateSessionId(httpRequest);
         return ResponseEntity.ok(updatedUser);
     }
@@ -249,6 +256,18 @@ public class AuthController {
     public ResponseEntity<AuthUserDTO> logout(
             HttpServletRequest request,
             HttpServletResponse response) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null && request.getSession(false) != null) {
+            Object stored = request.getSession(false).getAttribute(
+                    org.springframework.security.web.context.HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
+            if (stored instanceof org.springframework.security.core.context.SecurityContext context) {
+                authentication = context.getAuthentication();
+            }
+        }
+        if (authentication != null && authentication.getPrincipal() instanceof AuthenticatedUserDetails principal
+                && webSocketSessions != null) {
+            webSocketSessions.closeSessionsForPrincipal(principal.getUsername());
+        }
         SecurityContextHolder.clearContext();
         if (request.getSession(false) != null) {
             request.getSession(false).invalidate();

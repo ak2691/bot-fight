@@ -12,7 +12,7 @@ import org.springframework.scheduling.TaskScheduler;
 class CustomLobbyInviteCleanupServiceTest {
 
     @Test
-    void schedulesCustomLobbyInviteCleanupEveryMinute() {
+    void schedulesCustomLobbyAndOfflineCleanupEveryFiveSeconds() {
         CustomLobbyService customLobbyService = mock(CustomLobbyService.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
         CustomLobbyInviteCleanupService cleanupService =
@@ -20,6 +20,6 @@ class CustomLobbyInviteCleanupServiceTest {
 
         cleanupService.scheduleCleanup();
 
-        verify(scheduler).scheduleWithFixedDelay(any(Runnable.class), eq(Duration.ofMinutes(1)));
+        verify(scheduler).scheduleWithFixedDelay(any(Runnable.class), eq(Duration.ofSeconds(5)));
     }
 }

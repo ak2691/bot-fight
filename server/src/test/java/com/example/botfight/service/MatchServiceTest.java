@@ -9,11 +9,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.match.MatchPlaybackDTO;
 import com.example.botfight.DTO.match.MatchCodeViewResponseDTO;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.DTO.match.MatchmakingEventDTO;
 import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
-import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.domain.match.Match;
 import com.example.botfight.domain.match.MatchMode;
@@ -27,16 +27,16 @@ import com.example.botfight.repository.MatchRepository;
 import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.service.match.MatchService;
-import com.example.botfight.service.match.connection.MatchConnectionService;
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
-import com.example.botfight.service.match.model.*;
-import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
-import com.example.botfight.service.match.simulation.MatchSimulationService;
-import com.example.botfight.service.match.replay.ReplayDeliveryMode;
-import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
+import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.connection.MatchConnectionService;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.model.*;
+import com.example.botfight.service.match.persistence.MatchPersistenceService;
+import com.example.botfight.service.match.replay.ReplayDeliveryMode;
+import com.example.botfight.service.match.simulation.MatchSimulationService;
+import com.example.botfight.service.matchmaking.MatchmakingService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -46,8 +46,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -55,7 +55,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 class MatchServiceTest {
@@ -1533,5 +1532,26 @@ class MatchServiceTest {
         public Instant instant() {
             return instant;
         }
+    }
+
+    @Test
+    void expiredCodeViewSnapshotCannotBeDelivered() {
+        UUID requester = UUID.randomUUID();
+        UUID teammate = UUID.randomUUID();
+        service.startTeamMatch(List.of(
+                new MatchEntrant(requester, "one", "one@example.com", "s1", 1),
+                new MatchEntrant(teammate, "two", "two@example.com", "s2", 1),
+                new MatchEntrant(UUID.randomUUID(), "three", "three@example.com", "s3", 2),
+                new MatchEntrant(UUID.randomUUID(), "four", "four@example.com", "s4", 2)), MatchMode.TWOS);
+        UUID matchId = savedMatch.getId();
+        var request = service.requestCodeView(requester, matchId, teammate, 1);
+        clock.advance(Duration.ofSeconds(15));
+        var brain = new tools.jackson.databind.json.JsonMapper().createObjectNode()
+                .put("version", "bot-logic-tree-v1");
+        assertThatThrownBy(() -> service.respondCodeView(teammate,
+                new MatchCodeViewResponseDTO(request.event().codeViewRequestId(), matchId,
+                        teammate, 1, brain, "melee")))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("the code view request is no longer available");
     }
 }

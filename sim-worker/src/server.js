@@ -140,11 +140,12 @@ export function createWorkerService(options = {}) {
     return {
         server, pool, version,
         async close() {
+            if (closing) return;
             closing = true;
-            const stopped = new Promise((resolve) => server.close(resolve));
-            server.closeAllConnections();
-            await pool.destroy();
+            // Stop admission, then let accepted requests finish before stopping their workers.
+            const stopped = new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
             await stopped;
+            await pool.destroy();
         },
     };
 }

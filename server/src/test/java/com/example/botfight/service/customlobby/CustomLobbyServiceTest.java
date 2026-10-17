@@ -3,16 +3,16 @@ package com.example.botfight.service.customlobby;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.match.MatchmakingEventDTO;
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.domain.match.MatchMode;
@@ -20,8 +20,8 @@ import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.block.BlockLookup;
-import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.limits.RateLimitExceededException;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
@@ -123,6 +123,42 @@ class CustomLobbyServiceTest {
                 .singleElement()
                 .satisfies(member -> assertThat(member.online()).isFalse());
         assertThat(lobby.lobbyId()).isEqualTo(finalClose.lobbyId());
+    }
+
+    @Test
+    void offlineOwnerExpiresAfterTwoMinutesAndTransfersToOnlineMember() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        CustomLobbyDTO lobby = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+        var invite = service.invite(authentication, lobby.lobbyId(), teammate.getUsername());
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+        service.accept(authentication, invite.invite().inviteId());
+
+        when(socketRegistry.hasActiveSessionForPrincipal(owner.getEmail())).thenReturn(false);
+        service.removeDisconnected(owner.getEmail(), "owner-socket");
+        clock.advance(CustomLobbyService.RECONNECT_GRACE.minusMillis(1));
+        assertThat(service.expireOfflineMembers()).isEmpty();
+        clock.advance(Duration.ofMillis(1));
+
+        assertThat(service.expireOfflineMembers()).singleElement().satisfies(change -> {
+            assertThat(change.lobby().ownerId()).isEqualTo(teammate.getId());
+            assertThat(change.detachedRecipients()).singleElement()
+                    .extracting(CustomLobbyService.LobbyRecipient::userId).isEqualTo(owner.getId());
+        });
+        assertThat(service.currentForPrincipal(owner.getEmail())).isNull();
+    }
+
+    @Test
+    void emptyOfflineLobbyIsDeletedAfterGrace() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        service.create(authentication);
+        when(socketRegistry.hasActiveSessionForPrincipal(owner.getEmail())).thenReturn(false);
+        service.removeDisconnected(owner.getEmail(), "owner-socket");
+        clock.advance(CustomLobbyService.RECONNECT_GRACE);
+        assertThat(service.expireOfflineMembers()).singleElement()
+                .satisfies(change -> assertThat(change.lobby()).isNull());
+        assertThat(service.currentForPrincipal(owner.getEmail())).isNull();
     }
 
     @Test

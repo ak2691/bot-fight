@@ -7,6 +7,10 @@ import com.example.botfight.DTO.party.PartyStateEventDTO;
 import com.example.botfight.service.notification.NotificationPublisher;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.party.PartyStatePublisher;
+import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -23,14 +27,26 @@ public class PartyController {
     private final PartyService partyService;
     private final NotificationPublisher notificationPublisher;
     private final PartyStatePublisher partyStatePublisher;
+    private final MatchmakingService matchmakingService;
+    private final SimpMessagingTemplate messagingTemplate;
 
+    @Autowired
     public PartyController(
             PartyService partyService,
             NotificationPublisher notificationPublisher,
-            PartyStatePublisher partyStatePublisher) {
+            PartyStatePublisher partyStatePublisher,
+            MatchmakingService matchmakingService,
+            SimpMessagingTemplate messagingTemplate) {
         this.partyService = partyService;
         this.notificationPublisher = notificationPublisher;
         this.partyStatePublisher = partyStatePublisher;
+        this.matchmakingService = matchmakingService;
+        this.messagingTemplate = messagingTemplate;
+    }
+
+    public PartyController(PartyService partyService, NotificationPublisher notificationPublisher,
+            PartyStatePublisher partyStatePublisher) {
+        this(partyService, notificationPublisher, partyStatePublisher, null, null);
     }
 
     @PostMapping
@@ -82,6 +98,7 @@ public class PartyController {
             Authentication authentication,
             @PathVariable UUID partyId) {
         PartyService.LeaveResult result = partyService.leave(authentication, partyId);
+        cancelPartyQueue(partyId);
         publishMembershipChange(result);
         return result.party();
     }
@@ -92,6 +109,7 @@ public class PartyController {
             @PathVariable UUID partyId,
             @PathVariable UUID userId) {
         PartyService.LeaveResult result = partyService.kick(authentication, partyId, userId);
+        cancelPartyQueue(partyId);
         publishMembershipChange(result);
         return result.party();
     }
@@ -118,6 +136,14 @@ public class PartyController {
                             null,
                             null,
                             Instant.now()));
+        }
+    }
+
+    private void cancelPartyQueue(UUID partyId) {
+        if (matchmakingService == null) return;
+        for (OutboundMatchmakingEvent event : matchmakingService.cancelPartyQueue(partyId)) {
+            if (messagingTemplate != null) messagingTemplate.convertAndSendToUser(
+                    event.principalName(), MatchmakingSocketDestinations.MATCHMAKING, event.event());
         }
     }
 }

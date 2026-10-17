@@ -1,13 +1,11 @@
 package com.example.botfight.service;
 
-import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.service.auth.AuthService;
-import com.example.botfight.service.auth.EmailVerificationService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -19,17 +17,29 @@ import com.example.botfight.DTO.auth.PasswordChangeRequestDTO;
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.security.AuthenticatedUserDetails;
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.auth.AuthService;
+import com.example.botfight.service.auth.AuthSessionRegistry;
+import com.example.botfight.service.auth.EmailVerificationService;
+import com.example.botfight.service.auth.PasswordPolicy;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.lang.reflect.Field;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
-import static org.mockito.ArgumentMatchers.eq;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 class AuthServiceTest {
 
@@ -105,7 +115,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> service.register(
                 authRequest("pilot@example.com", "pilot", "short")))
                 .isInstanceOf(AuthException.class)
-                .hasMessage("password must be between 8 and 128 characters");
+                .hasMessage("password must be at least 8 characters");
     }
 
     @Test
@@ -241,5 +251,187 @@ class AuthServiceTest {
     private Authentication authenticationFor(AppUser user) {
         AuthenticatedUserDetails details = new AuthenticatedUserDetails(user);
         return new UsernamePasswordAuthenticationToken(details, null, details.getAuthorities());
+    }
+
+    @Nested
+    class GuestCreation {
+        private static final class MutableClock extends Clock {
+            private Instant now = Instant.parse("2026-01-01T00:00:00Z");
+
+            @Override public java.time.ZoneId getZone() { return ZoneOffset.UTC; }
+            @Override public Clock withZone(java.time.ZoneId zone) { return this; }
+            @Override public Instant instant() { return now; }
+            void advance(Duration d) { now = now.plus(d); }
+        }
+
+        @AfterEach
+        void clearSecurityContext() {
+            SecurityContextHolder.clearContext();
+        }
+
+        private static HttpServletRequest requestFrom(String ip) {
+            HttpServletRequest request = mock(HttpServletRequest.class);
+            when(request.getRemoteAddr()).thenReturn(ip);
+            when(request.getSession(true)).thenReturn(mock(HttpSession.class));
+            return request;
+        }
+
+        @Test
+        void guestCreationAllowanceExpiresAfterTwentyFourHours() {
+            UserRepository repository = mock(UserRepository.class);
+            when(repository.save(any(AppUser.class))).thenAnswer(invocation -> {
+                AppUser user = invocation.getArgument(0);
+                user.setId(UUID.randomUUID());
+                return user;
+            });
+            AuthService service = new AuthService(repository, new BCryptPasswordEncoder(), mock(EmailVerificationService.class));
+            MutableClock clock = new MutableClock();
+            service.setClock(clock);
+            for (int i = 0; i < 100; i++) {
+                SecurityContextHolder.clearContext();
+                service.playAsGuest(requestFrom("198.51.100.7"));
+            }
+            SecurityContextHolder.clearContext();
+            assertThatThrownBy(() -> service.playAsGuest(requestFrom("198.51.100.7")))
+                    .isInstanceOf(com.example.botfight.service.limits.RateLimitExceededException.class);
+            assertThat(service.playAsGuest(requestFrom("203.0.113.9")).isGuest()).isTrue();
+            SecurityContextHolder.clearContext();
+            clock.advance(Duration.ofHours(24));
+            assertThat(service.playAsGuest(requestFrom("198.51.100.7")).isGuest()).isTrue();
+        }
+    }
+
+    @Nested
+    class SessionRevocation {
+        @AfterEach
+        void clear() {
+            SecurityContextHolder.clearContext();
+        }
+
+        @Test
+        void passwordChangeRevokesOtherAuthenticatedSessions() throws Exception {
+            UserRepository userRepository = mock(UserRepository.class);
+            BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+            AuthService service = new AuthService(userRepository, encoder, mock(EmailVerificationService.class));
+
+            AppUser user = new AppUser();
+            Field idField = AppUser.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            idField.set(user, UUID.randomUUID());
+            user.setEmail("pilot@example.com");
+            user.setNormalizedEmail("pilot@example.com");
+            user.setUsername("pilot");
+            user.setPasswordHash(encoder.encode("old-password"));
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+            // Session B: a second, already-authenticated session (e.g. attacker / stolen cookie).
+            MockHttpServletRequest requestB = new MockHttpServletRequest();
+            service.authenticateSession(user, requestB);
+            org.springframework.mock.web.MockHttpSession sessionB =
+                    (org.springframework.mock.web.MockHttpSession) requestB.getSession(false);
+            SecurityContextHolder.clearContext();
+            MockHttpServletRequest requestA = new MockHttpServletRequest();
+            service.authenticateSession(user, requestA);
+
+            // Session A: the legitimate user changes the password.
+            AuthenticatedUserDetails details = new AuthenticatedUserDetails(user);
+            Authentication authA = new UsernamePasswordAuthenticationToken(details, null, details.getAuthorities());
+            PasswordChangeRequestDTO dto = new PasswordChangeRequestDTO();
+            dto.setCurrentPassword("old-password");
+            dto.setNewPassword("new-password");
+            dto.setConfirmPassword("new-password");
+            service.changePassword(authA, dto, requestA);
+
+            assertThat(sessionB.isInvalid()).as("other session is invalidated").isTrue();
+            assertThat(((org.springframework.mock.web.MockHttpSession) requestA.getSession(false)).isInvalid()).isFalse();
+        }
+
+        @Test
+        void switchingAccountsTransfersSessionOwnership() {
+            UserRepository repository = mock(UserRepository.class);
+            AuthService service = new AuthService(repository, new BCryptPasswordEncoder(), mock(EmailVerificationService.class));
+            AppUser first = new AppUser();
+            first.setId(UUID.randomUUID());
+            first.setEmail("first@example.com");
+            first.setUsername("first");
+            AppUser second = new AppUser();
+            second.setId(UUID.randomUUID());
+            second.setEmail("second@example.com");
+            second.setUsername("second");
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            service.authenticateSession(first, request);
+            service.authenticateSession(second, request);
+            org.springframework.mock.web.MockHttpSession session =
+                    (org.springframework.mock.web.MockHttpSession) request.getSession(false);
+            AuthSessionRegistry.revoke(first.getId(), null);
+            assertThat(session.isInvalid()).isFalse();
+            AuthSessionRegistry.revoke(second.getId(), null);
+            assertThat(session.isInvalid()).isTrue();
+        }
+    }
+
+    @Nested
+    class VerificationResponses {
+        private final UserRepository userRepository = mock(UserRepository.class);
+        private final EmailVerificationService verification = mock(EmailVerificationService.class);
+        private final AuthService service =
+                new AuthService(userRepository, new BCryptPasswordEncoder(), verification);
+
+        private String messageFor(String email) {
+            EmailVerificationRequestDTO req = new EmailVerificationRequestDTO();
+            req.setEmail(email);
+            req.setCode("123456");
+            try {
+                service.verifyEmail(req, null);
+            } catch (AuthException e) {
+                return e.getMessage();
+            }
+            return "no exception";
+        }
+
+        @Test
+        void verifyEmailDoesNotRevealAccountState() {
+            AppUser verified = new AppUser();
+            verified.setEmailVerified(true);
+            when(userRepository.findByNormalizedEmail("verified@example.com")).thenReturn(Optional.of(verified));
+            when(userRepository.findByNormalizedEmail("nobody@example.com")).thenReturn(Optional.empty());
+
+            String forVerified = messageFor("verified@example.com");
+            String forMissing = messageFor("nobody@example.com");
+
+            assertThat(forVerified).isEqualTo(forMissing);
+        }
+    }
+
+    @Nested
+    class PasswordBoundaries {
+        @Test
+        void utf8ByteBoundaryMatchesTheEncoderAndRejectsOversizedLoginInput() {
+            BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+            String supported = "é".repeat(36);
+            PasswordPolicy.validateForRegistration(supported);
+            org.assertj.core.api.Assertions.assertThatCode(() -> encoder.encode(supported))
+                    .doesNotThrowAnyException();
+            assertThatThrownBy(() -> PasswordPolicy.validateForRegistration("é".repeat(37)))
+                    .isInstanceOf(AuthException.class).hasMessageContaining("72 UTF-8 bytes");
+            assertThatThrownBy(() -> PasswordPolicy.requireForLogin("a".repeat(73)))
+                    .isInstanceOf(AuthException.class);
+        }
+
+        @Test
+        void oversizedPasswordsAreRejectedBeforeRegistrationIsQueued() {
+            UserRepository repo = mock(UserRepository.class);
+            when(repo.save(any(AppUser.class))).thenAnswer(i -> i.getArgument(0));
+            AuthService service = new AuthService(repo, new BCryptPasswordEncoder(), mock(EmailVerificationService.class));
+
+            AuthRequestDTO request = new AuthRequestDTO();
+            request.setEmail("pilot@example.com");
+            request.setUsername("pilot");
+            request.setPassword("a".repeat(80)); // exceeds the hashing limit
+
+            // Reject before the asynchronous 202 so BCrypt never receives an unsupported password.
+            assertThatThrownBy(() -> service.validateRegistration(request))
+                    .isInstanceOf(AuthException.class).hasMessageContaining("72 UTF-8 bytes");
+        }
     }
 }

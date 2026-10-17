@@ -217,15 +217,15 @@ public final class MatchRoundResolutionService {
         scoredSession.players().forEach(player ->
                 roundWins.put(player.userId(), Math.max(0, player.roundWins())));
         persistenceService.recordRoundScores(scoredSession.matchId(), roundWins);
-        state.roundHistoryByMatchId()
-                .computeIfAbsent(simulationSession.matchId(), ignored -> new ArrayList<>())
-                .add(new RoundSubmissionRecord(
-                        simulationSession.roundNumber(),
-                        playback.winnerUserId(),
-                        Map.copyOf(submissionsByUserId),
-                        replayService.roundLossScores(simulationSession, playback)));
-        submissionService.removeForRound(
-                simulationSession.matchId(), simulationSession.roundNumber());
+        RoundSubmissionRecord roundRecord = new RoundSubmissionRecord(
+                simulationSession.roundNumber(),
+                playback.winnerUserId(),
+                Map.copyOf(submissionsByUserId));
+        List<RoundSubmissionRecord> history = state.roundHistoryByMatchId()
+                .computeIfAbsent(simulationSession.matchId(), ignored -> new ArrayList<>());
+        boolean roundRecordAdded = history.stream()
+                .noneMatch(record -> record.roundNumber() == simulationSession.roundNumber());
+        if (roundRecordAdded) history.add(roundRecord);
 
         boolean seriesComplete = simulationSession.roundNumber() >= TOTAL_ROUNDS
                 || scoredSession.players().stream()
@@ -244,18 +244,24 @@ public final class MatchRoundResolutionService {
                     "Terminal round code-history persistence started matchId={} round={}",
                     simulationSession.matchId(),
                     simulationSession.roundNumber());
-            submissionService.persistCodeHistory(scoredSession);
-            log.info(
-                    "Terminal round code-history persistence completed matchId={} round={} elapsedMs={}",
-                    simulationSession.matchId(),
-                    simulationSession.roundNumber(),
-                    elapsedMillis(codeHistoryStartedNanos));
             long matchPersistenceStartedNanos = System.nanoTime();
-            log.info(
-                    "Terminal match-result persistence started matchId={} round={}",
-                    simulationSession.matchId(),
-                    simulationSession.roundNumber());
-            persistenceService.completeMatch(scoredSession.matchId(), playback);
+            try {
+                submissionService.persistCodeHistory(scoredSession);
+                log.info(
+                        "Terminal round code-history persistence completed matchId={} round={} elapsedMs={}",
+                        simulationSession.matchId(),
+                        simulationSession.roundNumber(),
+                        elapsedMillis(codeHistoryStartedNanos));
+                matchPersistenceStartedNanos = System.nanoTime();
+                log.info(
+                        "Terminal match-result persistence started matchId={} round={}",
+                        simulationSession.matchId(),
+                        simulationSession.roundNumber());
+                persistenceService.completeMatch(scoredSession.matchId(), playback);
+            } catch (RuntimeException exception) {
+                if (roundRecordAdded) history.remove(roundRecord);
+                throw exception;
+            }
             log.info(
                     "Terminal match-result persistence completed matchId={} round={} elapsedMs={}",
                     simulationSession.matchId(),
@@ -286,6 +292,8 @@ public final class MatchRoundResolutionService {
                 roundReadyAt,
                 seriesComplete);
         state.putSession(replaySession);
+        submissionService.removeForRound(
+                simulationSession.matchId(), simulationSession.roundNumber());
         if (seriesComplete) {
             chatService.open(scoredSession, resultRevealsAt.plusMillis(MATCH_CHAT_RETENTION_MILLIS));
         }
@@ -427,22 +435,8 @@ public final class MatchRoundResolutionService {
                 return playersByTeam.get(leadingTeams.getFirst()).getFirst().userId();
             }
 
-            Map<Integer, Double> totalsByTeam = new HashMap<>();
-            state.roundHistoryByMatchId().getOrDefault(session.matchId(), List.of()).forEach(round ->
-                    round.lossScores().forEach((userId, score) -> session.players().stream()
-                            .filter(player -> player.userId().equals(userId))
-                            .findFirst()
-                            .ifPresent(player -> totalsByTeam.merge(
-                                    player.teamNumber(), score, Double::sum))));
-            double highestTotal = leadingTeams.stream()
-                    .mapToDouble(team -> totalsByTeam.getOrDefault(team, 0.0))
-                    .max()
-                    .orElse(0.0);
-            List<Integer> tiedTeams = leadingTeams.stream()
-                    .filter(team -> Math.abs(totalsByTeam.getOrDefault(team, 0.0) - highestTotal) < 0.000001)
-                    .toList();
-            return tiedTeams.size() == 1
-                    ? playersByTeam.get(tiedTeams.getFirst()).getFirst().userId()
+            return leadingTeams.size() == 1
+                    ? playersByTeam.get(leadingTeams.getFirst()).getFirst().userId()
                     : null;
         }
         MatchPlayer first = session.players().get(0);
@@ -450,13 +444,7 @@ public final class MatchRoundResolutionService {
         if (first.roundWins() != second.roundWins()) {
             return first.roundWins() > second.roundWins() ? first.userId() : second.userId();
         }
-        Map<UUID, Double> totals = new HashMap<>();
-        state.roundHistoryByMatchId().getOrDefault(session.matchId(), List.of()).forEach(round ->
-                round.lossScores().forEach((userId, score) -> totals.merge(userId, score, Double::sum)));
-        double firstScore = totals.getOrDefault(first.userId(), 0.0);
-        double secondScore = totals.getOrDefault(second.userId(), 0.0);
-        if (Math.abs(firstScore - secondScore) < 0.000001) return null;
-        return firstScore > secondScore ? first.userId() : second.userId();
+        return null;
     }
 
     private MatchPlayer playerForUser(MatchSession session, UUID userId) {

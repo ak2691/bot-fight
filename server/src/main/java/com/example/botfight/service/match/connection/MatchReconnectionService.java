@@ -252,7 +252,8 @@ public final class MatchReconnectionService {
                 .allMatch(player -> connectionService.isDisconnected(player.userId()));
         if (everyOpponentDisconnected) {
             persistenceService.completeMatchAsDraw(
-                    session.matchId(), COMPLETION_REASON_MUTUAL_DISCONNECTION);
+                    session.matchId(), COMPLETION_REASON_MUTUAL_DISCONNECTION,
+                    session.roundNumber() > 1 || session.isReplay());
             clearSession.accept(session);
             return resultEvents(
                     session,
@@ -317,17 +318,30 @@ public final class MatchReconnectionService {
                     session.resultRevealsAt(),
                     session.roundReadyAt()));
         }
+        MatchReplayDTO snapshot = replayService.authorizedReplayForReconnect(
+                session.replayPlayback(), session.playbackStartsAt(), now);
         return List.of(eventFactory.forCompactReplay(
                 session,
                 replayPlayer,
                 "SIMULATION_PREPARING",
                 "SIMULATION_PREPARING",
-                session.replayPlayback(),
+                snapshot,
                 "Replay ready.",
                 0,
                 session.playbackStartsAt(),
                 session.resultRevealsAt(),
-                session.roundReadyAt()));
+                session.roundReadyAt()),
+                eventFactory.forCompactReplay(
+                        session,
+                        replayPlayer,
+                        "MATCH_REPLAY_BATCH",
+                        "ROUND_RESULT_READY",
+                        replayService.resultPayload(session.replayPlayback()),
+                        session.replayPlayback().message(),
+                        0,
+                        session.playbackStartsAt(),
+                        session.resultRevealsAt(),
+                        session.roundReadyAt()));
     }
 
     private List<OutboundMatchmakingEvent> resultEvents(

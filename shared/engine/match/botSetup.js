@@ -103,6 +103,8 @@ export function createMatchBots(request, arena = resolveMatchArena(request)) {
         const hp = bot.initialHp == null || !Number.isFinite(Number(bot.initialHp))
             ? maxHp
             : Math.max(0, Math.min(maxHp, Number(bot.initialHp)));
+        const rotation = bot.rotation == null ? (slot === 1 ? 90 : 270) : Number(bot.rotation);
+        if (!Number.isFinite(rotation)) throw new Error("bot rotation must be a finite number");
         const shape = resetBotShape({
             ...base,
             id: matchBotId(slot),
@@ -114,7 +116,7 @@ export function createMatchBots(request, arena = resolveMatchArena(request)) {
             x,
             y,
             size,
-            rotation: bot.rotation == null ? (slot === 1 ? 90 : 270) : Number(bot.rotation),
+            rotation,
             startHp: hp,
             combatLoadout,
             loadout,

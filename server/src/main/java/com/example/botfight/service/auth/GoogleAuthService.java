@@ -31,12 +31,14 @@ public class GoogleAuthService {
 
     public static final String GOOGLE_PROVIDER = "google";
     public static final String GOOGLE_LINK_USER_SESSION_KEY = "botfight.google.link.user";
+    public static final String GOOGLE_LINK_EXPIRES_AT_SESSION_KEY = "botfight.google.link.expires-at";
     public static final String GOOGLE_PENDING_LINK_SESSION_KEY = "botfight.google.pending.link";
     public static final String GOOGLE_PENDING_USERNAME_SESSION_KEY = "botfight.google.pending.username";
     public static final String GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY = "botfight.google.pending.username.expires-at";
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final int MAX_PROVIDER_SUBJECT_LENGTH = 255;
+    private static final Duration GOOGLE_LINK_TIMEOUT = Duration.ofMinutes(5);
 
     private final UserRepository userRepository;
     private final UserAuthIdentityRepository identityRepository;
@@ -71,8 +73,13 @@ public class GoogleAuthService {
         GoogleIdentity googleIdentity = readGoogleIdentity(googleUser);
         HttpSession session = request.getSession(true);
         UUID linkUserId = readUuid(session.getAttribute(GOOGLE_LINK_USER_SESSION_KEY));
+        Instant linkExpiresAt = readInstant(session.getAttribute(GOOGLE_LINK_EXPIRES_AT_SESSION_KEY));
 
         if (linkUserId != null) {
+            if (linkExpiresAt == null || !clock.instant().isBefore(linkExpiresAt)) {
+                clearGoogleFlowState(session);
+                throw new AuthException("Google account linking has expired; start again");
+            }
             AppUser linkUser = userRepository.findById(linkUserId)
                     .orElseThrow(() -> new AuthException("authenticated user was not found"));
             linkUser.setEmailVerified(true);
@@ -222,7 +229,10 @@ public class GoogleAuthService {
     @Transactional(readOnly = true)
     public void beginLink(Authentication authentication, HttpServletRequest request) {
         AppUser user = requireRegisteredUser(authentication);
-        request.getSession(true).setAttribute(GOOGLE_LINK_USER_SESSION_KEY, user.getId());
+        HttpSession session = request.getSession(true);
+        clearGoogleFlowState(session);
+        session.setAttribute(GOOGLE_LINK_USER_SESSION_KEY, user.getId());
+        session.setAttribute(GOOGLE_LINK_EXPIRES_AT_SESSION_KEY, clock.instant().plus(GOOGLE_LINK_TIMEOUT));
     }
 
     private AppUser requireRegisteredUser(Authentication authentication) {
@@ -252,7 +262,8 @@ public class GoogleAuthService {
     public void restoreLinkUserAfterFailure(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
         UUID linkUserId = session == null ? null : readUuid(session.getAttribute(GOOGLE_LINK_USER_SESSION_KEY));
-        if (linkUserId == null) {
+        Instant expiresAt = session == null ? null : readInstant(session.getAttribute(GOOGLE_LINK_EXPIRES_AT_SESSION_KEY));
+        if (linkUserId == null || expiresAt == null || !clock.instant().isBefore(expiresAt)) {
             clearOAuthAuthentication(request);
             return;
         }
@@ -291,6 +302,7 @@ public class GoogleAuthService {
 
     private void clearGoogleFlowState(HttpSession session) {
         session.removeAttribute(GOOGLE_LINK_USER_SESSION_KEY);
+        session.removeAttribute(GOOGLE_LINK_EXPIRES_AT_SESSION_KEY);
         session.removeAttribute(GOOGLE_PENDING_LINK_SESSION_KEY);
         session.removeAttribute(GOOGLE_PENDING_USERNAME_SESSION_KEY);
         session.removeAttribute(GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY);
@@ -298,6 +310,7 @@ public class GoogleAuthService {
 
     private void prepareUsername(HttpSession session, AppUser user) {
         session.removeAttribute(GOOGLE_LINK_USER_SESSION_KEY);
+        session.removeAttribute(GOOGLE_LINK_EXPIRES_AT_SESSION_KEY);
         session.removeAttribute(GOOGLE_PENDING_LINK_SESSION_KEY);
         session.setAttribute(GOOGLE_PENDING_USERNAME_SESSION_KEY, user.getId());
         session.setAttribute(

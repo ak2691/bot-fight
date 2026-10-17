@@ -1,6 +1,7 @@
 package com.example.botfight.service.simulation;
 
 import com.example.botfight.DTO.match.MatchReplayDTO;
+import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.simulation.WorkerResult.PuzzleResult;
 import com.example.botfight.service.simulation.SimulationRequest.DuelSimulationRequest;
 import com.example.botfight.service.simulation.SimulationRequest.PuzzleRequest;
@@ -16,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.HttpServerErrorException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -30,6 +32,7 @@ public class SimWorkerClient implements AutoCloseable {
     private final JsonMapper mapper;
     private final MeterRegistry metrics;
     private final Semaphore authorityPermits;
+    private final Duration timeout;
 
     public SimWorkerClient(
             JsonMapper mapper, MeterRegistry metrics,
@@ -41,7 +44,8 @@ public class SimWorkerClient implements AutoCloseable {
             throw new IllegalArgumentException("sim.worker concurrency and timeout must be positive");
         }
         if (secret.isBlank()) throw new IllegalArgumentException("sim.worker.secret is required");
-        authorityPermits = new Semaphore(concurrency);
+        authorityPermits = new Semaphore(concurrency, true);
+        this.timeout = timeout;
         this.mapper = mapper;
         this.metrics = metrics;
         var factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(timeout).build());
@@ -63,7 +67,26 @@ public class SimWorkerClient implements AutoCloseable {
     }
 
     private WorkerResult send(DuelSimulationRequest request, PuzzleRequest puzzle) {
-        if (!authorityPermits.tryAcquire()) throw new RejectedExecutionException("Simulation worker is busy");
+        if (puzzle != null) {
+            try {
+                // Timed acquisition honors fair-queue predecessors, even with a zero wait.
+                if (!authorityPermits.tryAcquire(0, TimeUnit.MILLISECONDS)) {
+                    throw RateLimitExceededException.tooManyRequests(Duration.ofSeconds(1));
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw RateLimitExceededException.tooManyRequests(Duration.ofSeconds(1));
+            }
+        } else {
+            try {
+                if (!authorityPermits.tryAcquire(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                    throw new RejectedExecutionException("Simulation worker is busy");
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new RejectedExecutionException("Interrupted while waiting for simulation worker", interrupted);
+            }
+        }
         try {
             ObjectNode body = (ObjectNode) mapper.readTree(requestBody(request));
             if (puzzle != null) body.set("puzzle", mapper.valueToTree(puzzle));
@@ -75,6 +98,12 @@ public class SimWorkerClient implements AutoCloseable {
                     result.engineVersion(), result.replay().result(),
                     result.puzzle() == null ? null : result.puzzle().status());
             return result;
+        } catch (HttpServerErrorException failure) {
+            metrics.counter("sim.worker.authority.failures").increment();
+            if (puzzle != null && failure.getStatusCode().value() == 503) {
+                throw RateLimitExceededException.tooManyRequests(Duration.ofSeconds(1));
+            }
+            throw failure;
         } catch (RuntimeException failure) {
             metrics.counter("sim.worker.authority.failures").increment();
             throw failure;
@@ -87,6 +116,26 @@ public class SimWorkerClient implements AutoCloseable {
         if (!replayNode.isObject()) throw new IllegalArgumentException("Worker response has no replay");
         if (!RESULTS.contains(replayNode.path("result").asString(""))) {
             throw new IllegalArgumentException("Worker replay has an unsupported result");
+        }
+        String result = replayNode.path("result").asString("");
+        JsonNode winnerNode = replayNode.path("winnerUserId");
+        boolean hasWinner = !winnerNode.isMissingNode() && !winnerNode.isNull()
+                && !winnerNode.asString("").isBlank();
+        if (hasWinner != "BOT_WIN".equals(result)) {
+            throw new IllegalArgumentException("Worker replay result and winner disagree");
+        }
+        JsonNode framesNode = replayNode.path("frames");
+        if (!framesNode.isArray()) {
+            throw new IllegalArgumentException("Worker replay has no frames array");
+        }
+        int lastElapsedMs = -1;
+        for (JsonNode frame : framesNode) {
+            JsonNode elapsedMs = frame.path("elapsedMs");
+            if (!frame.isObject() || !elapsedMs.isIntegralNumber()
+                    || elapsedMs.asInt() < 0 || elapsedMs.asInt() <= lastElapsedMs) {
+                throw new IllegalArgumentException("Worker replay frames have invalid timing");
+            }
+            lastElapsedMs = elapsedMs.asInt();
         }
         MatchReplayDTO replay = mapper.treeToValue(replayNode, MatchReplayDTO.class);
         PuzzleResult puzzle = null;

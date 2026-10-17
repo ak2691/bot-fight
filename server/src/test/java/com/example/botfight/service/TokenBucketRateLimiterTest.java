@@ -1,9 +1,10 @@
 package com.example.botfight.service;
 
-import com.example.botfight.service.limits.RateLimitExceededException;
-import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.example.botfight.service.limits.RateLimitExceededException;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -51,7 +52,7 @@ class TokenBucketRateLimiterTest {
 
     @Test
     void boundsTrackedKeysWhenAttackersRotateKeys() {
-        Clock clock = Clock.fixed(Instant.parse("2026-07-24T12:00:00Z"), ZoneOffset.UTC);
+        MutableClock clock = new MutableClock(Instant.parse("2026-07-24T12:00:00Z"));
         TokenBucketRateLimiter<UUID> limiter = new TokenBucketRateLimiter<>(
                 clock,
                 1,
@@ -61,10 +62,12 @@ class TokenBucketRateLimiterTest {
         UUID secondKey = UUID.randomUUID();
 
         limiter.requireAllowed(firstKey);
+        assertThatThrownBy(() -> limiter.requireAllowed(secondKey))
+                .isInstanceOf(RateLimitExceededException.class);
+        assertThatThrownBy(() -> limiter.requireAllowed(firstKey))
+                .isInstanceOf(RateLimitExceededException.class);
+        clock.advance(Duration.ofMinutes(1));
         limiter.requireAllowed(secondKey);
-
-        // The oldest key was evicted instead of being retained forever.
-        limiter.requireAllowed(firstKey);
     }
 
     private static final class MutableClock extends Clock {

@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -15,47 +15,61 @@ import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyStateEventDTO;
-import com.example.botfight.service.auth.CurrentUserService;
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.match.MatchChatEventDTO;
 import com.example.botfight.DTO.match.MatchChatRequestDTO;
 import com.example.botfight.DTO.match.MatchmakingEventDTO;
 import com.example.botfight.DTO.match.MatchmakingJoinRequestDTO;
 import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.repository.PartyInviteRepository;
+import com.example.botfight.repository.PartyMemberRepository;
+import com.example.botfight.repository.PartyRepository;
+import com.example.botfight.repository.UserRepository;
+import com.example.botfight.service.auth.CurrentUserService;
+import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.customlobby.CustomLobbyService;
 import com.example.botfight.service.customlobby.CustomLobbyStatePublisher;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchChatClosure;
 import com.example.botfight.service.match.model.MatchChatSubmission;
 import com.example.botfight.service.match.model.MatchChatSubmissionStatus;
 import com.example.botfight.service.matchmaking.MatchmakingEventsReady;
-import com.example.botfight.service.websocket.WebSocketSessionDisconnectedEvent;
 import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.party.PartyService;
+import com.example.botfight.service.party.PartyStatePublisher;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
+import com.example.botfight.service.websocket.WebSocketSessionDisconnectedEvent;
 import java.security.Principal;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.messaging.Message;
-import org.springframework.messaging.simp.SimpMessageType;
-import org.mockito.ArgumentCaptor;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.support.MessageBuilder;
-import org.springframework.security.core.Authentication;
 import org.springframework.scheduling.TaskScheduler;
+import org.springframework.security.core.Authentication;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.TextWebSocketHandler;
 import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 import org.springframework.web.socket.messaging.SessionUnsubscribeEvent;
-import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.WebSocketHandler;
-import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 class MatchmakingSocketControllerTest {
 
@@ -1130,5 +1144,129 @@ class MatchmakingSocketControllerTest {
     @SuppressWarnings("unchecked")
     private static Set<String> inFlightKeys(MatchmakingSocketController controller, String fieldName) {
         return (Set<String>) ReflectionTestUtils.getField(controller, fieldName);
+    }
+
+    @Nested
+    class PartyQueueLeave {
+        private final Clock clock = Clock.fixed(Instant.parse("2026-08-27T12:00:00Z"), ZoneOffset.UTC);
+        private final CurrentUserService currentUserService = mock(CurrentUserService.class);
+        private final UserRepository userRepository = mock(UserRepository.class);
+        private final MatchService matchService = mock(MatchService.class);
+        private final SingleUserWebSocketSessionRegistry socketRegistry = mock(SingleUserWebSocketSessionRegistry.class);
+        private final MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        private final Authentication ownerAuth = mock(Authentication.class);
+        private final Authentication teammateAuth = mock(Authentication.class);
+        private final AppUser owner = user("owner", "owner@example.test");
+        private final AppUser teammate = user("teammate", "teammate@example.test");
+        private PartyService partyService;
+        private MatchmakingSocketController controller;
+
+        @BeforeEach
+        void setUp() {
+            partyService = new PartyService(
+                    currentUserService,
+                    userRepository,
+                    mock(PartyRepository.class),
+                    mock(PartyMemberRepository.class),
+                    mock(PartyInviteRepository.class),
+                    matchService,
+                    new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(10)),
+                    clock,
+                    BlockLookup.none(),
+                    socketRegistry);
+            when(matchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
+            when(socketRegistry.currentSessionIdForPrincipal(owner.getEmail())).thenReturn("owner-socket");
+            when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail())).thenReturn("teammate-socket");
+            when(socketRegistry.hasActiveSessionForPrincipal(owner.getEmail())).thenReturn(true);
+            when(socketRegistry.hasActiveSessionForPrincipal(teammate.getEmail())).thenReturn(true);
+            when(ownerAuth.getName()).thenReturn(owner.getEmail());
+            when(teammateAuth.getName()).thenReturn(teammate.getEmail());
+            when(currentUserService.requireCurrentUser(ownerAuth)).thenReturn(owner);
+            when(currentUserService.requireCurrentUser(teammateAuth)).thenReturn(teammate);
+
+            var created = partyService.create(ownerAuth);
+            when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                    .thenReturn(Optional.of(teammate));
+            var invite = partyService.invite(ownerAuth, created.partyId(), teammate.getUsername());
+            when(currentUserService.requireCurrentUserId(teammateAuth)).thenReturn(teammate.getId());
+            partyService.accept(teammateAuth, invite.invite().inviteId());
+
+            controller = new MatchmakingSocketController(
+                    matchmakingService,
+                    matchService,
+                    mock(SimpMessagingTemplate.class),
+                    currentUserService,
+                    partyService,
+                    mock(PartyStatePublisher.class),
+                    mock(TaskScheduler.class),
+                    mock(AsyncTaskExecutor.class),
+                    socketRegistry,
+                    mock(CustomLobbyService.class),
+                    mock(CustomLobbyStatePublisher.class));
+        }
+
+        @Test
+        void nonLeaderPartyMemberLeaveStillReachesLeaveQueue() {
+            controller.leaveQueue(teammateAuth);
+
+            verify(matchmakingService).leaveQueue(teammate.getId());
+        }
+
+        @Test
+        void leaderLeaveStillReachesLeaveQueueWhenATeammateSocketIsGone() {
+            when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail())).thenReturn(null);
+
+            controller.leaveQueue(ownerAuth);
+
+            verify(matchmakingService).leaveQueue(owner.getId());
+        }
+
+        private static AppUser user(String username, String email) {
+            AppUser user = new AppUser();
+            user.setId(UUID.randomUUID());
+            user.setUsername(username);
+            user.setEmail(email);
+            return user;
+        }
+    }
+
+    @Test
+    void repeatedResumeWhilePendingSchedulesAcceptanceTimeoutOnlyOnce() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> future = mock(ScheduledFuture.class);
+        doReturn(future).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+        Authentication principal = mock(Authentication.class);
+        AppUser user = new AppUser();
+        UUID userId = UUID.randomUUID();
+        user.setId(userId);
+        user.setUsername("pilot");
+        when(currentUserService.requireCurrentUser(principal)).thenReturn(user);
+
+        UUID matchId = UUID.randomUUID();
+        Instant deadline = Instant.now().plusSeconds(30);
+        MatchmakingEventDTO dto = mock(MatchmakingEventDTO.class);
+        when(dto.type()).thenReturn("MATCH_FOUND");
+        when(dto.status()).thenReturn("MATCH_ACCEPT");
+        when(dto.matchId()).thenReturn(matchId);
+        when(dto.matchAcceptanceEndsAt()).thenReturn(deadline);
+        OutboundMatchmakingEvent pending = new OutboundMatchmakingEvent("pilot", dto);
+        when(matchmakingService.resumePendingMatch(userId, "s1")).thenReturn(List.of(pending));
+
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create();
+        headers.setSessionId("s1");
+
+        for (int i = 0; i < 5; i++) {
+            controller.resumeMatch(principal, headers);
+        }
+
+        // Correct behavior: one timeout task per (matchId, deadline), not one per resume frame.
+        verify(scheduler, times(1)).schedule(any(Runnable.class), any(Instant.class));
     }
 }

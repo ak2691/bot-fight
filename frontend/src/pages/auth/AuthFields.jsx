@@ -44,7 +44,7 @@ export function StrengthBar({ password }) {
             <div className="auth-strength__bar" aria-hidden="true">
                 {[1, 2, 3].map((segment) => <span key={segment} className={segment <= strength ? "is-filled" : ""} />)}
             </div>
-            <span className="auth-strength__label">{strength ? `${PASSWORD_STRENGTH_LABELS[strength]} password` : "Use 8 or more characters"}</span>
+            <span className="auth-strength__label">{strength ? `${PASSWORD_STRENGTH_LABELS[strength]} password` : "Use at least 8 characters, up to 72 UTF-8 bytes"}</span>
         </div>
     );
 }

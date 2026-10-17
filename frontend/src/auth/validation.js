@@ -21,7 +21,8 @@ export function passwordError(value, { required = true } = {}) {
 
 export function newPasswordError(value) {
     if (value.length === 0) return "Enter a new password.";
-    if (value.length < 8 || value.length > 128) return "Password must be between 8 and 128 characters.";
+    if (value.length < 8) return "Password must be at least 8 characters.";
+    if (new TextEncoder().encode(value).length > 72) return "Password must be 72 bytes or fewer (UTF-8).";
     if (/\s/.test(value)) return "Password cannot contain spaces.";
     return null;
 }

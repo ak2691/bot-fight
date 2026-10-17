@@ -76,6 +76,10 @@ two teams. `initialElapsedMs + durationMs` must stay within the closing-zone sim
   `CompactAbilityCode`, `StatusEffectState`).
 - Config: `sim.worker.url` (default `http://sim-worker:8090`), `sim.worker.secret` (required),
   `sim.worker.timeout` (12 s), `sim.worker.concurrency` (2). Tests use a stub.
+- Rated requests wait up to `sim.worker.timeout` for a client permit when puzzle attempts are using
+  the shared capacity. Puzzle attempts remain non-blocking and return a rate-limit response when
+  local permits or the worker queue are full. Permits are fair: once a rated request is waiting,
+  later puzzle attempts cannot take its place when a slot opens.
 
 ## Docker and deploy
 
@@ -87,6 +91,8 @@ two teams. `initialElapsedMs + durationMs` must stay within the closing-zone sim
   - build and push a `botfight-sim-worker` image and run it next to the backend;
   - `SIM_WORKER_SECRET` comes from the prod secret store and has no default.
   - The owner must add that secret before merging to main.
+  - SIGTERM drains admitted simulations before stopping the pool; the 30 s worker stop grace
+    period must remain above the 10 s task timeout.
 
 ## Verification
 

@@ -243,3 +243,16 @@ test("createMatchBots clamps hp and defaults rotation like Java", () => {
     assert.equal(bots[2].transform.rotation, 45);
     assert.equal(bots[0].matchElapsedMs, 4_000);
 });
+
+test("bot setup rejects non-finite spawn rotations", () => {
+    for (const rotation of [NaN, Infinity, -Infinity, "not-a-number"]) {
+        const request = {
+            rulesetVersion: "duel-v1",
+            bots: [
+                { userId: "u1", username: "One", slot: 1, x: 300, y: 150, rotation, size: 60, brain: idleBrain, teamNumber: 1 },
+                { userId: "u2", username: "Two", slot: 2, x: 900, y: 150, rotation: 0, size: 60, brain: idleBrain, teamNumber: 2 },
+            ],
+        };
+        assert.throws(() => createMatchBots(request), /rotation must be a finite number/);
+    }
+});

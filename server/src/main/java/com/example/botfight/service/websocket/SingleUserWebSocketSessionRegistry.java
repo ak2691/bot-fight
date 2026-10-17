@@ -175,6 +175,25 @@ public class SingleUserWebSocketSessionRegistry {
         return sessions != null && !sessions.isEmpty();
     }
 
+    /** Closes and removes all transports for a logged-out or revoked principal. */
+    public void closeSessionsForPrincipal(String principalName) {
+        Map<String, WebSocketSession> snapshot;
+        synchronized (this) {
+            Map<String, WebSocketSession> sessions = sessionsByPrincipalName.get(principalName);
+            snapshot = sessions == null ? Map.of() : Map.copyOf(sessions);
+        }
+        for (Map.Entry<String, WebSocketSession> entry : snapshot.entrySet()) {
+            WebSocketSession session = entry.getValue();
+            try {
+                if (session.isOpen()) session.close(new CloseStatus(1008, "Authentication ended"));
+            } catch (IOException exception) {
+                log.debug("Could not close revoked WebSocket session. sessionId={}", entry.getKey());
+            } finally {
+                publishDisconnect(unregisterSession(entry.getKey()));
+            }
+        }
+    }
+
     private boolean associateLocked(
             String sessionId,
             String principalName,

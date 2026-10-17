@@ -12,13 +12,13 @@ import org.springframework.scheduling.TaskScheduler;
 class PartyInviteCleanupServiceTest {
 
     @Test
-    void schedulesPartyInviteCleanupEveryMinute() {
+    void schedulesPartyAndOfflineCleanupEveryFiveSeconds() {
         PartyService partyService = mock(PartyService.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
         PartyInviteCleanupService cleanupService = new PartyInviteCleanupService(partyService, scheduler);
 
         cleanupService.scheduleCleanup();
 
-        verify(scheduler).scheduleWithFixedDelay(any(Runnable.class), eq(Duration.ofMinutes(1)));
+        verify(scheduler).scheduleWithFixedDelay(any(Runnable.class), eq(Duration.ofSeconds(5)));
     }
 }

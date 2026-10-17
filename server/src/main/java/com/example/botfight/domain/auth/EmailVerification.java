@@ -33,6 +33,17 @@ public class EmailVerification {
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    @Column(name = "failed_attempts", nullable = false)
+    private int failedAttempts;
+
+    public int getFailedAttempts() {
+        return failedAttempts;
+    }
+
+    public void setFailedAttempts(int failedAttempts) {
+        this.failedAttempts = failedAttempts;
+    }
+
     public UUID getId() {
         return id;
     }

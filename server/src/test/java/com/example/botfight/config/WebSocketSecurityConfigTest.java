@@ -186,4 +186,17 @@ class WebSocketSecurityConfigTest {
             assertThat(manager.authorize(authenticationSupplier, message).isGranted()).isTrue();
         }
     }
+
+    @Test
+    void authenticatedUsersMayLeaveCompletedMatch() {
+        AuthorizationManager<Message<?>> manager = new WebSocketSecurityConfig()
+                .messageAuthorizationManager(MessageMatcherDelegatingAuthorizationManager.builder());
+        Authentication authentication = new TestingAuthenticationToken("pilot", "password", "ROLE_USER");
+        Message<byte[]> message = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.MESSAGE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/app/matchmaking.leaveCompletedMatch")
+                .build();
+
+        assertThat(manager.authorize(() -> authentication, message).isGranted()).isTrue();
+    }
 }

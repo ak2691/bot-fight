@@ -3,7 +3,6 @@ package com.example.botfight.service.limits;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -51,7 +50,7 @@ public final class TokenBucketRateLimiter<K> {
         Instant now = Instant.now(clock);
         Bucket bucket = bucketsByKey.get(key);
         if (bucket == null) {
-            evictOldestKeyIfNecessary();
+            makeRoomIfNecessary(now);
             bucket = new Bucket(capacity, now);
             bucketsByKey.put(key, bucket);
         }
@@ -69,13 +68,20 @@ public final class TokenBucketRateLimiter<K> {
         bucket.tokens -= 1;
     }
 
-    private void evictOldestKeyIfNecessary() {
+    private void makeRoomIfNecessary(Instant now) {
         if (bucketsByKey.size() < maxTrackedKeys) return;
-        Iterator<K> keys = bucketsByKey.keySet().iterator();
-        if (keys.hasNext()) {
-            keys.next();
-            keys.remove();
+        // Only a fully replenished bucket can be forgotten without restoring
+        // tokens early. Fail closed for new keys when all tracked keys owe tokens.
+        var entries = bucketsByKey.entrySet().iterator();
+        while (entries.hasNext()) {
+            Bucket candidate = entries.next().getValue();
+            refill(candidate, now);
+            if (candidate.tokens == capacity) {
+                entries.remove();
+                return;
+            }
         }
+        throw RateLimitExceededException.tooManyRequests(refillInterval);
     }
 
     public synchronized void forget(K key) {

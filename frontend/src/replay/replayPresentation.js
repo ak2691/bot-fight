@@ -259,15 +259,17 @@ function canonicalAbilityTimerMap(value) {
         .filter(([id]) => id != null));
 }
 
-export function replayFrameIndexForElapsedMs(frames, elapsedMs, stepMs = 100) {
+export function replayFrameIndexForElapsedMs(frames, elapsedMs) {
     if (!frames.length) return 0;
-    const firstElapsedMs = Number(frames[0]?.elapsedMs ?? 0);
-    const fixedStepMs = Math.max(1, Number(stepMs) || 100);
-    const elapsedSinceFirstFrame = Math.max(0, Number(elapsedMs) - firstElapsedMs);
-    return Math.min(
-        frames.length - 1,
-        Math.floor(elapsedSinceFirstFrame / fixedStepMs),
-    );
+    const target = Number(elapsedMs);
+    let low = 0;
+    let high = frames.length;
+    while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (Number(frames[middle]?.elapsedMs ?? 0) <= target) low = middle + 1;
+        else high = middle;
+    }
+    return Math.max(0, low - 1);
 }
 
 export function mergeReplayFrames(currentFrames = [], incomingFrames = []) {

@@ -3,11 +3,9 @@ package com.example.botfight.service.match.replay;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
-import com.example.botfight.service.match.simulation.MatchSimulationService;
 import com.example.botfight.service.match.state.PreparedReplay;
 import com.example.botfight.service.match.state.PreparedReplayBatch;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -70,9 +68,6 @@ public final class MatchReplayService {
             MatchReplayDTO playback,
             java.time.Instant playbackStartsAt,
             java.time.Instant now) {
-        if (deliveryMode == ReplayDeliveryMode.FULL) {
-            return fullReplayPayload(playback);
-        }
         long signedElapsedMs = java.time.Duration.between(playbackStartsAt, now).toMillis();
         long authorizationCursorMs = signedElapsedMs + REPLAY_LOOKAHEAD_MILLIS;
         int finalElapsedMs = finalElapsedMs(playback);
@@ -82,10 +77,12 @@ public final class MatchReplayService {
         long displayElapsedMs = Math.max(0, Math.min(finalElapsedMs, signedElapsedMs));
         long currentBatchStartMs = displayElapsedMs / REPLAY_BATCH_MILLIS * REPLAY_BATCH_MILLIS;
         long windowStartMs = Math.max(0, currentBatchStartMs - REPLAY_BATCH_MILLIS);
+        long boundedThroughMs = Math.min(authorizedThroughMs,
+                currentBatchStartMs + REPLAY_LOOKAHEAD_MILLIS);
         List<MatchReplayDTO.ReplayFrameDTO> frames = playback.frames().stream()
                 .filter(frame -> frame.elapsedMs() > windowStartMs
                         || (windowStartMs == 0 && frame.elapsedMs() == 0))
-                .filter(frame -> frame.elapsedMs() <= authorizedThroughMs)
+                .filter(frame -> frame.elapsedMs() <= boundedThroughMs)
                 .toList();
         int cursor = frames.isEmpty() ? 0 : frames.getLast().elapsedMs();
         boolean terminal = cursor >= finalElapsedMs(playback);
@@ -175,62 +172,6 @@ public final class MatchReplayService {
                 roundWinsBeforeResult);
     }
 
-    public Map<UUID, Double> roundLossScores(
-            MatchSession session,
-            MatchReplayDTO playback) {
-        Map<UUID, Double> scores = new HashMap<>();
-        session.players().forEach(player -> scores.put(player.userId(), 0.0));
-        if (playback.winnerUserId() == null) return Map.copyOf(scores);
-        MatchPlayer winner = playerForUser(session, playback.winnerUserId());
-        if (session.players().size() > 2) {
-            int elapsedMs = playback.frames().isEmpty()
-                    ? 0
-                    : playback.frames().getLast().elapsedMs();
-            double lossScore = Math.max(0.0, Math.min(1.0,
-                    elapsedMs / (double) MatchSimulationService.SIMULATION_DURATION_MS));
-            session.players().stream()
-                    .filter(player -> player.teamNumber() != winner.teamNumber())
-                    .forEach(player -> scores.put(player.userId(), lossScore));
-            return Map.copyOf(scores);
-        }
-        MatchPlayer loser = session.players().stream()
-                .filter(player -> !player.userId().equals(winner.userId()))
-                .findFirst()
-                .orElseThrow();
-        if (loser.slot() == 2) {
-            MatchReplayDTO.ReplayBotDTO finalWinner = playback.frames().isEmpty()
-                    ? null
-                    : playback.frames().getLast().bots().stream()
-                            .filter(bot -> winner.slot() == bot.slot())
-                            .findFirst()
-                            .orElse(null);
-            MatchReplayDTO.ReplayBotStaticDTO initialWinner = playback.initialState() == null
-                    ? null
-                    : playback.initialState().bots().stream()
-                            .filter(bot -> winner.slot() == bot.slot())
-                            .findFirst()
-                            .orElse(null);
-            double winnerMaxHp = initialWinner == null
-                    ? 150.0
-                    : Math.max(1.0, initialWinner.maxHp());
-            double winnerHp = finalWinner == null
-                    ? winnerMaxHp
-                    : Math.max(0.0, finalWinner.hp());
-            scores.put(
-                    loser.userId(),
-                    Math.max(0.0, Math.min(1.0, (winnerMaxHp - winnerHp) / winnerMaxHp)));
-        } else {
-            int elapsedMs = playback.frames().isEmpty()
-                    ? 0
-                    : playback.frames().getLast().elapsedMs();
-            scores.put(
-                    loser.userId(),
-                    Math.max(0.0, Math.min(1.0,
-                            elapsedMs / (double) MatchSimulationService.SIMULATION_DURATION_MS)));
-        }
-        return Map.copyOf(scores);
-    }
-
     public int finalElapsedMs(MatchReplayDTO playback) {
         return playback.frames().isEmpty() ? 0 : playback.frames().getLast().elapsedMs();
     }
@@ -283,13 +224,6 @@ public final class MatchReplayService {
                 cursorElapsedMs,
                 terminalBatch,
                 roundWinsBeforeResult);
-    }
-
-    private MatchPlayer playerForUser(MatchSession session, UUID userId) {
-        return session.players().stream()
-                .filter(player -> player.userId().equals(userId))
-                .findFirst()
-                .orElseThrow();
     }
 
     public record ReplayBatchRequest(

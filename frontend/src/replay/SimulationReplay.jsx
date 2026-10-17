@@ -81,7 +81,7 @@ export default function SimulationReplay({
     const displayElapsedMs = frames.length === 0 ? 0 : Math.min(elapsedPlaybackMs, finalElapsedMs);
     const frameIndex = frames.length === 0
         ? 0
-        : replayFrameIndexForElapsedMs(frames, displayElapsedMs, AUTO_STEP_MS);
+        : replayFrameIndexForElapsedMs(frames, displayElapsedMs);
     const firstFrameElapsedMs = Number(frames[0]?.elapsedMs ?? 0);
     const isInitialHandoff = countdownRemainingMs <= 0
         && firstFrameElapsedMs > 0

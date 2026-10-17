@@ -1,7 +1,5 @@
 package com.example.botfight.service;
 
-import com.example.botfight.service.match.persistence.MatchPersistenceService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -11,18 +9,26 @@ import static org.mockito.Mockito.when;
 
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.domain.match.Match;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.domain.match.MatchParticipant;
 import com.example.botfight.domain.match.MatchStatus;
+import com.example.botfight.domain.rating.PlayerRating;
 import com.example.botfight.repository.MatchParticipantRepository;
 import com.example.botfight.repository.MatchRepository;
+import com.example.botfight.repository.PlayerRatingRepository;
 import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.UserRepository;
+import com.example.botfight.service.cache.DatabaseLookupCache;
+import com.example.botfight.service.match.persistence.MatchPersistenceService;
+import com.example.botfight.service.rating.EloRatingService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -160,5 +166,72 @@ class MatchPersistenceServiceTest {
         participant.setRatingBefore(before);
         participant.setRatingAfter(after);
         return participant;
+    }
+
+    @Nested
+    class RatingNeutralDraws {
+        @Test
+        void drawBeforeAnyRoundWasFoughtDoesNotChangeRatings() {
+            MatchRepository matchRepository = mock(MatchRepository.class);
+            MatchParticipantRepository participantRepository = mock(MatchParticipantRepository.class);
+            ProfileRepository profileRepository = mock(ProfileRepository.class);
+            UserRepository userRepository = mock(UserRepository.class);
+            PlayerRatingRepository ratingRepository = mock(PlayerRatingRepository.class);
+            EloRatingService elo = new EloRatingService(ratingRepository);
+            MatchPersistenceService service = new MatchPersistenceService(
+                    matchRepository, participantRepository, profileRepository, userRepository,
+                    Clock.fixed(Instant.parse("2026-10-16T12:00:00Z"), ZoneOffset.UTC),
+                    new JsonMapper(), null, new DatabaseLookupCache(), elo);
+
+            AppUser strong = user();
+            AppUser weak = user();
+            PlayerRating strongRating = rating(strong, 1400);
+            PlayerRating weakRating = rating(weak, 1000);
+            when(ratingRepository.findByUserIdAndModeForUpdate(strong.getId(), MatchMode.ONES))
+                    .thenReturn(Optional.of(strongRating));
+            when(ratingRepository.findByUserIdAndModeForUpdate(weak.getId(), MatchMode.ONES))
+                    .thenReturn(Optional.of(weakRating));
+
+            Match match = new Match();
+            match.setId(UUID.randomUUID());
+            match.setMode(MatchMode.ONES);
+            match.setRanked(true);
+            match.setStatus(MatchStatus.RUNNING);
+            when(matchRepository.findById(match.getId())).thenReturn(Optional.of(match));
+            List<MatchParticipant> participants = List.of(participant(strong, 1), participant(weak, 2));
+            when(participantRepository.findByMatchId(match.getId())).thenReturn(participants);
+
+            // Weak player disconnects during initial loadout selection -> draw, no round fought.
+            service.completeMatchAsDraw(match.getId(), "INITIAL_DISCONNECTION");
+
+            assertThat(weakRating.getRating())
+                    .as("lower-rated disconnector must not gain rating from a no-round draw")
+                    .isEqualTo(1000);
+            assertThat(strongRating.getRating())
+                    .as("higher-rated player must not lose rating from a no-round draw")
+                    .isEqualTo(1400);
+        }
+
+        private static MatchParticipant participant(AppUser user, int team) {
+            MatchParticipant p = new MatchParticipant();
+            p.setUser(user);
+            p.setTeamNumber((short) team);
+            return p;
+        }
+
+        private static PlayerRating rating(AppUser user, int value) {
+            PlayerRating r = new PlayerRating();
+            r.setUser(user);
+            r.setMode(MatchMode.ONES);
+            r.setRating(value);
+            r.setRatedMatches(10);
+            return r;
+        }
+
+        private static AppUser user() {
+            AppUser u = new AppUser();
+            u.setId(UUID.randomUUID());
+            return u;
+        }
     }
 }

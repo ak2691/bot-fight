@@ -89,6 +89,8 @@ public class MatchmakingSocketController {
     private final Set<String> scheduledBuildingTimeouts = new HashSet<>();
     private final Set<String> scheduledLoadoutSelectionTimeouts = new HashSet<>();
     private final Map<UUID, Set<ScheduledFuture<?>>> scheduledDelayedMatchEvents = new ConcurrentHashMap<>();
+    private record AcceptanceTimeout(UUID matchId, Instant deadline) {}
+    private final Set<AcceptanceTimeout> scheduledAcceptanceTimeouts = ConcurrentHashMap.newKeySet();
     private final Map<String, Map<String, String>> matchSubscriptionsBySession = new ConcurrentHashMap<>();
 
     @Autowired
@@ -246,15 +248,14 @@ public class MatchmakingSocketController {
     @MessageMapping("/matchmaking.leave")
     public void leaveQueue(Principal principal) {
         AppUser user = requireUser(principal);
-        PartyService.QueueContext queueContext = partyService != null
-                ? partyService.queueContext(
-                        user.getId(),
-                        user.getUsername(),
-                        principal.getName(),
-                        null)
-                : null;
         matchmakingService.leaveQueue(user.getId());
-        publishPartyQueueState(queueContext, null, List.of(), "CANCELLED");
+        // Leaving does not require the leader/online-roster checks used to join.
+        var party = partyService == null ? null : partyService.currentForPrincipal(principal.getName());
+        if (party != null && partyStatePublisher != null) {
+            partyStatePublisher.send(partyService.recipientsForParty(party.partyId()),
+                    new PartyStateEventDTO("PARTY_QUEUE_STATE", party.partyId(), party,
+                            "CANCELLED", null, null, Instant.now()));
+        }
     }
 
     @MessageMapping("/matchmaking.resume")
@@ -1199,10 +1200,20 @@ public class MatchmakingSocketController {
                         (first, second) -> first))
                 .forEach((matchId, event) -> {
                     Instant deadline = event.matchAcceptanceEndsAt();
-                    scheduleSafely(
-                            deadline,
-                            "match acceptance timeout",
-                            () -> publish(matchmakingService.resolvePendingMatchTimeout(matchId, deadline)));
+                    AcceptanceTimeout key = new AcceptanceTimeout(matchId, deadline);
+                    if (!scheduledAcceptanceTimeouts.add(key)) return;
+                    try {
+                        scheduleSafely(deadline, "match acceptance timeout", () -> {
+                            try {
+                                publish(matchmakingService.resolvePendingMatchTimeout(matchId, deadline));
+                            } finally {
+                                scheduledAcceptanceTimeouts.remove(key);
+                            }
+                        });
+                    } catch (RuntimeException failure) {
+                        scheduledAcceptanceTimeouts.remove(key);
+                        throw failure;
+                    }
                 });
     }
 

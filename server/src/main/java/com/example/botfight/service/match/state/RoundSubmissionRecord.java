@@ -7,6 +7,5 @@ import java.util.UUID;
 public record RoundSubmissionRecord(
         int roundNumber,
         UUID winnerUserId,
-        Map<UUID, BotSubmission> submissionsByUser,
-        Map<UUID, Double> lossScores) {
+        Map<UUID, BotSubmission> submissionsByUser) {
 }

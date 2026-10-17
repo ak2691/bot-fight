@@ -339,12 +339,22 @@ public class MatchPersistenceService {
 
         Match match = matchRepository.getReferenceById(matchId);
         Instant persistedAt = Instant.now(clock);
+        // A prior resolution attempt may have committed history before its result write failed.
+        // Reuse the unique match/round/phase/user key so the same round can be retried.
+        java.util.Set<String> storedKeys = new java.util.HashSet<>();
+        List<MatchRoundBotCode> storedRows = matchRoundBotCodeRepository
+                .findByMatchIdOrderByRoundNumberAscUserIdAsc(matchId);
+        if (storedRows != null) {
+            storedRows.forEach(row -> storedKeys.add(
+                    row.getRoundNumber() + ":" + row.getPhase() + ":" + row.getUser().getId()));
+        }
         List<MatchRoundBotCode> historyRows = new java.util.ArrayList<>();
         submissionsByRound.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(round -> round.getValue().entrySet().stream()
                         .sorted(Map.Entry.comparingByKey())
                         .forEach(entry -> {
+                            if (storedKeys.contains(round.getKey() + ":BUILDING:" + entry.getKey())) return;
                             BotSubmission submission = entry.getValue();
                             MatchRoundBotCode row = new MatchRoundBotCode();
                             row.setMatch(match);
@@ -603,6 +613,12 @@ public class MatchPersistenceService {
 
     @Transactional
     public void completeMatchAsDraw(UUID matchId, String completionReason) {
+        completeMatchAsDraw(matchId, completionReason,
+                !"INITIAL_DISCONNECTION".equals(completionReason));
+    }
+
+    @Transactional
+    public void completeMatchAsDraw(UUID matchId, String completionReason, boolean roundWasFought) {
         Match match = runningMatch(matchId);
         if (match == null) return;
         List<MatchParticipant> participants =
@@ -619,7 +635,8 @@ public class MatchPersistenceService {
             participant.setResult(MatchResult.DRAW);
             incrementMatchesPlayed(participant.getUser());
         }
-        if (eloRatingService != null) {
+        // A disconnect before the first authoritative round yields no rated outcome.
+        if (roundWasFought && eloRatingService != null) {
             eloRatingService.applyRatedResult(match, participants);
         }
         saveResult(match, participants);

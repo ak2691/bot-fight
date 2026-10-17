@@ -23,6 +23,8 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -34,6 +36,7 @@ public class PasswordResetService {
 
     private static final Duration RESEND_COOLDOWN = Duration.ofSeconds(60);
     private static final int CODE_BOUND = 900_000;
+    public static final int MAX_CODE_ATTEMPTS = 5;
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
 
@@ -44,6 +47,12 @@ public class PasswordResetService {
     private final String fromAddress;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
+    private SingleUserWebSocketSessionRegistry webSocketSessions;
+
+    @Autowired(required = false)
+    public void setWebSocketSessions(SingleUserWebSocketSessionRegistry webSocketSessions) {
+        this.webSocketSessions = webSocketSessions;
+    }
 
     public PasswordResetService(
             UserRepository userRepository,
@@ -75,7 +84,8 @@ public class PasswordResetService {
         sendCode(user, true);
     }
 
-    @Transactional
+    // Failed guesses must commit their attempt count even though the request is rejected.
+    @Transactional(noRollbackFor = AuthException.class)
     public Instant verifyCode(String email, String code, HttpServletRequest request) {
         String normalizedEmail = normalizeAndValidateEmail(email);
         if (code == null || !code.trim().matches("\\d{6}")) {
@@ -95,7 +105,12 @@ public class PasswordResetService {
             resetRequestRepository.delete(resetRequest);
             throw new AuthException("verification code has expired; request a new code");
         }
+        if (resetRequest.getFailedAttempts() >= MAX_CODE_ATTEMPTS) {
+            throw invalidCodeException();
+        }
         if (!passwordEncoder.matches(code.trim(), resetRequest.getCodeHash())) {
+            resetRequest.setFailedAttempts(resetRequest.getFailedAttempts() + 1);
+            resetRequestRepository.save(resetRequest);
             throw invalidCodeException();
         }
 
@@ -144,6 +159,10 @@ public class PasswordResetService {
 
         user.setPasswordHash(passwordEncoder.encode(password));
         userRepository.save(user);
+        AuthSessionRegistry.afterCommit(() -> {
+            AuthSessionRegistry.revoke(user.getId(), null);
+            if (webSocketSessions != null) webSocketSessions.closeSessionsForPrincipal(user.getEmail());
+        });
         clearResetGrant(session);
     }
 
@@ -172,6 +191,7 @@ public class PasswordResetService {
         resetRequest.setCodeHash(passwordEncoder.encode(code));
         resetRequest.setSentAt(now);
         resetRequest.setExpiresAt(expiresAt);
+        resetRequest.setFailedAttempts(0);
         resetRequestRepository.save(resetRequest);
 
         try {

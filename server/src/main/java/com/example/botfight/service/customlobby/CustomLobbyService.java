@@ -54,6 +54,7 @@ public class CustomLobbyService {
     public static final int RED_TEAM = 2;
     public static final int MAX_TEAM_SIZE = 2;
     public static final Duration INVITE_VALIDITY = Duration.ofMinutes(10);
+    public static final Duration RECONNECT_GRACE = Duration.ofMinutes(2);
     public static final int MAX_PENDING_INVITES_PER_USER = 20;
     public static final int MAX_PENDING_INVITES_PER_LOBBY = 20;
 
@@ -73,6 +74,7 @@ public class CustomLobbyService {
     private final Map<UUID, ActiveLobby> activeLobbiesById = new HashMap<>();
     private final Map<UUID, UUID> lobbyIdsByUserId = new HashMap<>();
     private final Map<UUID, Set<String>> socketSessionIdsByUserId = new HashMap<>();
+    private final Map<UUID, Instant> offlineDeadlinesByUserId = new HashMap<>();
     private final Map<UUID, LobbyInvite> invitesById = new HashMap<>();
 
     public CustomLobbyService(
@@ -199,6 +201,9 @@ public class CustomLobbyService {
                 .ifPresent(member -> socketSessionIdsByUserId
                         .computeIfAbsent(member.user.getId(), ignored -> new HashSet<>())
                         .add(socketSessionId));
+        activeLobbiesById.values().stream().flatMap(lobby -> lobby.members.values().stream())
+                .filter(member -> principalName.equals(member.user.getEmail()))
+                .findFirst().ifPresent(member -> offlineDeadlinesByUserId.remove(member.user.getId()));
     }
 
     public synchronized CustomLobbyDTO currentForPrincipal(String principalName) {
@@ -439,6 +444,30 @@ public class CustomLobbyService {
         return stateChange(lobby);
     }
 
+    /** Expires disconnected members after the reconnect grace. */
+    public synchronized List<LobbyChange> expireOfflineMembers() {
+        Instant now = clock.instant();
+        for (ActiveLobby lobby : activeLobbiesById.values()) {
+            for (LobbyMember member : lobby.members.values()) {
+                UUID userId = member.user.getId();
+                if (isMemberOnline(member)) offlineDeadlinesByUserId.remove(userId);
+                else offlineDeadlinesByUserId.putIfAbsent(userId, now.plus(RECONNECT_GRACE));
+            }
+        }
+        List<LobbyChange> changes = new java.util.ArrayList<>();
+        for (var entry : List.copyOf(offlineDeadlinesByUserId.entrySet())) {
+            if (now.isBefore(entry.getValue())) continue;
+            UUID userId = entry.getKey();
+            UUID lobbyId = lobbyIdsByUserId.get(userId);
+            ActiveLobby lobby = lobbyId == null ? null : activeLobbiesById.get(lobbyId);
+            offlineDeadlinesByUserId.remove(userId);
+            if (lobby == null) continue;
+            LobbyMember member = lobby.members.get(userId);
+            if (member != null && !isMemberOnline(member)) changes.add(removeMember(lobby, userId));
+        }
+        return List.copyOf(changes);
+    }
+
     public synchronized LobbyChange updateRoundDuration(
             Authentication authentication,
             UUID lobbyId,
@@ -635,6 +664,7 @@ public class CustomLobbyService {
                 && !socketSessionIdsByUserId.getOrDefault(userId, Set.of()).isEmpty()) {
             return new LobbyChange(null, null, List.of(), List.of());
         }
+        offlineDeadlinesByUserId.putIfAbsent(userId, clock.instant().plus(RECONNECT_GRACE));
         return stateChange(lobby);
     }
 
@@ -653,6 +683,7 @@ public class CustomLobbyService {
         }
         lobbyIdsByUserId.remove(userId, lobby.lobbyId);
         socketSessionIdsByUserId.remove(userId);
+        offlineDeadlinesByUserId.remove(userId);
         participationCoordinator.releaseCustomLobby(userId, lobby.lobbyId);
         List<LobbyRecipient> detached = List.of(new LobbyRecipient(
                 removed.user.getEmail(),
@@ -663,9 +694,15 @@ public class CustomLobbyService {
         }
         if (lobby.owner != null && lobby.owner.getId().equals(userId)) {
             lobby.owner = lobby.members.values().stream()
+                    .filter(this::isMemberOnline)
                     .min(Comparator.comparingLong(member -> member.memberOrder))
                     .map(member -> member.user)
                     .orElse(null);
+            if (lobby.owner == null) {
+                lobby.owner = lobby.members.values().stream()
+                        .min(Comparator.comparingLong(member -> member.memberOrder))
+                        .map(member -> member.user).orElse(null);
+            }
         }
         return new LobbyChange(lobby.lobbyId, toDTO(lobby), recipientsFor(lobby), detached);
     }
@@ -675,6 +712,7 @@ public class CustomLobbyService {
         lobby.members.values().forEach(member -> {
             lobbyIdsByUserId.remove(member.user.getId(), lobby.lobbyId);
             socketSessionIdsByUserId.remove(member.user.getId());
+            offlineDeadlinesByUserId.remove(member.user.getId());
         });
     }
 

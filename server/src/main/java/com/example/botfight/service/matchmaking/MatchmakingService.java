@@ -452,6 +452,21 @@ public class MatchmakingService {
         }
     }
 
+    /** A party roster change invalidates its atomic queued entry for every member. */
+    public synchronized List<OutboundMatchmakingEvent> cancelPartyQueue(UUID partyId) {
+        if (partyId == null) return List.of();
+        QueuedGroup group = registeredQueueOrderById.values().stream()
+                .filter(candidate -> partyId.equals(candidate.partyId()))
+                .findFirst().orElse(null);
+        if (group == null) return List.of();
+        removeQueuedGroup(group);
+        releaseRankedParticipationIfIdle(group.members().stream().map(MatchEntrant::userId).toList());
+        return group.members().stream()
+                .map(member -> queueStatusEvent(member, group.mode(), "QUEUE_IDLE", "IDLE",
+                        "The party changed, so its queue ended."))
+                .toList();
+    }
+
     /** Rejects an external match start when any roster member still has ranked state. */
     public synchronized List<OutboundMatchmakingEvent> cancelConflictingQueueState(
             Collection<UUID> userIds) {

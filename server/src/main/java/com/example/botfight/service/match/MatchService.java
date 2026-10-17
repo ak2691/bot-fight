@@ -618,6 +618,10 @@ public class MatchService {
         }
 
         return withMatchLock(request.matchId(), () -> {
+            if (!Instant.now(clock).isBefore(request.createdAt().plus(CODE_VIEW_REQUEST_TTL))) {
+                pendingCodeViewRequests.remove(request.requestId(), request);
+                throw new AuthException("the code view request is no longer available");
+            }
             MatchSession session = activeSessionsByUserId.get(targetUserId);
             if (session == null || !request.matchId().equals(session.matchId())
                     || session.roundNumber() != request.roundNumber()) {
@@ -653,12 +657,14 @@ public class MatchService {
         });
     }
 
-    @Transactional
+    // Persistence-service calls must commit before resolution releases its in-memory inputs.
+    // A transaction around this whole orchestration would defer failures until after cleanup.
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public List<OutboundMatchmakingEvent> completeSimulation(UUID matchId) {
         return matchRoundResolutionService.completeSimulation(matchId);
     }
 
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public List<OutboundMatchmakingEvent> cancelFailedSimulation(UUID matchId, Integer roundNumber) {
         return matchRoundResolutionService.cancelFailedSimulation(matchId, roundNumber);
     }

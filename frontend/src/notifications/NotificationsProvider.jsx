@@ -45,7 +45,7 @@ function customLobbyInviteFromNotification(event, username) {
 export default function NotificationsProvider({ children }) {
     const { isAuthenticated, user } = useAuth();
     const hasSocialAccess = isAuthenticated;
-    const clientIdentityKey = user?.id == null ? null : `${user.id}:registered`;
+    const clientIdentityKey = !isAuthenticated || user?.id == null ? null : `${user.id}:registered`;
     const navigate = useNavigate();
     const navigateRef = useRef(navigate);
     const clientRef = useRef(null);
@@ -55,10 +55,20 @@ export default function NotificationsProvider({ children }) {
     const [actionError, setActionError] = useState(null);
     const [lastNotification, setLastNotification] = useState(null);
     const hiddenInviteIdsRef = useRef(new Set());
+    const inviteRequestRef = useRef({ identity: clientIdentityKey, generation: 0 });
+
+    if (inviteRequestRef.current.identity !== clientIdentityKey) {
+        inviteRequestRef.current = {
+            identity: clientIdentityKey,
+            generation: inviteRequestRef.current.generation + 1,
+        };
+    }
 
     navigateRef.current = navigate;
 
     const refreshIncomingInvites = useCallback(async () => {
+        if (!hasSocialAccess || inviteRequestRef.current.identity !== clientIdentityKey) return;
+        const generation = inviteRequestRef.current.generation;
         try {
             const receivedAt = Date.now();
             const [partyResponse, customLobbyResponse] = await Promise.all([
@@ -73,6 +83,8 @@ export default function NotificationsProvider({ children }) {
             ]);
             if (partyResponse.ok) {
                 const body = await partyResponse.json().catch(() => ({}));
+                if (inviteRequestRef.current.generation !== generation
+                    || inviteRequestRef.current.identity !== clientIdentityKey) return;
                 if (Array.isArray(body.invites)) {
                     setPendingPartyInvites((current) => normalizeIncomingInvites(
                         body.invites,
@@ -84,6 +96,8 @@ export default function NotificationsProvider({ children }) {
             }
             if (customLobbyResponse.ok) {
                 const body = await customLobbyResponse.json().catch(() => ({}));
+                if (inviteRequestRef.current.generation !== generation
+                    || inviteRequestRef.current.identity !== clientIdentityKey) return;
                 if (Array.isArray(body.invites)) {
                     setPendingCustomLobbyInvites((current) => normalizeIncomingInvites(
                         body.invites,
@@ -96,10 +110,11 @@ export default function NotificationsProvider({ children }) {
         } catch {
             // The socket remains the live path; a later app navigation can retry the snapshot.
         }
-    }, []);
+    }, [clientIdentityKey, hasSocialAccess]);
 
     useEffect(() => {
         if (!hasSocialAccess) {
+            inviteRequestRef.current.generation += 1;
             hiddenInviteIdsRef.current.clear();
             setPendingPartyInvites([]);
             setPendingCustomLobbyInvites([]);
@@ -109,6 +124,12 @@ export default function NotificationsProvider({ children }) {
             return undefined;
         }
 
+        hiddenInviteIdsRef.current.clear();
+        setPendingPartyInvites([]);
+        setPendingCustomLobbyInvites([]);
+        setActionPendingInviteId(null);
+        setActionError(null);
+        setLastNotification(null);
         let disposed = false;
         const handleNotification = (event) => {
             if (disposed || !event) return;
@@ -165,6 +186,7 @@ export default function NotificationsProvider({ children }) {
 
         return () => {
             disposed = true;
+            inviteRequestRef.current.generation += 1;
             if (clientRef.current === client) clientRef.current = null;
             client.setNotificationHandler?.(null);
             client.clearPendingNotifications?.();

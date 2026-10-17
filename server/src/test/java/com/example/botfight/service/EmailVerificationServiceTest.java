@@ -1,8 +1,5 @@
 package com.example.botfight.service;
 
-import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.service.auth.EmailVerificationService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,6 +9,8 @@ import static org.mockito.Mockito.when;
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.domain.auth.EmailVerification;
 import com.example.botfight.repository.EmailVerificationRepository;
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.auth.EmailVerificationService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -75,7 +74,7 @@ class EmailVerificationServiceTest {
 
         assertThatThrownBy(() -> service.consumeCode(user, "123456"))
                 .isInstanceOf(AuthException.class)
-                .hasMessage("verification code has expired; request a new code");
+                .hasMessage("invalid or expired verification code");
     }
 
     private AppUser user() {

@@ -46,3 +46,24 @@ test("invite, party, and lobby action messages use the 3.5-second timeout", () =
 test("party queue explains that an offline member blocks matching without stopping the timer", () => {
 
 });
+
+test("in-flight incoming-invite fetch is discarded after logout/account switch", () => {
+    const source = readFileSync(PROVIDER_PATH, "utf8");
+    const start = source.indexOf("const refreshIncomingInvites = useCallback(");
+    const end = source.indexOf("}, []);", start);
+    const body = source.slice(start, end);
+
+    // Correct behavior: a guard (identity/generation/disposed ref) is checked after the awaits,
+    // before any setPending*Invites call applies the stale response.
+    const firstSet = body.indexOf("setPendingPartyInvites(");
+    const afterAwait = body.slice(body.indexOf("await Promise.all"), firstSet);
+    assert.match(
+        afterAwait,
+        /(disposed|generation|identity|userIdRef|requestId|abort|cancel)/i,
+        "refreshIncomingInvites applies fetched invites with no staleness guard after await",
+    );
+    // And the reset effect must invalidate in-flight refreshes.
+    const resetBlock = source.slice(source.indexOf("if (!hasSocialAccess) {"), source.indexOf("let disposed = false;"));
+    assert.match(resetBlock, /(generation|identity|userIdRef|requestId|abort|cancel)/i,
+        "logout reset does not invalidate in-flight refreshes");
+});

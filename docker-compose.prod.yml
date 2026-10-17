@@ -49,6 +49,7 @@ services:
         image: ${SIM_WORKER_IMAGE:?Set SIM_WORKER_IMAGE to the published sim-worker image}:${IMAGE_TAG:-latest}
         restart: unless-stopped
         init: true
+        stop_grace_period: 30s
         environment:
             SIM_WORKER_SECRET: ${SIM_WORKER_SECRET:?Set SIM_WORKER_SECRET}
             SIM_WORKER_THREADS: ${SIM_WORKER_THREADS:-2}
